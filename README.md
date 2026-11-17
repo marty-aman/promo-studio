@@ -83,6 +83,27 @@ any other static host.
   Sync it by putting any bar at the playhead, matching the song's detected BPM, or dragging the purple
   block on the timeline.
 
+## Layers
+
+The **Layers** panel holds a stack of layers above the main video. Add as many as you like, reorder
+them, rename them, and show or hide each one with its eye (in the panel or on the timeline). Hidden
+layers are left out of the preview and the export. The fixed rows (main video, text, lyrics, song,
+extra audio, end card) have eyes too; hiding an audio row mutes it.
+
+- **Video layers:** clips placed freely in time over the main video, with opacity and blend mode
+  (screen for smoke or light-leak footage, multiply for textures). Quick framings: picture in picture,
+  full frame, top or bottom half (split screen), circle. Each clip has the full clip inspector.
+- **Guitar tab:** as many tab layers as you need, e.g. lead and rhythm guitar or bass.
+- **Drum chart:** from a Guitar Pro drum track (kick, snare, hi-hat, toms, crash, ride) or detected
+  from a drum stem audio file (kick, snare, hi-hat). Styles: scrolling lanes, a falling "highway", or a
+  circle that sweeps once per bar with hits on rings.
+- **Visualizer:** reacts to any audio you give it: a stem (drums, bass, vocals…) or the song.
+  Styles: water ripple (bends the picture on each hit), electricity, spectrum bars, circular spectrum,
+  waveform, particles, glow pulse and speaker rings. Stems drive the visuals silently unless you switch
+  their sound on. Analysis runs once per file, so preview and export match.
+
+Old projects with a single guitar tab are moved into the layer list automatically.
+
 ## Inspiration page
 
 The **Inspiration** button at the top of the left rail opens a page of short-form trends for alt-metal,
@@ -151,6 +172,9 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/freesound.js` | Freesound API search |
 | `js/soundlib.js` | Personal sound library stored in IndexedDB |
 | `js/tab.js` | Guitar Pro tab parsing (via alphaTab), timing and drawing |
+| `js/drums.js` | Drum chart: GP drum tracks, drum-stem hit detection, lanes / highway / circle drawing |
+| `js/viz.js` | Audio visualizers: FFT analysis and the eight styles |
+| `js/panel-layers.js` | Layers panel |
 | `js/share.js` | Share sheet and YouTube upload |
 | `vendor/alphatab/` | alphaTab 1.9.0 parser (MPL-2.0), loaded only when a tab is used |
 | `js/engine.js` | Playback clock, media sync, Web Audio mix, export |

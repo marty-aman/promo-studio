@@ -11,9 +11,11 @@ import {
   noise,
   beatEnvelope,
 } from './core.js';
-import { FILTER_PRESETS, PLATFORMS } from './state.js';
+import { FILTER_PRESETS, PLATFORMS, isVisible, overlayClipAt } from './state.js';
 import { drawPlatformOverlay, overlaySupported } from './overlays.js';
 import { drawTab } from './tab.js';
+import { drawDrums } from './drums.js';
+import { drawViz } from './viz.js';
 
 // ------------------------------------------------------------ helpers
 
@@ -599,7 +601,7 @@ function drawClip(ctx, W, H, clip, local, src, extra = {}) {
   const small = (m.zoom * (extra.zoom || 1) < 1 || clip.posX || clip.posY) && clip.fit !== 'contain';
 
   // what shows around the picture: blurred copy, a color, or nothing
-  const bg = mask ? mask.background || 'blur' : clip.fit === 'blurfill' || small ? 'blur' : 'none';
+  const bg = extra.noBg ? (mask && mask.background === 'color' ? 'color' : 'none') : mask ? mask.background || 'blur' : clip.fit === 'blurfill' || small ? 'blur' : 'none';
   if (bg !== 'none') {
     ctx.save();
     ctx.globalAlpha *= alpha;
@@ -1274,24 +1276,49 @@ function drawProgress(ctx, W, H, pr, t, duration) {
   ctx.fillRect(0, y, W * clamp(t / duration, 0, 1), h);
 }
 
+/** A video layer: the clip under the playhead, with the layer's opacity and blend mode. */
+function drawVideoLayer(ctx, W, H, layer, t, env) {
+  const clip = overlayClipAt(layer, t);
+  if (!clip) return;
+  const local = t - clip.start;
+  const tr = clip.transition || { type: 'none' };
+  const d = Math.min(tr.duration || 0.4, clip.duration * 0.45);
+  // overlay clips fade in and out instead of cutting, unless set to a hard cut
+  const edge = tr.type === 'none' ? 1 : Math.min(1, local / d, (clip.duration - local) / d);
+  ctx.save();
+  ctx.globalAlpha *= (layer.opacity ?? 1) * Math.max(0, edge);
+  ctx.globalCompositeOperation = layer.blend || 'source-over';
+  drawClip(ctx, W, H, clip, local, env.sourceFor(clip), { noBg: true });
+  ctx.restore();
+}
+
 /**
  * Render the frame at timeline time t.
- * env: { sourceFor(clip) -> drawable|null, image(mediaId) -> drawable|null, preview: bool }
+ * env: { sourceFor(clip), image(mediaId), tab(mediaId, track), drums(layer), viz(layer), preview: bool }
  */
 export function renderFrame(ctx, W, H, project, t, env) {
   ctx.save();
   ctx.fillStyle = project.background || '#000';
   ctx.fillRect(0, 0, W, H);
-  const beat = beatEnvelope(project.beats && project.beats.beats, timelineToSong(t, project.song));
-  drawVideoLane(ctx, W, H, project, t, env);
-  drawLook(ctx, W, H, project.look, t, beat);
+  const songT = timelineToSong(t, project.song);
+  const beat = beatEnvelope(project.beats && project.beats.beats, songT);
   const ecStart = project.endCard.enabled ? project.duration - project.endCard.duration : Infinity;
-  drawTexts(ctx, W, H, project.texts, t, beat, project.endCard.releaseDate);
-  if (project.tab && project.tab.mediaId && env.tab) {
-    drawTab(ctx, W, H, project.tab, env.tab(project.tab.mediaId, project.tab.track), t, timelineToSong(t, project.song), ecStart === Infinity ? project.duration : ecStart);
+  const visEnd = ecStart === Infinity ? project.duration : ecStart;
+  const layers = (project.layers || []).filter((l) => l.visible !== false);
+
+  if (isVisible(project, 'video')) drawVideoLane(ctx, W, H, project, t, env);
+  // video layers sit directly on the picture, so the look (vignette, grain…) covers them too
+  for (const l of layers) if (l.type === 'video') drawVideoLayer(ctx, W, H, l, t, env);
+  drawLook(ctx, W, H, project.look, t, beat);
+  // graphics layers in stack order
+  for (const l of layers) {
+    if (l.type === 'viz' && env.viz) drawViz(ctx, W, H, l, env.viz(l), t, songT, visEnd);
+    else if (l.type === 'tab' && env.tab && l.mediaId) drawTab(ctx, W, H, l, env.tab(l.mediaId, l.track), t, songT, visEnd);
+    else if (l.type === 'drums' && env.drums) drawDrums(ctx, W, H, l, env.drums(l), t, songT, visEnd, project.beats && project.beats.period);
   }
-  if (t < ecStart) drawLyrics(ctx, W, H, project, t, beat);
-  drawEndCard(ctx, W, H, project, t, env);
+  if (isVisible(project, 'text')) drawTexts(ctx, W, H, project.texts, t, beat, project.endCard.releaseDate);
+  if (t < ecStart && isVisible(project, 'lyrics')) drawLyrics(ctx, W, H, project, t, beat);
+  if (isVisible(project, 'endcard')) drawEndCard(ctx, W, H, project, t, env);
   drawWatermark(ctx, W, H, project.look.watermark, env);
   drawProgress(ctx, W, H, project.look.progress, t, project.duration);
   // fade the whole video out over the last 0.3s when there is no end card

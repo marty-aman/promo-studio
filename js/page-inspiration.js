@@ -34,7 +34,7 @@ export function buildInspirationPage({ store, engine, ui, settings }) {
     engine.seek(0);
     const name = /^[“"]/.test(trend.title) ? trend.title : `“${trend.title}”`;
     toast(`${name} is set up. Swap in your best clips and press play. Undo (Ctrl+Z) to go back.`, 'info', 5000);
-    if (trend.recipe.tab && !store.get().tab) ui.openTab('guitar');
+    if (trend.recipe.tab && !(store.get().layers || []).some((l) => l.type === 'tab' && l.mediaId)) ui.openTab('layers');
     else ui.openTab('templates');
   };
 

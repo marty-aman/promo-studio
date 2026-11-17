@@ -105,7 +105,8 @@ export function newProject() {
       overlayClear: true,
     },
     beats: null, // { bpm, period, beats:[song seconds] }
-    tab: null, // Guitar Pro tab layer, see defaultTabLayer() in tab.js
+    layers: [], // stacked layers above the main video: video | tab | drums | viz (drawn in order)
+    layerVis: {}, // visibility of fixed rows: video, text, lyrics, song, endcard, audio:<id>
   };
 }
 
@@ -126,6 +127,40 @@ export function newText(start = 0) {
     boxOpacity: 1,
     animation: 'pop',
   };
+}
+
+// ------------------------------------------------------------ layers
+
+export const LAYER_TYPES = {
+  video: { label: 'Video layer', icon: 'film' },
+  tab: { label: 'Guitar tab', icon: 'guitar' },
+  drums: { label: 'Drum chart', icon: 'activity' },
+  viz: { label: 'Visualizer', icon: 'volume' },
+};
+
+/** Is a fixed row (video, text, lyrics, song, endcard, audio:<id>) or a layer visible? */
+export function isVisible(p, keyOrLayer) {
+  if (keyOrLayer && typeof keyOrLayer === 'object') return keyOrLayer.visible !== false;
+  return !(p.layerVis && p.layerVis[keyOrLayer] === false);
+}
+
+export const findLayer = (p, id) => (p.layers || []).find((l) => l.id === id) || null;
+
+/** A clip on the main lane or on any video layer: { clip, layer|null }. */
+export function findClip(p, id) {
+  const main = p.clips.find((c) => c.id === id);
+  if (main) return { clip: main, layer: null };
+  for (const l of p.layers || []) {
+    if (l.type !== 'video') continue;
+    const c = l.clips.find((x) => x.id === id);
+    if (c) return { clip: c, layer: l };
+  }
+  return { clip: null, layer: null };
+}
+
+/** Overlay clip active at timeline time t on a video layer. */
+export function overlayClipAt(layer, t) {
+  return layer.clips.find((c) => t >= c.start && t < c.start + c.duration) || null;
 }
 
 // ------------------------------------------------------------ store with history
@@ -208,9 +243,15 @@ export function loadProject() {
     // v1 projects had a red safe-zone toggle; it maps to the TikTok phantom overlay
     if ('safeZones' in look && !('overlay' in look)) look.overlay = look.safeZones ? 'tiktok' : 'off';
     delete look.safeZones;
+    // v2 projects had one guitar tab (`tab`); it becomes the first layer
+    const layers = Array.isArray(p.layers) ? p.layers : [];
+    if (p.tab && p.tab.mediaId && !layers.some((l) => l.type === 'tab')) layers.push({ id: uid('lyr'), type: 'tab', name: 'Guitar tab', visible: true, ...p.tab });
+    delete p.tab;
     return {
       ...base,
       ...p,
+      layers,
+      layerVis: p.layerVis || {},
       lyricStyle: { ...base.lyricStyle, ...p.lyricStyle },
       endCard: { ...base.endCard, ...p.endCard },
       look: {

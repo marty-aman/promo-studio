@@ -41,15 +41,20 @@ export function applyLayout(d, id) {
   d.look.progress.position = id === 'full' ? 'bottom' : 'top';
   d.endCard.area = id === 'full' ? null : [x0, y0, x1, y1];
   if (id !== 'full' && id !== 'all') d.look.overlay = id;
-  if (d.tab) tabIntoLayout(d);
+  if ((d.layers || []).length) tabIntoLayout(d);
 }
 
-/** Fit the guitar tab across the clear area, in its upper part (lyrics sit in the lower part). */
+/** Fit tab and drum-lane layers across the clear area, stacked from the top (lyrics sit in the lower part). */
 export function tabIntoLayout(d) {
-  const [x0, y0, x1, y1] = AREAS[d.layout] || AREAS.full;
-  d.tab.x = +(((x0 + x1) / 2) * 100).toFixed(1);
-  d.tab.width = +((x1 - x0) * 100 * 0.98).toFixed(1);
-  d.tab.y = +(y0 * 100 + d.tab.height / 2 + 2).toFixed(1);
+  const [x0, y0, x1] = AREAS[d.layout] || AREAS.full;
+  let y = y0 * 100 + 2;
+  for (const L of d.layers || []) {
+    if (L.type !== 'tab' && !(L.type === 'drums' && L.style === 'lanes')) continue;
+    L.x = +(((x0 + x1) / 2) * 100).toFixed(1);
+    L.width = +((x1 - x0) * 100 * 0.98).toFixed(1);
+    L.y = +(y + L.height / 2).toFixed(1);
+    y += L.height + 1.5;
+  }
 }
 
 // ------------------------------------------------------------ templates

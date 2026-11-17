@@ -1,6 +1,6 @@
 // App shell: layout, wiring, keyboard shortcuts and autosave.
 import { ASPECTS, clipAt, splitClip, formatTime, clamp } from './core.js';
-import { createStore, newProject, loadProject, saveProject, FONTS } from './state.js';
+import { createStore, newProject, loadProject, saveProject, FONTS, findClip } from './state.js';
 import { media, restoreMedia } from './media.js';
 import { Engine } from './engine.js';
 import { createTimeline } from './timeline.js';
@@ -113,12 +113,20 @@ const ui = {
   snap: true,
   follow: true,
   syncing: false,
-  tab: localStorage.getItem('pvm.tab') || 'media',
+  tab: (localStorage.getItem('pvm.tab') || 'media').replace(/^guitar$/, 'layers'),
   select(sel) {
     this.selection = sel;
+    // jump to the panel that edits what was just selected (only now, not on every refresh)
+    const home = sel && { layer: 'layers', song: 'audio', endcard: 'endcard' }[sel.type];
+    if (home && this.tab !== home && this.tab !== 'inspiration') {
+      this.tab = home;
+      localStorage.setItem('pvm.tab', home);
+      renderRail();
+      showPage();
+    }
     rebuildInspector();
     timeline.render();
-    if (sel && sel.type === 'lyric' && this.tab === 'lyrics') rebuildLeft();
+    if ((sel && sel.type === 'lyric' && this.tab === 'lyrics') || leftSignature() !== leftSig) rebuildLeft();
   },
   setZoom(v) {
     this.pxPerSec = clamp(v, 10, 300);
@@ -139,6 +147,20 @@ const ui = {
   },
   split() {
     const p = store.get();
+    // an overlay clip that is selected and under the playhead is split first
+    const f = this.selection && this.selection.type === 'clip' ? findClip(p, this.selection.id) : null;
+    if (f && f.layer && engine.t > f.clip.start && engine.t < f.clip.start + f.clip.duration) {
+      const parts = splitClip(f.clip, engine.t - f.clip.start);
+      if (!parts) return toast('Too close to the clip edge to split.');
+      parts[1].start = +(f.clip.start + parts[0].duration).toFixed(3);
+      store.update((d) => {
+        const L = d.layers.find((l) => l.id === f.layer.id);
+        const i = L.clips.findIndex((c) => c.id === f.clip.id);
+        L.clips.splice(i, 1, ...parts);
+      });
+      ui.select({ type: 'clip', id: parts[1].id });
+      return;
+    }
     const hit = clipAt(p.clips, engine.t);
     if (!hit) return toast('Move the playhead over a clip to split it.');
     const parts = splitClip(hit.clip, hit.local);
@@ -156,7 +178,8 @@ const ui = {
       if (sel.type === 'audio') d.audioTracks = d.audioTracks.filter((c) => c.id !== sel.id);
       if (sel.type === 'endcard') d.endCard.enabled = false;
       if (sel.type === 'song') d.song = null;
-      if (sel.type === 'tab') d.tab = null;
+      if (sel.type === 'layer') d.layers = d.layers.filter((l) => l.id !== sel.id);
+      if (sel.type === 'clip') d.layers.forEach((l) => l.type === 'video' && (l.clips = l.clips.filter((c) => c.id !== sel.id)));
     });
     this.select(null);
   },
@@ -212,7 +235,17 @@ function leftSignature() {
   if (ui.tab === 'media') parts.push(p.clips.length);
   if (ui.tab === 'templates') parts.push(p.clips.length, p.template, p.layout, p.lyrics.length);
   if (ui.tab === 'sounds') parts.push(p.audioTracks.length);
-  if (ui.tab === 'guitar') parts.push(p.tab && p.tab.mediaId, p.tab && p.tab.track, p.tab && p.tab.mode, p.beats && p.beats.bpm);
+  if (ui.tab === 'layers') {
+    const L = ui.selection && ui.selection.type === 'layer' ? (p.layers || []).find((l) => l.id === ui.selection.id) : null;
+    parts.push(
+      (p.layers || []).map((l) => `${l.id}:${l.type}:${l.visible !== false}:${l.name}`).join('|'),
+      JSON.stringify(p.layerVis || {}),
+      p.audioTracks.length,
+      ui.selection && ui.selection.id,
+      L && [L.mediaId, L.source, L.track, L.mode, L.style, L.playAudio, L.type === 'video' ? L.clips.length : ''].join(','),
+      p.beats && p.beats.bpm,
+    );
+  }
   return parts.join('#');
 }
 function inspSignature() {
@@ -256,7 +289,8 @@ store.subscribe((p, meta) => {
     // undo/redo/new can remove the selected item
     const s = ui.selection;
     const gone =
-      (s.type === 'clip' && !p.clips.some((c) => c.id === s.id)) ||
+      (s.type === 'clip' && !findClip(p, s.id).clip) ||
+      (s.type === 'layer' && !(p.layers || []).some((l) => l.id === s.id)) ||
       (s.type === 'lyric' && !p.lyrics.some((c) => c.id === s.id)) ||
       (s.type === 'text' && !p.texts.some((c) => c.id === s.id)) ||
       (s.type === 'audio' && !p.audioTracks.some((c) => c.id === s.id));

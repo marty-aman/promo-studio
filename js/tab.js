@@ -99,19 +99,17 @@ function barTiming(barTicks, startBpm, autos) {
 }
 
 /**
- * Flatten one track into timed events.
- * Returns { strings, tuning, bars: [{time, duration, index}], events: [{time, dur, notes:[{line, fret, ...}]}], duration, tempo }.
+ * Walk one staff in playback order (repeats expanded, tempo changes applied) and report each
+ * sounding beat with its time. Shared by the guitar tab and the drum chart.
+ * Returns { staff, bars: [{time, duration, index}], beats: [{time, dur, bar, beat}], duration }.
  */
-export function buildTabTimeline(score, trackIndex = 0) {
-  const track = score.tracks[trackIndex] || score.tracks[0];
-  const staff = track.staves.find((s) => !s.isPercussion && s.tuning && s.tuning.length) || track.staves[0];
-  const strings = staff.tuning.length || 6;
+export function timedBeats(score, staff) {
   const masterBars = score.masterBars;
   const order = playbackOrder(masterBars);
   let bpm = score.tempo || 120;
   let time = 0;
   const bars = [];
-  const events = [];
+  const beats = [];
   for (const mbIndex of order) {
     const mb = masterBars[mbIndex];
     const ticks = mb.calculateDuration();
@@ -125,33 +123,46 @@ export function buildTabTimeline(score, trackIndex = 0) {
           if (beat.isEmpty || beat.isRest || !beat.notes.length) continue;
           const start = time + timing.at(beat.playbackStart);
           const end = time + timing.at(Math.min(ticks, beat.playbackStart + beat.playbackDuration));
-          events.push({
-            time: +start.toFixed(4),
-            dur: +Math.max(0.03, end - start).toFixed(4),
-            bar: mbIndex,
-            palmMute: !!beat.isPalmMute,
-            notes: beat.notes.map((n) => ({
-              line: Math.max(0, Math.min(strings - 1, strings - n.string)),
-              fret: n.fret,
-              tie: !!n.isTieDestination,
-              dead: !!n.isDead,
-              ghost: !!n.isGhost,
-              harmonic: !!(n.harmonicType && n.harmonicType > 0),
-              hammer: !!n.isHammerPullOrigin,
-              slide: !!(n.slideOutType && n.slideOutType > 0),
-              bend: !!(n.hasBend || (n.bendPoints && n.bendPoints.length)),
-              vibrato: !!(n.vibrato && n.vibrato > 0),
-              palmMute: !!n.isPalmMute || !!beat.isPalmMute,
-            })),
-          });
+          beats.push({ time: +start.toFixed(4), dur: +Math.max(0.03, end - start).toFixed(4), bar: mbIndex, beat });
         }
       }
     }
     time += timing.duration;
     bpm = timing.endBpm;
   }
-  events.sort((a, b) => a.time - b.time);
-  return { name: track.name, strings, tuning: tuningNames(staff.tuning), bars, events, duration: time, tempo: score.tempo };
+  beats.sort((a, b) => a.time - b.time);
+  return { bars, beats, duration: time };
+}
+
+/**
+ * Flatten one track into timed events.
+ * Returns { strings, tuning, bars: [{time, duration, index}], events: [{time, dur, notes:[{line, fret, ...}]}], duration, tempo }.
+ */
+export function buildTabTimeline(score, trackIndex = 0) {
+  const track = score.tracks[trackIndex] || score.tracks[0];
+  const staff = track.staves.find((s) => !s.isPercussion && s.tuning && s.tuning.length) || track.staves[0];
+  const strings = staff.tuning.length || 6;
+  const { bars, beats, duration } = timedBeats(score, staff);
+  const events = beats.map(({ time, dur, bar, beat }) => ({
+    time,
+    dur,
+    bar,
+    palmMute: !!beat.isPalmMute,
+    notes: beat.notes.map((n) => ({
+      line: Math.max(0, Math.min(strings - 1, strings - n.string)),
+      fret: n.fret,
+      tie: !!n.isTieDestination,
+      dead: !!n.isDead,
+      ghost: !!n.isGhost,
+      harmonic: !!(n.harmonicType && n.harmonicType > 0),
+      hammer: !!n.isHammerPullOrigin,
+      slide: !!(n.slideOutType && n.slideOutType > 0),
+      bend: !!(n.hasBend || (n.bendPoints && n.bendPoints.length)),
+      vibrato: !!(n.vibrato && n.vibrato > 0),
+      palmMute: !!n.isPalmMute || !!beat.isPalmMute,
+    })),
+  }));
+  return { name: track.name, strings, tuning: tuningNames(staff.tuning), bars, events, duration, tempo: score.tempo };
 }
 
 // ------------------------------------------------------------ drawing
