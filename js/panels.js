@@ -23,13 +23,17 @@ import {
   clamp,
 } from './core.js';
 import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSettings, saveSettings, loadTemplates, saveTemplates } from './state.js';
-import { media, addMedia, removeMedia } from './media.js';
+import { media, addMedia, removeMedia, tabTimeline } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
 import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS, MASK_SHAPES, GRADE_PRESETS, renderFrame } from './renderer.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
-import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate } from './templates.js';
+import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate, tabIntoLayout } from './templates.js';
 import { BUILTIN_SFX, synthSfx, searchSfx, SFX_CATEGORIES, SFX_LICENSES } from './sfx.js';
+import { defaultTabLayer } from './tab.js';
+import { shareFile, canShareFiles, youtube } from './share.js';
+
+const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.gp7,.gp8,.musicxml,.mxl,.xml';
 import { h, icon, button, iconButton, toast, download, pickFiles, field, section, Binder } from './dom.js';
 
 const fontOptions = () => [
@@ -121,6 +125,15 @@ export function createPanels({ store, engine, ui }) {
       store.update((d) => (d.look.watermark.mediaId = rec.id));
       toast('Logo set as watermark');
     },
+    useTab(rec) {
+      store.update((d) => {
+        const keep = d.tab && d.tab.mediaId ? d.tab : null;
+        d.tab = { ...defaultTabLayer(), ...(keep || {}), mediaId: rec.id, track: rec.tracks[0].index, offset: +timelineToSong(0, d.song).toFixed(3) };
+        if (d.layout && d.layout !== 'full') tabIntoLayout(d);
+      });
+      toast(`Tab “${rec.title || rec.name}” added. Line it up with the song in the Guitar tab panel.`);
+      ui.openTab('guitar');
+    },
   };
 
   async function importFiles(files) {
@@ -132,6 +145,7 @@ export function createPanels({ store, engine, ui }) {
         // first useful default for each kind
         const p = store.get();
         if (rec.kind === 'audio' && !p.song) actions.useSong(rec);
+        else if (rec.kind === 'tab') actions.useTab(rec);
         else if (rec.kind === 'video' || (rec.kind === 'image' && p.clips.length === 0 && !/cover|art/i.test(f.name))) actions.addClip(rec);
         else if (rec.kind === 'image' && /cover|art/i.test(f.name)) actions.useCover(rec);
         else if (rec.kind === 'font') toast(`Font “${rec.family}” is ready in every font menu`);
@@ -151,6 +165,7 @@ export function createPanels({ store, engine, ui }) {
     { id: 'lyrics', label: 'Lyrics', icon: 'mic', build: buildLyrics },
     { id: 'audio', label: 'Audio', icon: 'music', build: buildAudio },
     { id: 'sounds', label: 'Sounds', icon: 'volume', build: buildSounds },
+    { id: 'guitar', label: 'Guitar tab', icon: 'guitar', build: buildGuitar },
     { id: 'text', label: 'Text', icon: 'type', build: buildText },
     { id: 'endcard', label: 'End card', icon: 'disc', build: buildEndCard },
     { id: 'style', label: 'Style', icon: 'palette', build: buildStyle },
@@ -363,6 +378,117 @@ export function createPanels({ store, engine, ui }) {
     );
   }
 
+  // ---------------------------------------------------------------- GUITAR TAB
+  function buildGuitar(b) {
+    const p = store.get();
+    const tabs = media.all().filter((m) => m.kind === 'tab');
+    const upload = button('Upload Guitar Pro tab', async () => importFiles(await pickFiles(TAB_ACCEPT, false)), { iconName: 'upload', variant: p.tab ? 'ghost' : 'primary' });
+    const intro = h('p', { class: 'muted small' }, 'Upload a Guitar Pro file (.gp, .gp5, .gp4, .gp3, .gpx) or MusicXML. It scrolls over the video in time with your song, highlighting each note as it plays.');
+    if (!p.tab || !media.get(p.tab.mediaId)) {
+      return h(
+        'div',
+        {},
+        section(
+          'Guitar tab layer',
+          intro,
+          upload,
+          tabs.length ? h('div', { class: 'list' }, tabs.map((m) => h('div', { class: 'list-row' }, h('span', {}, m.name), button('Show on video', () => actions.useTab(m), { variant: 'sm' })))) : null,
+        ),
+      );
+    }
+    const rec = media.get(p.tab.mediaId);
+    const T = (fn) => (d, v) => fn(d.tab, v);
+    const songNow = () => timelineToSong(engine.t, store.get().song);
+    const tl = () => {
+      const pp = store.get();
+      return tabTimeline(media.get(pp.tab.mediaId), pp.tab.track);
+    };
+    const bpm = () => (tl()?.tempo || 120) * (store.get().tab.tempoScale || 1);
+    const barNum = h('input', { type: 'number', min: 1, value: 1, class: 'num', 'aria-label': 'Bar number' });
+
+    const matchBpm = () => {
+      const pp = store.get();
+      if (!pp.beats) return toast('Run Detect BPM in the Audio tab first.', 'error');
+      const base = tl().tempo || 120;
+      const cands = [pp.beats.bpm, pp.beats.bpm * 2, pp.beats.bpm / 2].map((x) => x / base);
+      const scale = cands.reduce((a, c) => (Math.abs(Math.log(c)) < Math.abs(Math.log(a)) ? c : a));
+      store.update((d) => (d.tab.tempoScale = +scale.toFixed(4)));
+      toast(`Tab tempo set to ${Math.round(base * scale)} BPM to match the song`);
+    };
+    const barAtPlayhead = () => {
+      const n = parseInt(barNum.value, 10);
+      const bars = tl().bars;
+      const bar = bars.find((x) => x.index === n - 1);
+      if (!bar) return toast(`The tab has ${new Set(bars.map((x) => x.index)).size} bars.`, 'error');
+      store.update((d) => (d.tab.offset = +(songNow() - bar.time / (d.tab.tempoScale || 1)).toFixed(3)));
+      toast(`Bar ${n} now plays at the playhead`);
+    };
+    const nudge = (s) => store.update((d) => (d.tab.offset = +(d.tab.offset + s).toFixed(3)), 'tabnudge');
+
+    const fileSel = h('select', {}, tabs.map((m) => h('option', { value: m.id, selected: m.id === p.tab.mediaId }, m.name)));
+    fileSel.addEventListener('change', () => store.update((d) => ((d.tab.mediaId = fileSel.value), (d.tab.track = media.get(fileSel.value).tracks[0].index))));
+
+    return h(
+      'div',
+      {},
+      section(
+        'Tab',
+        field('File', fileSel),
+        b.select('Track', (pp) => String(pp.tab?.track ?? 0), T((o, v) => (o.track = parseInt(v, 10))), rec.tracks.map((tr) => [String(tr.index), `${tr.name} · ${tr.strings} strings (${tr.tuning.slice().reverse().join(' ')})`])),
+        b.segmented('Style', (pp) => pp.tab?.mode, T((o, v) => (o.mode = v)), [['scroll', 'Scrolling'], ['bars', 'Bar by bar']]),
+        upload,
+      ),
+      section(
+        'Sync with the song',
+        h('p', { class: 'muted tiny' }, 'Move the playhead to where the riff starts in the song, then put bar 1 (or any bar) there. Drag the purple Guitar tab block on the timeline to fine-tune.'),
+        h('div', { class: 'row' }, h('span', { class: 'small' }, 'Put bar'), barNum, button('at the playhead', barAtPlayhead, { variant: 'sm primary' })),
+        b.number('Tab starts at (song seconds)', (pp) => pp.tab?.offset, T((o, v) => (o.offset = v)), { step: 0.01 }),
+        h('div', { class: 'row' }, h('span', { class: 'muted small' }, 'Nudge'), ...[-0.5, -0.05, 0.05, 0.5].map((s) => button(`${s > 0 ? '+' : '−'}${Math.abs(s)}s`, () => nudge(s), { variant: 'sm' }))),
+        b.range('Tempo', (pp) => pp.tab?.tempoScale ?? 1, T((o, v) => (o.tempoScale = v)), { min: 0.5, max: 1.5, step: 0.001, fmt: (v) => `${Math.round((tl()?.tempo || 120) * v)} BPM` }),
+        h('div', { class: 'row' }, button('Match the song’s detected BPM', matchBpm, { iconName: 'activity', variant: 'sm' }), button('Use the file’s tempo', () => store.update((d) => (d.tab.tempoScale = 1)), { variant: 'ghost sm' })),
+        h('p', { class: 'muted tiny' }, `File tempo ${tl()?.tempo || '?'} BPM · now playing at ${Math.round(bpm())} BPM.`),
+      ),
+      section(
+        'When it shows',
+        h('div', { class: 'grid2' },
+          b.number('From (s)', (pp) => pp.tab?.start ?? 0, T((o, v) => (o.start = v)), { min: 0, step: 0.1 }),
+          b.number('Until (s, empty = end card)', (pp) => pp.tab?.end, T((o, v) => (o.end = v)), { min: 0, step: 0.1 }),
+        ),
+        h('div', { class: 'row' }, button('Show from playhead', () => store.update((d) => (d.tab.start = +engine.t.toFixed(2))), { variant: 'sm' }), button('Hide at playhead', () => store.update((d) => (d.tab.end = +engine.t.toFixed(2))), { variant: 'sm' }), button('Until end card', () => store.update((d) => (d.tab.end = null)), { variant: 'ghost sm' })),
+      ),
+      section(
+        'Look',
+        store.get().tab.mode === 'bars'
+          ? b.range('Bars on screen', (pp) => pp.tab?.barsPerPage ?? 2, T((o, v) => (o.barsPerPage = v)), { min: 1, max: 4, step: 1, fmt: (v) => String(v) })
+          : h('div', { class: 'grid2' },
+              b.range('Seconds on screen', (pp) => pp.tab?.window ?? 4, T((o, v) => (o.window = v)), { min: 1.5, max: 10, step: 0.1, fmt: (v) => `${v.toFixed(1)}s` }),
+              b.range('Playhead', (pp) => pp.tab?.playhead ?? 25, T((o, v) => (o.playhead = v)), { min: 5, max: 70, step: 1, fmt: (v) => `${v}%` }),
+            ),
+        h('div', { class: 'grid2' },
+          b.range('Up/down', (pp) => pp.tab?.y ?? 30, T((o, v) => (o.y = v)), { min: 5, max: 95, step: 0.5, fmt: (v) => `${v}%` }),
+          b.range('Left/right', (pp) => pp.tab?.x ?? 50, T((o, v) => (o.x = v)), { min: 10, max: 90, step: 0.5, fmt: (v) => `${v}%` }),
+        ),
+        h('div', { class: 'grid2' },
+          b.range('Width', (pp) => pp.tab?.width ?? 92, T((o, v) => (o.width = v)), { min: 30, max: 100, step: 1, fmt: (v) => `${v}%` }),
+          b.range('Height', (pp) => pp.tab?.height ?? 16, T((o, v) => (o.height = v)), { min: 6, max: 40, step: 0.5, fmt: (v) => `${v}%` }),
+        ),
+        h('div', { class: 'grid3' },
+          b.color('Numbers', (pp) => pp.tab?.numColor, T((o, v) => (o.numColor = v))),
+          b.color('Playing note', (pp) => pp.tab?.hiColor, T((o, v) => (o.hiColor = v))),
+          b.color('Strings', (pp) => pp.tab?.lineColor, T((o, v) => (o.lineColor = v))),
+        ),
+        h('div', { class: 'grid2' },
+          b.color('Background', (pp) => pp.tab?.bg, T((o, v) => (o.bg = v))),
+          b.range('Background opacity', (pp) => pp.tab?.bgOpacity ?? 0.55, T((o, v) => (o.bgOpacity = v)), { min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` }),
+        ),
+        b.select('Font', (pp) => pp.tab?.font, T((o, v) => (o.font = v)), fontOptions()),
+        b.toggle('Show tuning letters', (pp) => pp.tab?.showTuning, T((o, v) => (o.showTuning = v))),
+        b.toggle('Show techniques (PM, h, /, bends, ~)', (pp) => pp.tab?.showMarks, T((o, v) => (o.showMarks = v))),
+        button('Remove tab from the video', () => store.update((d) => (d.tab = null)), { iconName: 'trash', variant: 'ghost sm' }),
+      ),
+    );
+  }
+
   // ---------------------------------------------------------------- MEDIA
   function buildMedia(b) {
     const drop = h(
@@ -370,9 +496,9 @@ export function createPanels({ store, engine, ui }) {
       { class: 'dropzone', tabindex: '0', role: 'button', 'aria-label': 'Upload files' },
       icon('upload', 28),
       h('strong', {}, 'Drop files here or click to upload'),
-      h('span', { class: 'muted' }, 'Video, images, your song (MP3/WAV), cover art, logo or a font. Files stay on your computer.'),
+      h('span', { class: 'muted' }, 'Video, images, your song (MP3/WAV), cover art, logo, a font or a Guitar Pro tab. Files stay on your computer.'),
     );
-    const open = async () => importFiles(await pickFiles('video/*,image/*,audio/*,.ttf,.otf,.woff,.woff2'));
+    const open = async () => importFiles(await pickFiles(`video/*,image/*,audio/*,.ttf,.otf,.woff,.woff2,${TAB_ACCEPT}`));
     drop.addEventListener('click', open);
     drop.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), open()));
 
@@ -388,6 +514,7 @@ export function createPanels({ store, engine, ui }) {
         acts.push(button('Cover art', () => actions.useCover(rec), { iconName: 'disc', variant: 'sm' }));
         acts.push(button('Watermark', () => actions.useWatermark(rec), { iconName: 'image', variant: 'sm' }));
       }
+      if (rec.kind === 'tab') acts.push(button('Show on video', () => actions.useTab(rec), { iconName: 'guitar', variant: 'sm' }));
       grid.append(
         h(
           'div',
@@ -395,7 +522,7 @@ export function createPanels({ store, engine, ui }) {
           h(
             'div',
             { class: `thumb kind-${rec.kind}` },
-            rec.thumb ? h('img', { src: rec.thumb, alt: '' }) : icon(rec.kind === 'audio' ? 'music' : rec.kind === 'font' ? 'type' : 'file', 26),
+            rec.thumb ? h('img', { src: rec.thumb, alt: '' }) : icon(rec.kind === 'audio' ? 'music' : rec.kind === 'font' ? 'type' : rec.kind === 'tab' ? 'guitar' : 'file', 26),
             h('span', { class: 'badge' }, rec.kind === 'font' ? 'font' : isFinite(rec.duration) && rec.duration ? formatTime(rec.duration, false) : rec.kind),
           ),
           h('div', { class: 'media-name', title: rec.name }, rec.name),
@@ -482,6 +609,7 @@ export function createPanels({ store, engine, ui }) {
       if (d.song && d.song.mediaId === rec.id) d.song = null;
       if (d.endCard.coverMediaId === rec.id) d.endCard.coverMediaId = null;
       if (d.look.watermark.mediaId === rec.id) d.look.watermark.mediaId = null;
+      if (d.tab && d.tab.mediaId === rec.id) d.tab = null;
     });
     removeMedia(rec.id);
     ui.refreshPanels(true);
@@ -1189,6 +1317,7 @@ export function createPanels({ store, engine, ui }) {
             )
           : null,
       ),
+      buildShare(p, caption),
       section(
         'Stills',
         h('p', { class: 'muted small' }, 'Save the current frame at full resolution, e.g. for a thumbnail or story teaser.'),
@@ -1201,6 +1330,132 @@ export function createPanels({ store, engine, ui }) {
         credits.length ? h('p', { class: 'muted tiny' }, 'Stock footage credits are included. CC BY / BY-SA files from Wikimedia must keep them.') : null,
       ),
     );
+  }
+
+  // ---------------------------------------------------------------- SHARE
+  const ytState = { uploading: false, progress: 0, videoId: null, error: '' };
+  function buildShare(p, caption) {
+    const res = exportState.result;
+    const file = res ? new File([res.blob], res.name, { type: res.blob.type }) : null;
+    const shareOk = file && canShareFiles(file);
+
+    // --- system share sheet
+    const sheet = h(
+      'div',
+      {},
+      h('p', { class: 'muted small' }, 'On a phone this opens the share sheet, so you can pick Instagram, TikTok or YouTube and post from the app. The caption is copied too.'),
+      button('Share to an app…', async () => {
+        try {
+          await navigator.clipboard.writeText(caption).catch(() => {});
+          await shareFile(file, { title: p.endCard.title, text: caption });
+        } catch (e) {
+          if (e.name !== 'AbortError') toast(`Sharing failed: ${e.message}`, 'error');
+        }
+      }, { iconName: 'share', variant: 'primary', disabled: !shareOk }),
+      !res ? h('p', { class: 'muted tiny' }, 'Export the video first.') : !shareOk ? h('p', { class: 'muted tiny' }, 'This browser cannot share files. Open the site on your phone (it must be on https, e.g. GitHub Pages), or download and upload in the app.') : null,
+    );
+
+    // --- YouTube
+    const clientIdIn = h('input', { type: 'text', placeholder: '1234-abc.apps.googleusercontent.com', value: settings.ytClientId || '', autocomplete: 'off', spellcheck: false });
+    clientIdIn.addEventListener('change', () => ((settings.ytClientId = clientIdIn.value.trim()), saveSettings(settings)));
+    const connected = youtube.isConnected();
+    const title = h('input', { type: 'text', value: `${p.endCard.title} - ${p.endCard.artist} #Shorts`.slice(0, 100), maxLength: 100 });
+    const desc = h('textarea', { rows: 4 });
+    desc.value = caption;
+    const privacy = h('select', {}, h('option', { value: 'public' }, 'Public'), h('option', { value: 'unlisted' }, 'Unlisted'), h('option', { value: 'private' }, 'Private'));
+    privacy.value = settings.ytPrivacy || 'public';
+    privacy.addEventListener('change', () => ((settings.ytPrivacy = privacy.value), saveSettings(settings)));
+    const paid = h('input', { type: 'checkbox' });
+    const shortsIssues = [];
+    if (!['9:16', '1:1'].includes(p.aspect)) shortsIssues.push('Shorts must be vertical or square. Switch Format to 9:16.');
+    if (p.duration > 180) shortsIssues.push('Shorts can be up to 3 minutes long.');
+
+    const upload = async () => {
+      ytState.uploading = true;
+      ytState.progress = 0;
+      ytState.error = '';
+      ytState.videoId = null;
+      ui.refreshPanels(true);
+      try {
+        const tags = [p.endCard.artist, p.endCard.title, 'new music', 'shorts'].filter(Boolean);
+        ytState.videoId = await youtube.upload(res.blob, { title: title.value, description: desc.value, tags, privacy: privacy.value, paidPromotion: paid.checked }, (f) => {
+          ytState.progress = f;
+          const bar = document.querySelector('.yt-progress > div');
+          if (bar) bar.style.width = `${Math.round(f * 100)}%`;
+        });
+        toast('Uploaded to YouTube');
+      } catch (e) {
+        ytState.error = e.message;
+      }
+      ytState.uploading = false;
+      ui.refreshPanels(true);
+    };
+
+    const yt = h(
+      'div',
+      { class: 'share-box' },
+      h('div', { class: 'share-head' }, icon('youtube', 18), h('strong', {}, 'YouTube Shorts'), h('span', { class: `pill ${connected ? 'ok' : ''}` }, connected ? 'Connected' : 'Not connected')),
+      connected
+        ? null
+        : h(
+            'details',
+            { open: !settings.ytClientId },
+            h('summary', {}, 'One-time setup (about 5 minutes)'),
+            h(
+              'ol',
+              { class: 'steps small' },
+              h('li', {}, 'Open the ', h('a', { href: 'https://console.cloud.google.com/apis/library/youtube.googleapis.com', target: '_blank', rel: 'noopener noreferrer' }, 'Google Cloud console'), ', create a project, and enable YouTube Data API v3.'),
+              h('li', {}, 'Under Google Auth Platform → Branding, fill in an app name and your email. Under Audience, add your own Google account as a test user.'),
+              h('li', {}, 'Under Clients, create an OAuth client of type Web application. Add this site’s address as an Authorized JavaScript origin: ', h('code', {}, location.origin.replace('127.0.0.1', 'localhost')), location.hostname === '127.0.0.1' ? ' (open the site at that localhost address)' : '', '.'),
+              h('li', {}, 'Paste the client ID below and press Connect.'),
+            ),
+          ),
+      connected ? null : field('OAuth client ID', clientIdIn, 'Not a secret. Saved in this browser only. Your sign-in token is kept in memory and forgotten when you close the tab.'),
+      h(
+        'div',
+        { class: 'row' },
+        connected
+          ? button('Disconnect', () => (youtube.disconnect(), ui.refreshPanels(true)), { variant: 'ghost sm' })
+          : button('Connect YouTube', async () => {
+              try {
+                settings.ytClientId = clientIdIn.value.trim();
+                saveSettings(settings);
+                await youtube.connect(settings.ytClientId);
+                toast('YouTube connected');
+              } catch (e) {
+                toast(e.message, 'error', 6000);
+              }
+              ui.refreshPanels(true);
+            }, { iconName: 'youtube', variant: 'primary' }),
+      ),
+      connected
+        ? h(
+            'div',
+            {},
+            field('Title', title, 'Keep #Shorts in the title or description.'),
+            field('Description', desc),
+            field('Visibility', privacy),
+            h('label', { class: 'toggle' }, paid, h('span', {}, 'Contains paid promotion')),
+            shortsIssues.length ? h('ul', { class: 'warn-list' }, shortsIssues.map((i) => h('li', {}, i))) : null,
+            ytState.uploading
+              ? h('div', { class: 'export-progress yt-progress' }, h('div', { style: { width: `${Math.round(ytState.progress * 100)}%` } }))
+              : button(res ? `Upload ${res.name} to YouTube` : 'Export the video first', upload, { iconName: 'upload', variant: 'primary wide', disabled: !res }),
+          )
+        : null,
+      ytState.error ? h('p', { class: 'error-text' }, ytState.error) : null,
+      ytState.videoId
+        ? h('p', { class: 'small' }, 'Posted: ', h('a', { href: `https://youtube.com/shorts/${encodeURIComponent(ytState.videoId)}`, target: '_blank', rel: 'noopener noreferrer' }, `youtube.com/shorts/${ytState.videoId}`), '. YouTube may take a few minutes to process it.')
+        : null,
+    );
+
+    const others = h(
+      'div',
+      { class: 'share-box' },
+      h('div', { class: 'share-head' }, h('strong', {}, 'Instagram & TikTok')),
+      h('p', { class: 'muted small' }, 'Posting straight to Instagram or TikTok needs a server and an app approved by Meta or TikTok, so it is not built in yet. For now, use Share to an app on your phone, or download and upload in the app.'),
+    );
+
+    return section('Share', sheet, yt, others);
   }
 
   // ---------------------------------------------------------------- INSPECTOR
@@ -1473,6 +1728,10 @@ export function createPanels({ store, engine, ui }) {
     if (sel.type === 'song') {
       ui.openTab('audio');
       return h('div', {}, h('div', { class: 'insp-title' }, icon('music', 16), h('span', {}, 'Song')), h('p', { class: 'small' }, 'Drag the song on the timeline to choose which part plays. Volume, fades, tempo and “Find the hook” are in the Audio tab.'));
+    }
+    if (sel.type === 'tab') {
+      ui.openTab('guitar');
+      return h('div', {}, h('div', { class: 'insp-title' }, icon('guitar', 16), h('span', {}, 'Guitar tab')), h('p', { class: 'small' }, 'Drag the purple block on the timeline to line the tab up with the song. Track, tempo, style and colors are in the Guitar tab panel.'));
     }
     if (sel.type === 'endcard') {
       ui.openTab('endcard');

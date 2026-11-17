@@ -152,6 +152,7 @@ const ui = {
       if (sel.type === 'audio') d.audioTracks = d.audioTracks.filter((c) => c.id !== sel.id);
       if (sel.type === 'endcard') d.endCard.enabled = false;
       if (sel.type === 'song') d.song = null;
+      if (sel.type === 'tab') d.tab = null;
     });
     this.select(null);
   },
@@ -198,6 +199,7 @@ function leftSignature() {
   if (ui.tab === 'media') parts.push(p.clips.length);
   if (ui.tab === 'templates') parts.push(p.clips.length, p.template, p.layout, p.lyrics.length);
   if (ui.tab === 'sounds') parts.push(p.audioTracks.length);
+  if (ui.tab === 'guitar') parts.push(p.tab && p.tab.mediaId, p.tab && p.tab.track, p.tab && p.tab.mode, p.beats && p.beats.bpm);
   return parts.join('#');
 }
 function inspSignature() {

@@ -105,6 +105,7 @@ export function newProject() {
       overlayClear: true,
     },
     beats: null, // { bpm, period, beats:[song seconds] }
+    tab: null, // Guitar Pro tab layer, see defaultTabLayer() in tab.js
   };
 }
 

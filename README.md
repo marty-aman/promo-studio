@@ -71,6 +71,32 @@ any other static host.
   split-screen halves) with soft edge, border and outside fill, and color grading (12 looks plus exposure,
   contrast, saturation, temperature, tint, fade and shadow/highlight tints).
 - Lyric horizontal position and a custom X/Y logo position.
+- **Guitar tab layer:** upload a Guitar Pro file (.gp, .gp5, .gp4, .gp3, .gpx; MusicXML works too) and it
+  scrolls over the video in time with the song. Repeats and tempo changes are followed. Choose
+  the track, scrolling or bar-by-bar style, size, position, colors, and technique marks (PM, h, /, bends, ~).
+  Sync it by putting any bar at the playhead, matching the song's detected BPM, or dragging the purple
+  block on the timeline.
+
+## Sharing
+
+- **Share to an app:** after exporting, the system share sheet sends the video (and copies the caption)
+  to Instagram, TikTok, YouTube or any other app. This works on phones and on desktops that can share
+  files, and needs the site on https (e.g. GitHub Pages).
+- **YouTube Shorts direct upload:** connect your channel with Google sign-in and upload from the Export tab.
+  It runs fully in the browser. You need your own free OAuth client ID:
+  1. In the [Google Cloud console](https://console.cloud.google.com/apis/library/youtube.googleapis.com),
+     create a project and enable **YouTube Data API v3**.
+  2. In **Google Auth Platform**, set an app name and your email under Branding, and add your Google
+     account as a test user under Audience.
+  3. Under **Clients**, create a **Web application** client and add the site's address as an authorized
+     JavaScript origin (`http://localhost:8765` for local use, plus your GitHub Pages URL).
+  4. Paste the client ID in Export → Share → YouTube Shorts and press **Connect YouTube**.
+
+  The client ID is not a secret and is saved in your browser. The sign-in token is held in memory only
+  and revoked when you disconnect. Uploads count against the project's daily YouTube API quota.
+- **Instagram and TikTok:** direct posting needs a backend server plus an app approved by Meta or TikTok
+  (TikTok keeps posts from unaudited apps private, and Instagram fetches the video from a public URL),
+  so it is not built in. Use the share sheet instead.
 - Text overlays with presets (NEW SINGLE, PRE-SAVE NOW, …).
 - Logo watermark, progress bar, vignette, film grain, cinema bars, light leaks, scanlines, flash on the beat.
 - Phone app preview: phantom TikTok, Instagram Reels or YouTube Shorts buttons, caption and nav bar
@@ -101,6 +127,9 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/overlays.js` | Phantom TikTok / Reels / Shorts UI for the preview |
 | `js/templates.js` | App layouts and song templates |
 | `js/sfx.js` | Built-in synthesized sound effects and Openverse sound search |
+| `js/tab.js` | Guitar Pro tab parsing (via alphaTab), timing and drawing |
+| `js/share.js` | Share sheet and YouTube upload |
+| `vendor/alphatab/` | alphaTab 1.9.0 parser (MPL-2.0), loaded only when a tab is used |
 | `js/engine.js` | Playback clock, media sync, Web Audio mix, export |
 | `js/timeline.js` | Multi-track timeline UI |
 | `js/panels.js` | Tool panels and inspector |
