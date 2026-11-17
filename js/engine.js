@@ -1,6 +1,7 @@
 // Playback clock, media synchronisation, audio mixing and rendering.
-import { ASPECTS, layoutClips, fadeGain, clamp } from './core.js';
-import { media, clipElement, pruneClipElements, tabTimeline } from './media.js';
+import { ASPECTS, layoutClips, fadeGain, clamp, timelineToSong } from './core.js';
+import { media, clipElement, pruneClipElements, tabTimeline, drumTimeline, drumHitsFromStem, vizFeatures } from './media.js';
+import { isVisible } from './state.js';
 import { renderFrame } from './renderer.js';
 
 export class Engine {
@@ -153,6 +154,13 @@ export class Engine {
       const e = clipElement(clip);
       if (e) e.el.pause();
     }
+    for (const l of this.project.layers || []) {
+      if (l.type !== 'video') continue;
+      for (const clip of l.clips) {
+        const e = clipElement(clip);
+        if (e) e.el.pause();
+      }
+    }
   }
 
   _tick() {
@@ -269,8 +277,46 @@ export class Engine {
         if (prev && Math.abs(el.currentTime - outPoint) > 0.1 && !el.seeking) el.currentTime = outPoint;
       }
     });
+    // overlay clips on video layers: placed freely by start time
+    for (const l of p.layers || []) {
+      if (l.type !== 'video') continue;
+      const shown = l.visible !== false;
+      for (const clip of l.clips) {
+        live.add(clip.id);
+        if (clip.kind !== 'video') continue;
+        const e = clipElement(clip);
+        if (!e) continue;
+        const el = e.el;
+        const active = shown && t >= clip.start && t < clip.start + clip.duration;
+        const speed = clip.speed || 1;
+        const target = clip.in + (t - clip.start) * speed;
+        const node = this._node(el);
+        if (node) node.gain.gain.value = active ? (clip.volume || 0) * fadeGain(t, clip.start, clip.start + clip.duration, 0.05, 0.05) : 0;
+        if (active) {
+          el.playbackRate = speed;
+          const drift = Math.abs(el.currentTime - target);
+          const now = performance.now();
+          if (force || !playing) {
+            if (drift > tol && (force || !el.seeking)) {
+              el.currentTime = target;
+              e.lastSeek = now;
+            }
+          } else if (!el.seeking && drift > 0.3 && now - (e.lastSeek || 0) > 800) {
+            el.currentTime = target;
+            e.lastSeek = now;
+          }
+          if (playing && el.paused) el.play().catch(() => {});
+          if (!playing && !el.paused) el.pause();
+        } else {
+          if (!el.paused) el.pause();
+          // park upcoming clips on their first frame
+          if (t < clip.start && clip.start - t < 1.5 && Math.abs(el.currentTime - clip.in) > 0.05 && !el.seeking) el.currentTime = clip.in;
+        }
+      }
+    }
     pruneClipElements(live);
 
+    const vis = (k) => isVisible(p, k);
     const audioItems = [];
     if (p.song && media.get(p.song.mediaId)) {
       audioItems.push({
@@ -279,7 +325,7 @@ export class Engine {
         start: 0,
         end: p.duration,
         target: t + p.song.offset,
-        volume: p.song.volume ?? 1,
+        volume: vis('song') ? p.song.volume ?? 1 : 0,
         fadeIn: p.song.fadeIn || 0,
         fadeOut: p.song.fadeOut || 0,
       });
@@ -291,10 +337,16 @@ export class Engine {
         start: a.start,
         end: a.start + a.duration,
         target: a.in + (t - a.start),
-        volume: a.volume ?? 1,
+        volume: vis(`audio:${a.id}`) ? a.volume ?? 1 : 0,
         fadeIn: a.fadeIn || 0,
         fadeOut: a.fadeOut || 0,
       });
+    }
+    // visualizer stems normally only drive visuals; "play its sound" mixes them in
+    for (const l of p.layers || []) {
+      if (l.type !== 'viz' || !l.playAudio || l.visible === false || l.source === 'song') continue;
+      if (!media.get(l.source)) continue;
+      audioItems.push({ key: `viz:${l.id}`, mediaId: l.source, start: 0, end: p.duration, target: timelineToSong(t, p.song) - (l.offset || 0), volume: l.volume ?? 1, fadeIn: 0, fadeOut: 0.3 });
     }
     const liveKeys = new Set(audioItems.map((a) => a.key));
     for (const [key, entry] of this.audioEls) {
@@ -339,6 +391,18 @@ export class Engine {
         return r && r.kind === 'image' ? r.el : null;
       },
       tab: (id, track) => tabTimeline(media.get(id), track),
+      drums: (l) => {
+        if (l.source === 'audio') {
+          const v = drumHitsFromStem(media.get(l.mediaId), l.sensitivity, () => !this.playing && this.render());
+          return v || null;
+        }
+        return drumTimeline(media.get(l.mediaId), l.track);
+      },
+      viz: (l) => {
+        const p = this.project;
+        const rec = media.get(l.source === 'song' ? p.song && p.song.mediaId : l.source);
+        return vizFeatures(rec, () => !this.playing && this.render()) || null;
+      },
     };
   }
 

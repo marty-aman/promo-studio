@@ -22,7 +22,9 @@ import {
   maxClipDuration,
   clamp,
 } from './core.js';
-import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSettings, saveSettings, loadTemplates, saveTemplates } from './state.js';
+import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSettings, saveSettings, loadTemplates, saveTemplates, findClip, findLayer, LAYER_TYPES } from './state.js';
+import { buildLayersPanel, makeLayer, TAB_ACCEPT } from './panel-layers.js';
+import { ensureLayerAnalyses } from './media.js';
 import { media, addMedia, removeMedia, tabTimeline } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
@@ -30,12 +32,10 @@ import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS, MA
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate, tabIntoLayout } from './templates.js';
 import { BUILTIN_SFX, synthSfx, searchSfx, SFX_CATEGORIES, SFX_LICENSES } from './sfx.js';
-import { defaultTabLayer } from './tab.js';
 import { shareFile, canShareFiles, youtube } from './share.js';
 import { soundLib, importSounds, filterSounds, storageInfo, requestPersistence } from './soundlib.js';
 import { searchFreesound, FS_LICENSES, FS_DURATIONS, FS_SORTS, FREESOUND_KEY_URL } from './freesound.js';
 
-const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.gp7,.gp8,.musicxml,.mxl,.xml';
 import { h, icon, button, iconButton, toast, download, pickFiles, field, section, Binder } from './dom.js';
 
 const fontOptions = () => [
@@ -127,18 +127,40 @@ export function createPanels({ store, engine, ui }) {
       store.update((d) => (d.look.watermark.mediaId = rec.id));
       toast('Logo set as watermark');
     },
-    useTab(rec) {
+    /**
+     * Put a Guitar Pro file on the video. `into` = { tabLayer, drumLayer } fills an existing layer;
+     * otherwise a new tab layer is added (and a drum chart when the file only has drums).
+     */
+    useTab(rec, into = {}) {
+      let selectId = null;
       store.update((d) => {
-        const keep = d.tab && d.tab.mediaId ? d.tab : null;
-        d.tab = { ...defaultTabLayer(), ...(keep || {}), mediaId: rec.id, track: rec.tracks[0].index, offset: +timelineToSong(0, d.song).toFixed(3) };
+        const off = +timelineToSong(0, d.song).toFixed(3);
+        const target = into.tabLayer || into.drumLayer ? d.layers.find((l) => l.id === (into.tabLayer || into.drumLayer)) : null;
+        if (target && target.type === 'tab' && rec.tracks.length) {
+          Object.assign(target, { mediaId: rec.id, track: rec.tracks[0].index, offset: target.mediaId ? target.offset : off });
+          selectId = target.id;
+        } else if (target && target.type === 'drums' && rec.drumTracks.length) {
+          Object.assign(target, { source: 'gp', mediaId: rec.id, track: rec.drumTracks[0].index, offset: target.mediaId ? target.offset : off });
+          selectId = target.id;
+        } else if (rec.tracks.length) {
+          const L = { ...makeLayer(d, 'tab'), mediaId: rec.id, track: rec.tracks[0].index, offset: off };
+          d.layers.push(L);
+          selectId = L.id;
+        } else {
+          const L = { ...makeLayer(d, 'drums'), source: 'gp', mediaId: rec.id, track: rec.drumTracks[0].index, offset: off };
+          d.layers.push(L);
+          selectId = L.id;
+        }
         if (d.layout && d.layout !== 'full') tabIntoLayout(d);
       });
-      toast(`Tab “${rec.title || rec.name}” added. Line it up with the song in the Guitar tab panel.`);
-      ui.openTab('guitar');
+      const extra = rec.tracks.length && rec.drumTracks.length ? ' It also has drums: add a Drum chart layer to show them.' : '';
+      toast(`“${rec.title || rec.name}” is on the video. Line it up with the song in the Layers panel.${extra}`, 'info', 6000);
+      ui.select({ type: 'layer', id: selectId });
+      ui.openTab('layers');
     },
   };
 
-  async function importFiles(files) {
+  async function importFiles(files, into = {}) {
     let added = 0;
     for (const f of files) {
       try {
@@ -147,7 +169,7 @@ export function createPanels({ store, engine, ui }) {
         // first useful default for each kind
         const p = store.get();
         if (rec.kind === 'audio' && !p.song) actions.useSong(rec);
-        else if (rec.kind === 'tab') actions.useTab(rec);
+        else if (rec.kind === 'tab') actions.useTab(rec, into);
         else if (rec.kind === 'video' || (rec.kind === 'image' && p.clips.length === 0 && !/cover|art/i.test(f.name))) actions.addClip(rec);
         else if (rec.kind === 'image' && /cover|art/i.test(f.name)) actions.useCover(rec);
         else if (rec.kind === 'font') toast(`Font “${rec.family}” is ready in every font menu`);
@@ -167,7 +189,7 @@ export function createPanels({ store, engine, ui }) {
     { id: 'lyrics', label: 'Lyrics', icon: 'mic', build: buildLyrics },
     { id: 'audio', label: 'Audio', icon: 'music', build: buildAudio },
     { id: 'sounds', label: 'Sounds', icon: 'volume', build: buildSounds },
-    { id: 'guitar', label: 'Guitar tab', icon: 'guitar', build: buildGuitar },
+    { id: 'layers', label: 'Layers', icon: 'layers', build: buildLayers },
     { id: 'text', label: 'Text', icon: 'type', build: buildText },
     { id: 'endcard', label: 'End card', icon: 'disc', build: buildEndCard },
     { id: 'style', label: 'Style', icon: 'palette', build: buildStyle },
@@ -597,115 +619,9 @@ export function createPanels({ store, engine, ui }) {
     );
   }
 
-  // ---------------------------------------------------------------- GUITAR TAB
-  function buildGuitar(b) {
-    const p = store.get();
-    const tabs = media.all().filter((m) => m.kind === 'tab');
-    const upload = button('Upload Guitar Pro tab', async () => importFiles(await pickFiles(TAB_ACCEPT, false)), { iconName: 'upload', variant: p.tab ? 'ghost' : 'primary' });
-    const intro = h('p', { class: 'muted small' }, 'Upload a Guitar Pro file (.gp, .gp5, .gp4, .gp3, .gpx) or MusicXML. It scrolls over the video in time with your song, highlighting each note as it plays.');
-    if (!p.tab || !media.get(p.tab.mediaId)) {
-      return h(
-        'div',
-        {},
-        section(
-          'Guitar tab layer',
-          intro,
-          upload,
-          tabs.length ? h('div', { class: 'list' }, tabs.map((m) => h('div', { class: 'list-row' }, h('span', {}, m.name), button('Show on video', () => actions.useTab(m), { variant: 'sm' })))) : null,
-        ),
-      );
-    }
-    const rec = media.get(p.tab.mediaId);
-    const T = (fn) => (d, v) => fn(d.tab, v);
-    const songNow = () => timelineToSong(engine.t, store.get().song);
-    const tl = () => {
-      const pp = store.get();
-      return tabTimeline(media.get(pp.tab.mediaId), pp.tab.track);
-    };
-    const bpm = () => (tl()?.tempo || 120) * (store.get().tab.tempoScale || 1);
-    const barNum = h('input', { type: 'number', min: 1, value: 1, class: 'num', 'aria-label': 'Bar number' });
-
-    const matchBpm = () => {
-      const pp = store.get();
-      if (!pp.beats) return toast('Run Detect BPM in the Audio tab first.', 'error');
-      const base = tl().tempo || 120;
-      const cands = [pp.beats.bpm, pp.beats.bpm * 2, pp.beats.bpm / 2].map((x) => x / base);
-      const scale = cands.reduce((a, c) => (Math.abs(Math.log(c)) < Math.abs(Math.log(a)) ? c : a));
-      store.update((d) => (d.tab.tempoScale = +scale.toFixed(4)));
-      toast(`Tab tempo set to ${Math.round(base * scale)} BPM to match the song`);
-    };
-    const barAtPlayhead = () => {
-      const n = parseInt(barNum.value, 10);
-      const bars = tl().bars;
-      const bar = bars.find((x) => x.index === n - 1);
-      if (!bar) return toast(`The tab has ${new Set(bars.map((x) => x.index)).size} bars.`, 'error');
-      store.update((d) => (d.tab.offset = +(songNow() - bar.time / (d.tab.tempoScale || 1)).toFixed(3)));
-      toast(`Bar ${n} now plays at the playhead`);
-    };
-    const nudge = (s) => store.update((d) => (d.tab.offset = +(d.tab.offset + s).toFixed(3)), 'tabnudge');
-
-    const fileSel = h('select', {}, tabs.map((m) => h('option', { value: m.id, selected: m.id === p.tab.mediaId }, m.name)));
-    fileSel.addEventListener('change', () => store.update((d) => ((d.tab.mediaId = fileSel.value), (d.tab.track = media.get(fileSel.value).tracks[0].index))));
-
-    return h(
-      'div',
-      {},
-      section(
-        'Tab',
-        field('File', fileSel),
-        b.select('Track', (pp) => String(pp.tab?.track ?? 0), T((o, v) => (o.track = parseInt(v, 10))), rec.tracks.map((tr) => [String(tr.index), `${tr.name} · ${tr.strings} strings (${tr.tuning.slice().reverse().join(' ')})`])),
-        b.segmented('Style', (pp) => pp.tab?.mode, T((o, v) => (o.mode = v)), [['scroll', 'Scrolling'], ['bars', 'Bar by bar']]),
-        upload,
-      ),
-      section(
-        'Sync with the song',
-        h('p', { class: 'muted tiny' }, 'Move the playhead to where the riff starts in the song, then put bar 1 (or any bar) there. Drag the purple Guitar tab block on the timeline to fine-tune.'),
-        h('div', { class: 'row' }, h('span', { class: 'small' }, 'Put bar'), barNum, button('at the playhead', barAtPlayhead, { variant: 'sm primary' })),
-        b.number('Tab starts at (song seconds)', (pp) => pp.tab?.offset, T((o, v) => (o.offset = v)), { step: 0.01 }),
-        h('div', { class: 'row' }, h('span', { class: 'muted small' }, 'Nudge'), ...[-0.5, -0.05, 0.05, 0.5].map((s) => button(`${s > 0 ? '+' : '−'}${Math.abs(s)}s`, () => nudge(s), { variant: 'sm' }))),
-        b.range('Tempo', (pp) => pp.tab?.tempoScale ?? 1, T((o, v) => (o.tempoScale = v)), { min: 0.5, max: 1.5, step: 0.001, fmt: (v) => `${Math.round((tl()?.tempo || 120) * v)} BPM` }),
-        h('div', { class: 'row' }, button('Match the song’s detected BPM', matchBpm, { iconName: 'activity', variant: 'sm' }), button('Use the file’s tempo', () => store.update((d) => (d.tab.tempoScale = 1)), { variant: 'ghost sm' })),
-        h('p', { class: 'muted tiny' }, `File tempo ${tl()?.tempo || '?'} BPM · now playing at ${Math.round(bpm())} BPM.`),
-      ),
-      section(
-        'When it shows',
-        h('div', { class: 'grid2' },
-          b.number('From (s)', (pp) => pp.tab?.start ?? 0, T((o, v) => (o.start = v)), { min: 0, step: 0.1 }),
-          b.number('Until (s, empty = end card)', (pp) => pp.tab?.end, T((o, v) => (o.end = v)), { min: 0, step: 0.1 }),
-        ),
-        h('div', { class: 'row' }, button('Show from playhead', () => store.update((d) => (d.tab.start = +engine.t.toFixed(2))), { variant: 'sm' }), button('Hide at playhead', () => store.update((d) => (d.tab.end = +engine.t.toFixed(2))), { variant: 'sm' }), button('Until end card', () => store.update((d) => (d.tab.end = null)), { variant: 'ghost sm' })),
-      ),
-      section(
-        'Look',
-        store.get().tab.mode === 'bars'
-          ? b.range('Bars on screen', (pp) => pp.tab?.barsPerPage ?? 2, T((o, v) => (o.barsPerPage = v)), { min: 1, max: 4, step: 1, fmt: (v) => String(v) })
-          : h('div', { class: 'grid2' },
-              b.range('Seconds on screen', (pp) => pp.tab?.window ?? 4, T((o, v) => (o.window = v)), { min: 1.5, max: 10, step: 0.1, fmt: (v) => `${v.toFixed(1)}s` }),
-              b.range('Playhead', (pp) => pp.tab?.playhead ?? 25, T((o, v) => (o.playhead = v)), { min: 5, max: 70, step: 1, fmt: (v) => `${v}%` }),
-            ),
-        h('div', { class: 'grid2' },
-          b.range('Up/down', (pp) => pp.tab?.y ?? 30, T((o, v) => (o.y = v)), { min: 5, max: 95, step: 0.5, fmt: (v) => `${v}%` }),
-          b.range('Left/right', (pp) => pp.tab?.x ?? 50, T((o, v) => (o.x = v)), { min: 10, max: 90, step: 0.5, fmt: (v) => `${v}%` }),
-        ),
-        h('div', { class: 'grid2' },
-          b.range('Width', (pp) => pp.tab?.width ?? 92, T((o, v) => (o.width = v)), { min: 30, max: 100, step: 1, fmt: (v) => `${v}%` }),
-          b.range('Height', (pp) => pp.tab?.height ?? 16, T((o, v) => (o.height = v)), { min: 6, max: 40, step: 0.5, fmt: (v) => `${v}%` }),
-        ),
-        h('div', { class: 'grid3' },
-          b.color('Numbers', (pp) => pp.tab?.numColor, T((o, v) => (o.numColor = v))),
-          b.color('Playing note', (pp) => pp.tab?.hiColor, T((o, v) => (o.hiColor = v))),
-          b.color('Strings', (pp) => pp.tab?.lineColor, T((o, v) => (o.lineColor = v))),
-        ),
-        h('div', { class: 'grid2' },
-          b.color('Background', (pp) => pp.tab?.bg, T((o, v) => (o.bg = v))),
-          b.range('Background opacity', (pp) => pp.tab?.bgOpacity ?? 0.55, T((o, v) => (o.bgOpacity = v)), { min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` }),
-        ),
-        b.select('Font', (pp) => pp.tab?.font, T((o, v) => (o.font = v)), fontOptions()),
-        b.toggle('Show tuning letters', (pp) => pp.tab?.showTuning, T((o, v) => (o.showTuning = v))),
-        b.toggle('Show techniques (PM, h, /, bends, ~)', (pp) => pp.tab?.showMarks, T((o, v) => (o.showMarks = v))),
-        button('Remove tab from the video', () => store.update((d) => (d.tab = null)), { iconName: 'trash', variant: 'ghost sm' }),
-      ),
-    );
+  // ---------------------------------------------------------------- LAYERS
+  function buildLayers(b) {
+    return buildLayersPanel(b, { store, engine, ui, importFiles, fontOptions });
   }
 
   // ---------------------------------------------------------------- MEDIA
@@ -828,7 +744,10 @@ export function createPanels({ store, engine, ui }) {
       if (d.song && d.song.mediaId === rec.id) d.song = null;
       if (d.endCard.coverMediaId === rec.id) d.endCard.coverMediaId = null;
       if (d.look.watermark.mediaId === rec.id) d.look.watermark.mediaId = null;
-      if (d.tab && d.tab.mediaId === rec.id) d.tab = null;
+      d.layers = (d.layers || [])
+        .map((l) => (l.type === 'video' ? { ...l, clips: l.clips.filter((c) => c.mediaId !== rec.id) } : l))
+        .filter((l) => !((l.type === 'tab' || l.type === 'drums') && l.mediaId === rec.id));
+      d.layers.forEach((l) => l.type === 'viz' && l.source === rec.id && (l.source = 'song'));
     });
     removeMedia(rec.id);
     ui.refreshPanels(true);
@@ -1473,6 +1392,7 @@ export function createPanels({ store, engine, ui }) {
       exportState.error = '';
       ui.refreshPanels(true);
       try {
+        await ensureLayerAnalyses(store.get());
         const res = await exportVideo(engine, {
           format: fmt.value,
           bitrate: Number(quality.value),
@@ -1683,37 +1603,44 @@ export function createPanels({ store, engine, ui }) {
     const p = store.get();
     if (!sel) return buildProjectInspector(b);
     if (sel.type === 'clip') {
-      const clip = p.clips.find((c) => c.id === sel.id);
+      const { clip, layer: ovl } = findClip(p, sel.id);
       if (!clip) return buildProjectInspector(b);
       const rec = media.get(clip.mediaId);
       const c = (fn) => (d, v) => {
-        const x = d.clips.find((y) => y.id === sel.id);
+        const x = findClip(d, sel.id).clip;
         if (x) fn(x, v, d);
       };
       const isVideo = clip.kind === 'video';
-      const G = () => store.get().clips.find((x) => x.id === sel.id) || {};
+      const G = () => findClip(store.get(), sel.id).clip || {};
       const maxDur = maxClipDuration(clip, rec ? rec.duration : Infinity);
       return h(
         'div',
         {},
-        h('div', { class: 'insp-title' }, icon('film', 16), h('span', {}, rec ? rec.name : 'Clip')),
+        h('div', { class: 'insp-title' }, icon('film', 16), h('span', {}, `${rec ? rec.name : 'Clip'}${ovl ? ` · ${ovl.name}` : ''}`)),
         h(
           'div',
           { class: 'row' },
           button('Split at playhead', () => ui.split(), { iconName: 'scissors', variant: 'sm' }),
           button('Duplicate', () => store.update((d) => {
-            const i = d.clips.findIndex((x) => x.id === sel.id);
-            d.clips.splice(i + 1, 0, { ...structuredClone(d.clips[i]), id: uid('clip') });
+            const f = findClip(d, sel.id);
+            if (f.layer) {
+              const L = d.layers.find((x) => x.id === f.layer.id);
+              L.clips.push({ ...structuredClone(f.clip), id: uid('clip'), start: +(f.clip.start + f.clip.duration).toFixed(3) });
+            } else {
+              const i = d.clips.findIndex((x) => x.id === sel.id);
+              d.clips.splice(i + 1, 0, { ...structuredClone(d.clips[i]), id: uid('clip') });
+            }
           }), { iconName: 'copy', variant: 'sm' }),
-          iconButton('arrowLeft', 'Move earlier', () => moveClip(-1), 'ghost'),
-          iconButton('arrowRight', 'Move later', () => moveClip(1), 'ghost'),
+          ovl ? null : iconButton('arrowLeft', 'Move earlier', () => moveClip(-1), 'ghost'),
+          ovl ? null : iconButton('arrowRight', 'Move later', () => moveClip(1), 'ghost'),
           iconButton('trash', 'Delete clip', () => ui.deleteSelection(), 'ghost danger'),
         ),
         section(
           'Timing',
-          b.number('Length (s)', () => store.get().clips.find((x) => x.id === sel.id)?.duration, c((x, v) => (x.duration = Math.min(v, maxClipDuration(x, rec ? rec.duration : Infinity)))), { min: 0.2, step: 0.1 }),
-          isVideo ? b.number('Starts from (s into the file)', () => store.get().clips.find((x) => x.id === sel.id)?.in, c((x, v) => (x.in = Math.min(v, Math.max(0, (rec?.duration || 0) - 0.2)))), { min: 0, step: 0.1 }) : null,
-          isVideo ? b.select('Speed', () => String(store.get().clips.find((x) => x.id === sel.id)?.speed || 1), c((x, v) => {
+          ovl ? b.number('Starts at (s on the timeline)', () => G().start, c((x, v) => (x.start = Math.max(0, v))), { min: 0, step: 0.05 }) : null,
+          b.number('Length (s)', () => findClip(store.get(), sel.id).clip?.duration, c((x, v) => (x.duration = Math.min(v, maxClipDuration(x, rec ? rec.duration : Infinity)))), { min: 0.2, step: 0.1 }),
+          isVideo ? b.number('Starts from (s into the file)', () => findClip(store.get(), sel.id).clip?.in, c((x, v) => (x.in = Math.min(v, Math.max(0, (rec?.duration || 0) - 0.2)))), { min: 0, step: 0.1 }) : null,
+          isVideo ? b.select('Speed', () => String(findClip(store.get(), sel.id).clip?.speed || 1), c((x, v) => {
             const sp = parseFloat(v);
             x.duration = +(x.duration * (x.speed || 1) / sp).toFixed(3);
             x.speed = sp;
@@ -1815,24 +1742,24 @@ export function createPanels({ store, engine, ui }) {
           h('div', { class: 'chips' }, Object.entries(FILTER_PRESETS).map(([k, f]) => button(f.label, () => store.update(c((x) => (x.filter = { preset: k, adjust: {} }))), { variant: `chip${clip.filter?.preset === k ? ' on' : ''}` }))),
           ...['brightness', 'contrast', 'saturate'].map((k) =>
             b.range(k === 'saturate' ? 'Saturation' : k[0].toUpperCase() + k.slice(1), () => {
-              const f = store.get().clips.find((x) => x.id === sel.id)?.filter || {};
+              const f = findClip(store.get(), sel.id).clip?.filter || {};
               return f.adjust?.[k] ?? (FILTER_PRESETS[f.preset] || FILTER_PRESETS.none)[k];
             }, c((x, v) => ((x.filter = x.filter || { preset: 'none', adjust: {} }), (x.filter.adjust = { ...x.filter.adjust, [k]: v }))), { min: 0, max: 2, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
           ),
           b.range('Blur', () => {
-            const f = store.get().clips.find((x) => x.id === sel.id)?.filter || {};
+            const f = findClip(store.get(), sel.id).clip?.filter || {};
             return f.adjust?.blur ?? (FILTER_PRESETS[f.preset] || FILTER_PRESETS.none).blur;
           }, c((x, v) => ((x.filter = x.filter || { preset: 'none', adjust: {} }), (x.filter.adjust = { ...x.filter.adjust, blur: v }))), { min: 0, max: 10, step: 0.1, fmt: (v) => `${v.toFixed(1)}px` }),
         ),
         section(
           'Transition in',
-          b.select('Type', () => store.get().clips.find((x) => x.id === sel.id)?.transition?.type || 'none', c((x, v) => (x.transition = { ...(x.transition || { duration: 0.4 }), type: v })), TRANSITIONS),
-          b.range('Length', () => store.get().clips.find((x) => x.id === sel.id)?.transition?.duration ?? 0.4, c((x, v) => (x.transition = { ...(x.transition || { type: 'fade' }), duration: v })), { min: 0.1, max: 2, step: 0.05, fmt: (v) => `${v.toFixed(2)}s` }),
+          b.select('Type', () => findClip(store.get(), sel.id).clip?.transition?.type || 'none', c((x, v) => (x.transition = { ...(x.transition || { duration: 0.4 }), type: v })), TRANSITIONS),
+          b.range('Length', () => findClip(store.get(), sel.id).clip?.transition?.duration ?? 0.4, c((x, v) => (x.transition = { ...(x.transition || { type: 'fade' }), duration: v })), { min: 0.1, max: 2, step: 0.05, fmt: (v) => `${v.toFixed(2)}s` }),
           h(
             'div',
             { class: 'row' },
             button('Use on every cut', () => {
-              const tr = store.get().clips.find((x) => x.id === sel.id)?.transition;
+              const tr = findClip(store.get(), sel.id).clip?.transition;
               store.update((d) => d.clips.forEach((x, i) => i > 0 && (x.transition = { ...tr })));
               toast('Applied to every cut');
             }, { variant: 'sm' }),
@@ -1847,13 +1774,13 @@ export function createPanels({ store, engine, ui }) {
           'Effects',
           h('p', { class: 'muted tiny' }, 'Beat effects follow the song’s beat. Run “Detect BPM” in the Audio tab first; otherwise they use 120 BPM.'),
           ...['beatPulse', 'shake', 'rgb', 'flicker'].map((k) =>
-            b.range(CLIP_EFFECTS[k], () => store.get().clips.find((x) => x.id === sel.id)?.effects?.[k] || 0, c((x, v) => (x.effects = { ...(x.effects || {}), [k]: v })), { min: 0, max: 1, step: 0.01, fmt: (v) => (v ? `${Math.round(v * 100)}%` : 'Off') }),
+            b.range(CLIP_EFFECTS[k], () => findClip(store.get(), sel.id).clip?.effects?.[k] || 0, c((x, v) => (x.effects = { ...(x.effects || {}), [k]: v })), { min: 0, max: 1, step: 0.01, fmt: (v) => (v ? `${Math.round(v * 100)}%` : 'Off') }),
           ),
-          ...['vhs', 'strobe', 'invertBeat'].map((k) => b.toggle(CLIP_EFFECTS[k], () => store.get().clips.find((x) => x.id === sel.id)?.effects?.[k], c((x, v) => (x.effects = { ...(x.effects || {}), [k]: v })))),
-          b.select('Mirror', () => store.get().clips.find((x) => x.id === sel.id)?.effects?.mirror || 'none', c((x, v) => (x.effects = { ...(x.effects || {}), mirror: v })), MIRRORS),
+          ...['vhs', 'strobe', 'invertBeat'].map((k) => b.toggle(CLIP_EFFECTS[k], () => findClip(store.get(), sel.id).clip?.effects?.[k], c((x, v) => (x.effects = { ...(x.effects || {}), [k]: v })))),
+          b.select('Mirror', () => findClip(store.get(), sel.id).clip?.effects?.mirror || 'none', c((x, v) => (x.effects = { ...(x.effects || {}), mirror: v })), MIRRORS),
           button('Clear effects', () => store.update(c((x) => (x.effects = {}))), { variant: 'ghost sm' }),
         ),
-        isVideo ? section('Clip sound', b.range('Volume', () => store.get().clips.find((x) => x.id === sel.id)?.volume, c((x, v) => (x.volume = v)), { min: 0, max: 1.5, step: 0.01, fmt: (v) => (v ? `${Math.round(v * 100)}%` : 'Muted') })) : null,
+        isVideo ? section('Clip sound', b.range('Volume', () => findClip(store.get(), sel.id).clip?.volume, c((x, v) => (x.volume = v)), { min: 0, max: 1.5, step: 0.01, fmt: (v) => (v ? `${Math.round(v * 100)}%` : 'Muted') })) : null,
       );
     }
     if (sel.type === 'lyric') {
@@ -1945,15 +1872,13 @@ export function createPanels({ store, engine, ui }) {
       );
     }
     if (sel.type === 'song') {
-      ui.openTab('audio');
       return h('div', {}, h('div', { class: 'insp-title' }, icon('music', 16), h('span', {}, 'Song')), h('p', { class: 'small' }, 'Drag the song on the timeline to choose which part plays. Volume, fades, tempo and “Find the hook” are in the Audio tab.'));
     }
-    if (sel.type === 'tab') {
-      ui.openTab('guitar');
-      return h('div', {}, h('div', { class: 'insp-title' }, icon('guitar', 16), h('span', {}, 'Guitar tab')), h('p', { class: 'small' }, 'Drag the purple block on the timeline to line the tab up with the song. Track, tempo, style and colors are in the Guitar tab panel.'));
+    if (sel.type === 'layer') {
+      const L = findLayer(store.get(), sel.id);
+      return h('div', {}, h('div', { class: 'insp-title' }, icon(L ? LAYER_TYPES[L.type].icon : 'layers', 16), h('span', {}, L ? L.name : 'Layer')), h('p', { class: 'small' }, 'This layer’s settings are in the Layers panel on the left. Drag its block on the timeline to line it up with the song, or use the eye to hide it.'));
     }
     if (sel.type === 'endcard') {
-      ui.openTab('endcard');
       return h('div', {}, h('div', { class: 'insp-title' }, icon('disc', 16), h('span', {}, 'End card')), h('p', { class: 'small' }, 'Drag its left edge on the timeline to change its length. Everything else is in the End card tab.'));
     }
     return buildProjectInspector(b);

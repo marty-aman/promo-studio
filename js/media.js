@@ -2,6 +2,8 @@
 import { uid, computePeaks, energyEnvelope } from './core.js';
 import { mediaDB } from './state.js';
 import { TAB_EXTENSIONS, parseTabBytes, tabTracks, buildTabTimeline } from './tab.js';
+import { drumTracks, drumTimelineFromScore, drumHitsFromAudio } from './drums.js';
+import { analyseAudioBlob } from './viz.js';
 
 const library = new Map(); // id -> record
 const listeners = new Set();
@@ -34,9 +36,11 @@ function loadElement(rec) {
         .then((score) => {
           rec.score = score;
           rec.tracks = tabTracks(score);
+          rec.drumTracks = drumTracks(score);
           rec.timelines = new Map();
-          if (!rec.tracks.length) throw new Error('no guitar or bass tracks');
-          rec.duration = tabTimeline(rec, rec.tracks[0].index).duration;
+          rec.drumTimelines = new Map();
+          if (!rec.tracks.length && !rec.drumTracks.length) throw new Error('no guitar, bass or drum tracks');
+          rec.duration = rec.tracks.length ? tabTimeline(rec, rec.tracks[0].index).duration : drumTimeline(rec, rec.drumTracks[0].index).duration;
           rec.title = score.title || '';
           resolve(true);
         })
@@ -96,6 +100,74 @@ export function tabTimeline(rec, trackIndex) {
     rec.timelines.set(trackIndex, tl);
   }
   return tl;
+}
+
+/** Drum hits from a Guitar Pro percussion track (cached per track). */
+export function drumTimeline(rec, trackIndex) {
+  if (!rec || rec.kind !== 'tab' || !rec.score) return null;
+  let tl = rec.drumTimelines.get(trackIndex);
+  if (!tl) {
+    tl = drumTimelineFromScore(rec.score, trackIndex);
+    rec.drumTimelines.set(trackIndex, tl);
+  }
+  return tl;
+}
+
+// Audio analysis for visualizers and drum stems runs once per file (and sensitivity) in the background.
+const pending = new Map();
+function background(key, rec, field, work, onReady) {
+  if (rec[field] && rec[field].has(key)) return rec[field].get(key);
+  rec[field] ||= new Map();
+  const pk = `${rec.id}|${field}|${key}`;
+  if (!pending.has(pk)) {
+    pending.set(
+      pk,
+      work()
+        .then((v) => {
+          rec[field].set(key, v);
+          onReady && onReady();
+          return v;
+        })
+        .catch((e) => {
+          console.warn('analysis failed', rec.name, e);
+          rec[field].set(key, null);
+          return null;
+        })
+        .finally(() => pending.delete(pk)),
+    );
+  }
+  return undefined; // not ready yet
+}
+
+/** Visualizer features for an audio (or video) file; undefined while analysing, null on failure. */
+export function vizFeatures(rec, onReady) {
+  if (!rec || !rec.blob) return null;
+  return background('viz', rec, 'vizCache', () => analyseAudioBlob(rec.blob), onReady);
+}
+
+/** Drum hits detected from a drum stem at a given sensitivity. */
+export function drumHitsFromStem(rec, sensitivity, onReady) {
+  if (!rec || !rec.blob) return null;
+  const s = Math.round((sensitivity ?? 0.5) * 20) / 20;
+  return background(`drums:${s}`, rec, 'drumCache', () => drumHitsFromAudio(rec.blob, { sensitivity: s }), onReady);
+}
+
+/** Resolve when every analysis a project needs is finished (used before exporting). */
+export async function ensureLayerAnalyses(p) {
+  const jobs = [];
+  for (const l of p.layers || []) {
+    if (l.visible === false) continue;
+    if (l.type === 'viz') {
+      const rec = media.get(l.source === 'song' ? p.song && p.song.mediaId : l.source);
+      if (rec && vizFeatures(rec) === undefined) jobs.push(pending.get(`${rec.id}|vizCache|viz`));
+    }
+    if (l.type === 'drums' && l.source === 'audio') {
+      const rec = media.get(l.mediaId);
+      const s = Math.round((l.sensitivity ?? 0.5) * 20) / 20;
+      if (rec && drumHitsFromStem(rec, s) === undefined) jobs.push(pending.get(`${rec.id}|drumCache|drums:${s}`));
+    }
+  }
+  await Promise.all(jobs.filter(Boolean));
 }
 
 /** Poster thumbnail as a data URL, for the media grid. */
@@ -169,7 +241,7 @@ export async function addMedia(blob, name, meta = {}, { persist = true, id = nul
   const ok = await loadElement(rec);
   if (!ok) {
     URL.revokeObjectURL(rec.url);
-    if (kind === 'tab') throw new Error(`Could not read ${name}. Guitar Pro 3–8 (.gp3/.gp4/.gp5/.gpx/.gp) and MusicXML files with a guitar or bass track are supported.`);
+    if (kind === 'tab') throw new Error(`Could not read ${name}. Guitar Pro 3–8 (.gp3/.gp4/.gp5/.gpx/.gp) and MusicXML files with a guitar, bass or drum track are supported.`);
     throw new Error(`Could not open ${name}. Your browser may not support this format.`);
   }
   if (kind === 'audio' || (kind === 'video' && meta.analyse)) await analyseAudio(rec);

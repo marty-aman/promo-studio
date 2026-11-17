@@ -1,7 +1,8 @@
 // Multi-track timeline: ruler, video lane, text, lyrics, song, extra audio and end card.
 import { layoutClips, songToTimeline, timelineToSong, snap, clamp, formatTime, maxClipDuration, ctaText } from './core.js';
 import { media } from './media.js';
-import { h } from './dom.js';
+import { isVisible } from './state.js';
+import { h, icon } from './dom.js';
 
 const HEAD_W = 112;
 
@@ -23,6 +24,10 @@ export function createTimeline({ root, store, engine, ui }) {
     const p = store.get();
     const c = [0, p.duration, engine.t];
     for (const l of layoutClips(p.clips)) c.push(l.start, l.end);
+    for (const L of p.layers || []) {
+      if (L.type === 'video') for (const oc of L.clips) if (oc.id !== excludeId) c.push(oc.start, oc.start + oc.duration);
+      if (L.type === 'viz' && L.id !== excludeId) c.push(L.start || 0);
+    }
     for (const l of p.lyrics) if (l.id !== excludeId) c.push(songToTimeline(l.start, p.song), songToTimeline(l.end, p.song));
     for (const tx of p.texts) if (tx.id !== excludeId) c.push(tx.start, tx.end);
     for (const a of p.audioTracks) if (a.id !== excludeId) c.push(a.start, a.start + a.duration);
@@ -111,11 +116,33 @@ export function createTimeline({ root, store, engine, ui }) {
     heads.replaceChildren(h('div', { class: 'tl-head ruler-head' }, formatTime(engine.t)));
     const sel = ui.selection;
     const rows = [];
-    const addRow = (name, cls, height, fill) => {
-      const row = h('div', { class: `tl-track ${cls}`, style: { height: `${height}px` }, dataset: { track: cls } });
+    const addRow = (name, cls, height, fill, opt = {}) => {
+      const hidden = opt.layer ? opt.layer.visible === false : opt.vis ? !isVisible(p, opt.vis) : false;
+      const row = h('div', { class: `tl-track ${cls}${hidden ? ' hidden-row' : ''}`, style: { height: `${height}px` }, dataset: { track: cls } });
       fill(row);
       content.append(row);
-      heads.append(h('div', { class: `tl-head ${cls}`, style: { height: `${height}px` } }, name));
+      const toggle = (e) => {
+        e.stopPropagation();
+        store.update((d) => {
+          if (opt.layer) {
+            const l = d.layers.find((x) => x.id === opt.layer.id);
+            if (l) l.visible = l.visible === false;
+          } else {
+            d.layerVis = { ...(d.layerVis || {}) };
+            if (d.layerVis[opt.vis] === false) delete d.layerVis[opt.vis];
+            else d.layerVis[opt.vis] = false;
+          }
+        });
+      };
+      const what = opt.audio ? (hidden ? 'Unmute' : 'Mute') : hidden ? 'Show' : 'Hide';
+      const eye =
+        opt.vis || opt.layer
+          ? h('button', { type: 'button', class: `tl-eye${hidden ? ' off' : ''}`, title: `${what} ${name}`, 'aria-label': `${what} ${name}`, 'aria-pressed': hidden ? 'false' : 'true', onclick: toggle }, icon(opt.audio ? (hidden ? 'mute' : 'volume') : hidden ? 'eyeOff' : 'eye', 14))
+          : null;
+      const label = opt.layer
+        ? h('button', { type: 'button', class: 'tl-head-name', title: `${name}: open its settings`, onclick: () => ui.select({ type: 'layer', id: opt.layer.id }) }, name)
+        : h('span', { class: 'tl-head-name' }, name);
+      heads.append(h('div', { class: `tl-head ${cls}${hidden ? ' off' : ''}${opt.layer && sel && sel.type === 'layer' && sel.id === opt.layer.id ? ' sel' : ''}`, style: { height: `${height}px` } }, eye, label));
       rows.push(row);
     };
 
@@ -137,6 +164,70 @@ export function createTimeline({ root, store, engine, ui }) {
     ruler.append(h('div', { class: 'tl-outside', style: { left: `${total * s}px` } }));
     ruler.append(h('div', { class: 'tl-end-handle', style: { left: `${total * s}px` }, dataset: { op: 'duration' }, title: 'Drag to change the video length' }));
     content.append(ruler);
+
+    // stacked layers, topmost first
+    const visEnd = p.endCard.enabled ? total - p.endCard.duration : total;
+    for (const L of [...(p.layers || [])].reverse()) {
+      const isSel = sel && sel.type === 'layer' && sel.id === L.id;
+      if (L.type === 'video') {
+        addRow(L.name || 'Video layer', 'vlayer', 46, (row) => {
+          if (!L.clips.length) row.append(h('div', { class: 'tl-empty' }, 'Empty video layer: add a clip in its settings'));
+          for (const c of L.clips) {
+            const rec = media.get(c.mediaId);
+            row.append(
+              block({
+                cls: 'clip oclip',
+                left: c.start * s,
+                width: c.duration * s,
+                label: rec ? rec.name : 'Missing media',
+                sub: `${c.duration.toFixed(1)}s`,
+                selected: sel && sel.type === 'clip' && sel.id === c.id,
+                data: { kind: 'oclip', id: c.id, layer: L.id },
+                style: rec && rec.thumb ? { backgroundImage: `linear-gradient(rgba(10,40,30,.55),rgba(10,40,30,.55)), url(${rec.thumb})` } : {},
+              }),
+            );
+          }
+        }, { layer: L });
+        continue;
+      }
+      let a = 0;
+      let len = 0;
+      let label = L.name;
+      let kind = 'layer';
+      let handles = 'none';
+      if (L.type === 'tab' || L.type === 'drums') {
+        const rec = media.get(L.mediaId);
+        const stem = L.type === 'drums' && L.source === 'audio';
+        len = rec && rec.duration ? (stem ? rec.duration : rec.duration / (L.tempoScale || 1)) : 0;
+        if (L.type === 'drums' && !stem && rec && rec.score) {
+          const tr = rec.drumTimelines && rec.drumTimelines.get(L.track);
+          if (tr) len = tr.duration / (L.tempoScale || 1);
+        }
+        a = songToTimeline(L.offset || 0, p.song);
+        label = `${L.name}${rec ? ` · ${rec.title || rec.name}` : ' · choose a file'}`;
+      } else if (L.type === 'viz') {
+        a = L.start || 0;
+        len = (L.end ?? visEnd) - a;
+        kind = 'vizrange';
+        handles = 'both';
+      }
+      addRow(L.name, `lrow ${L.type}row`, 32, (row) => {
+        if (len > 0) {
+          row.append(
+            block({
+              cls: `lblk ${L.type}blk`,
+              left: a * s,
+              width: len * s,
+              label,
+              sub: L.type === 'viz' ? 'drag edges to set when it shows' : 'drag to line up with the song',
+              selected: isSel,
+              data: { kind, id: L.id },
+              handles,
+            }),
+          );
+        } else row.append(h('div', { class: 'tl-empty' }, 'Pick a file in its settings'));
+      }, { layer: L });
+    }
 
     // video lane
     addRow('Video', 'video', 52, (row) => {
@@ -161,7 +252,7 @@ export function createTimeline({ root, store, engine, ui }) {
         if (l.clip.transition && l.clip.transition.type !== 'none') el.append(h('div', { class: 'tl-trans', title: `Transition: ${l.clip.transition.type}` }));
         row.append(el);
       });
-    });
+    }, { vis: 'video' });
 
     // text overlays
     const tl = lanes(p.texts, (x) => x.start, (x) => x.end);
@@ -179,7 +270,7 @@ export function createTimeline({ root, store, engine, ui }) {
           }),
         );
       }
-    });
+    }, { vis: 'text' });
 
     // lyrics
     addRow('Lyrics', 'lyrics', 40, (row) => {
@@ -199,32 +290,7 @@ export function createTimeline({ root, store, engine, ui }) {
           }),
         );
       }
-    });
-
-    // guitar tab
-    if (p.tab && p.tab.mediaId) {
-      addRow('Guitar tab', 'tabrow', 32, (row) => {
-        const rec = media.get(p.tab.mediaId);
-        if (!rec || !rec.duration) {
-          row.append(h('div', { class: 'tl-empty' }, 'Tab file missing'));
-          return;
-        }
-        const a = songToTimeline(p.tab.offset, p.song);
-        const len = rec.duration / (p.tab.tempoScale || 1);
-        row.append(
-          block({
-            cls: 'tabblk',
-            left: a * s,
-            width: len * s,
-            label: `${rec.title || rec.name}`,
-            sub: 'drag to line up with the song',
-            selected: sel && sel.type === 'tab',
-            data: { kind: 'tab', id: 'tab' },
-            handles: 'none',
-          }),
-        );
-      });
-    }
+    }, { vis: 'lyrics' });
 
     // song
     addRow('Song', 'song', 46, (row) => {
@@ -248,7 +314,7 @@ export function createTimeline({ root, store, engine, ui }) {
       });
       el.prepend(waveformCanvas(rec, from, to, (to - from) * s, 44, 'rgba(110,231,160,.55)'));
       row.append(el);
-    });
+    }, { vis: 'song', audio: true });
 
     // extra audio
     p.audioTracks.forEach((a, i) => {
@@ -264,7 +330,7 @@ export function createTimeline({ root, store, engine, ui }) {
         });
         if (rec) el.prepend(waveformCanvas(rec, a.in, a.in + a.duration, a.duration * s, 38, 'rgba(94,234,212,.5)'));
         row.append(el);
-      });
+      }, { vis: `audio:${a.id}`, audio: true });
     });
 
     // end card
@@ -285,7 +351,7 @@ export function createTimeline({ root, store, engine, ui }) {
           handles: 'left',
         }),
       );
-    });
+    }, { vis: 'endcard' });
 
     playhead.style.left = `${engine.t * s}px`;
     content.append(playhead);
@@ -342,8 +408,18 @@ export function createTimeline({ root, store, engine, ui }) {
       drag = { ...base, op: edge ? `trim-${edge}` : 'move', orig: { ...a } };
     } else if (kind === 'song') {
       drag = { ...base, op: 'song', orig: { offset: p.song.offset } };
-    } else if (kind === 'tab') {
-      drag = { ...base, op: 'tabshift', orig: { offset: p.tab.offset, start: songToTimeline(p.tab.offset, p.song) } };
+    } else if (kind === 'oclip') {
+      const L = p.layers.find((x) => x.id === blockEl.dataset.layer);
+      const c = L && L.clips.find((x) => x.id === id);
+      if (!c) return;
+      drag = { ...base, layerId: L.id, op: edge ? `trim-${edge}` : 'move', orig: { ...c } };
+    } else if (kind === 'layer') {
+      const L = p.layers.find((x) => x.id === id);
+      drag = { ...base, op: 'layershift', orig: { start: songToTimeline(L.offset || 0, p.song) } };
+    } else if (kind === 'vizrange') {
+      const L = p.layers.find((x) => x.id === id);
+      const visEnd = p.endCard.enabled ? p.duration - p.endCard.duration : p.duration;
+      drag = { ...base, op: edge ? `resize-${edge}` : 'move', orig: { start: L.start || 0, end: L.end ?? visEnd } };
     } else if (kind === 'endcard') {
       drag = { ...base, op: edge ? 'endcard' : 'select', orig: { duration: p.endCard.duration } };
     }
@@ -430,9 +506,53 @@ export function createTimeline({ root, store, engine, ui }) {
           a.duration = +(o.duration - d2).toFixed(3);
         }
       }, key);
-    } else if (drag.op === 'tabshift') {
-      const start = snapT(drag.orig.start + dt, 'tab');
-      store.update((d) => (d.tab.offset = +timelineToSong(start, d.song).toFixed(3)), key);
+    } else if (drag.kind === 'oclip') {
+      const o = drag.orig;
+      const rec = media.get(o.mediaId);
+      const speed = o.speed || 1;
+      store.update((d) => {
+        const L = d.layers.find((x) => x.id === drag.layerId);
+        const c = L && L.clips.find((x) => x.id === drag.id);
+        if (!c) return;
+        if (drag.op === 'move') {
+          let a = snapT(o.start + dt, o.id);
+          const endSnap = snapT(o.start + o.duration + dt, o.id);
+          if (endSnap !== o.start + o.duration + dt && a === o.start + dt) a = endSnap - o.duration;
+          c.start = +Math.max(0, a).toFixed(3);
+        } else if (drag.op === 'trim-r') {
+          c.duration = +clamp(snapT(o.start + o.duration + dt, o.id) - o.start, 0.2, maxClipDuration(o, rec ? rec.duration : Infinity)).toFixed(3);
+        } else {
+          const maxBack = rec && rec.kind === 'video' ? -o.in / speed : -o.start;
+          const d2 = clamp(snapT(o.start + dt, o.id) - o.start, Math.max(maxBack, -o.start), o.duration - 0.2);
+          c.start = +(o.start + d2).toFixed(3);
+          if (rec && rec.kind === 'video') c.in = +Math.max(0, o.in + d2 * speed).toFixed(3);
+          c.duration = +(o.duration - d2).toFixed(3);
+        }
+      }, key);
+    } else if (drag.op === 'layershift') {
+      const start = snapT(drag.orig.start + dt, drag.id);
+      store.update((d) => {
+        const L = d.layers.find((x) => x.id === drag.id);
+        if (L) L.offset = +timelineToSong(start, d.song).toFixed(3);
+      }, key);
+    } else if (drag.kind === 'vizrange') {
+      const o = drag.orig;
+      store.update((d) => {
+        const L = d.layers.find((x) => x.id === drag.id);
+        if (!L) return;
+        const visEnd = d.endCard.enabled ? d.duration - d.endCard.duration : d.duration;
+        if (drag.op === 'move') {
+          const len = o.end - o.start;
+          const a = clamp(snapT(o.start + dt, drag.id), 0, Math.max(0, d.duration - len));
+          L.start = +a.toFixed(3);
+          L.end = Math.abs(a + len - visEnd) < 0.01 ? null : +(a + len).toFixed(3);
+        } else if (drag.op === 'resize-l') {
+          L.start = +clamp(snapT(o.start + dt, drag.id), 0, o.end - 0.3).toFixed(3);
+        } else {
+          const b = clamp(snapT(o.end + dt, drag.id), o.start + 0.3, d.duration);
+          L.end = Math.abs(b - visEnd) < 0.01 ? null : +b.toFixed(3);
+        }
+      }, key);
     } else if (drag.op === 'song') {
       const rec = media.get(p.song.mediaId);
       const maxOff = Math.max(0, (rec ? rec.duration : 0) - 1);
@@ -453,8 +573,9 @@ export function createTimeline({ root, store, engine, ui }) {
     }
     if (d0.op === 'scrub' || d0.op === 'duration') return;
     if (!d0.moved) {
-      ui.select({ type: d0.kind, id: d0.id });
-      if (d0.kind !== 'song' && d0.kind !== 'endcard') return;
+      if (d0.kind === 'oclip') ui.select({ type: 'clip', id: d0.id });
+      else if (d0.kind === 'layer' || d0.kind === 'vizrange') ui.select({ type: 'layer', id: d0.id });
+      else ui.select({ type: d0.kind, id: d0.id });
       return;
     }
     if (d0.kind === 'clip' && d0.op === 'reorder') {

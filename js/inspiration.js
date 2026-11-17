@@ -259,11 +259,13 @@ export function applyRecipe(d, trend, ctx = {}) {
     });
     Object.assign(d.look, { grain: 0.15, vignette: 0.15, progress: { ...d.look.progress, enabled: true } });
   }
-  if (r.tab && d.tab) {
-    d.tab.start = 0;
-    d.tab.end = null;
-    d.tab.mode = 'scroll';
-    d.tab.height = Math.max(d.tab.height, 18);
+  const tabLayer = (d.layers || []).find((l) => l.type === 'tab' && l.mediaId);
+  if (r.tab && tabLayer) {
+    tabLayer.start = 0;
+    tabLayer.end = null;
+    tabLayer.mode = 'scroll';
+    tabLayer.visible = true;
+    tabLayer.height = Math.max(tabLayer.height, 18);
   }
   d.inspiration = trend.id;
   if (d.layout) applyLayout(d, d.layout);
