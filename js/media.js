@@ -1,6 +1,7 @@
 // Media library: turns uploaded or downloaded blobs into playable elements.
 import { uid, computePeaks, energyEnvelope } from './core.js';
 import { mediaDB } from './state.js';
+import { TAB_EXTENSIONS, parseTabBytes, tabTracks, buildTabTimeline } from './tab.js';
 
 const library = new Map(); // id -> record
 const listeners = new Set();
@@ -16,6 +17,7 @@ export const media = {
 };
 
 export function kindOf(type, name = '') {
+  if (TAB_EXTENSIONS.test(name) || type === 'application/x-guitar-pro') return 'tab';
   if (type.startsWith('video/')) return 'video';
   if (type.startsWith('image/')) return 'image';
   if (type.startsWith('audio/')) return 'audio';
@@ -25,6 +27,25 @@ export function kindOf(type, name = '') {
 
 function loadElement(rec) {
   return new Promise((resolve) => {
+    if (rec.kind === 'tab') {
+      rec.blob
+        .arrayBuffer()
+        .then((buf) => parseTabBytes(new Uint8Array(buf)))
+        .then((score) => {
+          rec.score = score;
+          rec.tracks = tabTracks(score);
+          rec.timelines = new Map();
+          if (!rec.tracks.length) throw new Error('no guitar or bass tracks');
+          rec.duration = tabTimeline(rec, rec.tracks[0].index).duration;
+          rec.title = score.title || '';
+          resolve(true);
+        })
+        .catch((e) => {
+          console.warn('Tab parse failed', e);
+          resolve(false);
+        });
+      return;
+    }
     if (rec.kind === 'image') {
       const img = new Image();
       img.onload = () => {
@@ -64,6 +85,17 @@ function loadElement(rec) {
     el.onerror = () => resolve(false);
     el.src = rec.url;
   });
+}
+
+/** Cached tab timeline for one track of a tab media record. */
+export function tabTimeline(rec, trackIndex) {
+  if (!rec || rec.kind !== 'tab' || !rec.score) return null;
+  let tl = rec.timelines.get(trackIndex);
+  if (!tl) {
+    tl = buildTabTimeline(rec.score, trackIndex);
+    rec.timelines.set(trackIndex, tl);
+  }
+  return tl;
 }
 
 /** Poster thumbnail as a data URL, for the media grid. */
@@ -137,6 +169,7 @@ export async function addMedia(blob, name, meta = {}, { persist = true, id = nul
   const ok = await loadElement(rec);
   if (!ok) {
     URL.revokeObjectURL(rec.url);
+    if (kind === 'tab') throw new Error(`Could not read ${name}. Guitar Pro 3–8 (.gp3/.gp4/.gp5/.gpx/.gp) and MusicXML files with a guitar or bass track are supported.`);
     throw new Error(`Could not open ${name}. Your browser may not support this format.`);
   }
   if (kind === 'audio' || (kind === 'video' && meta.analyse)) await analyseAudio(rec);

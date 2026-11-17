@@ -41,6 +41,15 @@ export function applyLayout(d, id) {
   d.look.progress.position = id === 'full' ? 'bottom' : 'top';
   d.endCard.area = id === 'full' ? null : [x0, y0, x1, y1];
   if (id !== 'full' && id !== 'all') d.look.overlay = id;
+  if (d.tab) tabIntoLayout(d);
+}
+
+/** Fit the guitar tab across the clear area, in its upper part (lyrics sit in the lower part). */
+export function tabIntoLayout(d) {
+  const [x0, y0, x1, y1] = AREAS[d.layout] || AREAS.full;
+  d.tab.x = +(((x0 + x1) / 2) * 100).toFixed(1);
+  d.tab.width = +((x1 - x0) * 100 * 0.98).toFixed(1);
+  d.tab.y = +(y0 * 100 + d.tab.height / 2 + 2).toFixed(1);
 }
 
 // ------------------------------------------------------------ templates

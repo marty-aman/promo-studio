@@ -13,6 +13,7 @@ import {
 } from './core.js';
 import { FILTER_PRESETS, PLATFORMS } from './state.js';
 import { drawPlatformOverlay, overlaySupported } from './overlays.js';
+import { drawTab } from './tab.js';
 
 // ------------------------------------------------------------ helpers
 
@@ -1286,6 +1287,9 @@ export function renderFrame(ctx, W, H, project, t, env) {
   drawLook(ctx, W, H, project.look, t, beat);
   const ecStart = project.endCard.enabled ? project.duration - project.endCard.duration : Infinity;
   drawTexts(ctx, W, H, project.texts, t, beat, project.endCard.releaseDate);
+  if (project.tab && project.tab.mediaId && env.tab) {
+    drawTab(ctx, W, H, project.tab, env.tab(project.tab.mediaId, project.tab.track), t, timelineToSong(t, project.song), ecStart === Infinity ? project.duration : ecStart);
+  }
   if (t < ecStart) drawLyrics(ctx, W, H, project, t, beat);
   drawEndCard(ctx, W, H, project, t, env);
   drawWatermark(ctx, W, H, project.look.watermark, env);

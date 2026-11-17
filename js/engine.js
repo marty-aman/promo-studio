@@ -1,6 +1,6 @@
 // Playback clock, media synchronisation, audio mixing and rendering.
 import { ASPECTS, layoutClips, fadeGain, clamp } from './core.js';
-import { media, clipElement, pruneClipElements } from './media.js';
+import { media, clipElement, pruneClipElements, tabTimeline } from './media.js';
 import { renderFrame } from './renderer.js';
 
 export class Engine {
@@ -338,6 +338,7 @@ export class Engine {
         const r = media.get(id);
         return r && r.kind === 'image' ? r.el : null;
       },
+      tab: (id, track) => tabTimeline(media.get(id), track),
     };
   }
 

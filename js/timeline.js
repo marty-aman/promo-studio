@@ -39,7 +39,7 @@ export function createTimeline({ root, store, engine, ui }) {
       'div',
       {
         class: `tl-block ${cls}${selected ? ' selected' : ''}`,
-        style: { left: `${left}px`, width: `${Math.max(4, width)}px`, ...style },
+        style: { left: `${left}px`, width: `${Math.max(4, width)}px`, ...(left < 0 ? { paddingLeft: `${8 - left}px` } : {}), ...style },
         dataset: data,
         title: label,
         role: 'button',
@@ -201,6 +201,31 @@ export function createTimeline({ root, store, engine, ui }) {
       }
     });
 
+    // guitar tab
+    if (p.tab && p.tab.mediaId) {
+      addRow('Guitar tab', 'tabrow', 32, (row) => {
+        const rec = media.get(p.tab.mediaId);
+        if (!rec || !rec.duration) {
+          row.append(h('div', { class: 'tl-empty' }, 'Tab file missing'));
+          return;
+        }
+        const a = songToTimeline(p.tab.offset, p.song);
+        const len = rec.duration / (p.tab.tempoScale || 1);
+        row.append(
+          block({
+            cls: 'tabblk',
+            left: a * s,
+            width: len * s,
+            label: `${rec.title || rec.name}`,
+            sub: 'drag to line up with the song',
+            selected: sel && sel.type === 'tab',
+            data: { kind: 'tab', id: 'tab' },
+            handles: 'none',
+          }),
+        );
+      });
+    }
+
     // song
     addRow('Song', 'song', 46, (row) => {
       const rec = p.song && media.get(p.song.mediaId);
@@ -317,6 +342,8 @@ export function createTimeline({ root, store, engine, ui }) {
       drag = { ...base, op: edge ? `trim-${edge}` : 'move', orig: { ...a } };
     } else if (kind === 'song') {
       drag = { ...base, op: 'song', orig: { offset: p.song.offset } };
+    } else if (kind === 'tab') {
+      drag = { ...base, op: 'tabshift', orig: { offset: p.tab.offset, start: songToTimeline(p.tab.offset, p.song) } };
     } else if (kind === 'endcard') {
       drag = { ...base, op: edge ? 'endcard' : 'select', orig: { duration: p.endCard.duration } };
     }
@@ -403,6 +430,9 @@ export function createTimeline({ root, store, engine, ui }) {
           a.duration = +(o.duration - d2).toFixed(3);
         }
       }, key);
+    } else if (drag.op === 'tabshift') {
+      const start = snapT(drag.orig.start + dt, 'tab');
+      store.update((d) => (d.tab.offset = +timelineToSong(start, d.song).toFixed(3)), key);
     } else if (drag.op === 'song') {
       const rec = media.get(p.song.mediaId);
       const maxOff = Math.max(0, (rec ? rec.duration : 0) - 1);
