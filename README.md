@@ -77,6 +77,21 @@ any other static host.
   Sync it by putting any bar at the playhead, matching the song's detected BPM, or dragging the purple
   block on the timeline.
 
+## Inspiration page
+
+The **Inspiration** button at the top of the left rail opens a page of short-form trends for alt-metal,
+emocore and post-hardcore bands on TikTok and Instagram (researched November 17, 2026, with links to
+the sources on each card). Each trend comes with on-screen hook text, steps and a **Build this**
+button that sets up the edit from your song and clips: template, hook section, length and text.
+
+The trends are "If you like ___, you'll like us", Wait for the breakdown, Cleans → screams contrast,
+Learn the riff (with the tab layer), Live one take, 2006 emo released in 2026, Send this to your pit
+friend, Make your sound reusable, The story behind the song, Rate this chorus 1–10 and Release countdown.
+
+The page also has a posting playbook, a release-week plan dated from your release date, hashtag sets
+of five and caption openers you can copy. Trends change weekly, so the page links to TikTok Creative
+Center for what is rising today. The trend list lives in `js/inspiration.js`.
+
 ## Sharing
 
 - **Share to an app:** after exporting, the system share sheet sends the video (and copies the caption)
