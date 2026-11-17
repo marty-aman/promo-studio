@@ -64,8 +64,14 @@ any other static host.
 - **App layouts:** TikTok, Instagram Reels, YouTube Shorts, "works on all three" and full frame. A layout
   moves lyrics, text, logo, progress bar and the end card into that app's clear area; templates keep it.
 - **Sounds tab:** 12 built-in effects generated in the browser (riser, impact, sub drop, whoosh, reverse
-  cymbal, clap, record scratch, record stop, glitch, heartbeat, camera shutter, vinyl crackle) plus a
-  search of CC0 / CC BY sounds from Freesound and Wikimedia through [Openverse](https://openverse.org).
+  cymbal, clap, record scratch, record stop, glitch, heartbeat, camera shutter, vinyl crackle), a direct
+  [Freesound](https://freesound.org) search (free API key; CC0 or CC0 + CC BY, never non-commercial; filter
+  by length and sort), and a keyless search of CC sounds through [Openverse](https://openverse.org).
+- **My sound library:** add sound clips in bulk (pick many files, a whole folder, or drag files and folders
+  in). They are stored in this browser (IndexedDB) and kept for every project. Search by name or folder,
+  star favorites, rename, delete, and add to the timeline. Any Freesound, Openverse or built-in sound can be
+  saved into it. The app asks the browser to protect the library from automatic clean-up; it stays on this
+  device and is removed if you clear the site's data.
 - **Per clip:** position X/Y (picture-in-picture over a blurred copy), zoom 0.2×–4×, custom start → end
   keyframes for zoom and X/Y, masks (circle, oval, rounded, square, arch, heart, star, diamond, hexagon,
   split-screen halves) with soft edge, border and outside fill, and color grading (12 looks plus exposure,
@@ -76,6 +82,21 @@ any other static host.
   the track, scrolling or bar-by-bar style, size, position, colors, and technique marks (PM, h, /, bends, ~).
   Sync it by putting any bar at the playhead, matching the song's detected BPM, or dragging the purple
   block on the timeline.
+
+## Inspiration page
+
+The **Inspiration** button at the top of the left rail opens a page of short-form trends for alt-metal,
+emocore and post-hardcore bands on TikTok and Instagram (researched November 17, 2026, with links to
+the sources on each card). Each trend comes with on-screen hook text, steps and a **Build this**
+button that sets up the edit from your song and clips: template, hook section, length and text.
+
+The trends are "If you like ___, you'll like us", Wait for the breakdown, Cleans → screams contrast,
+Learn the riff (with the tab layer), Live one take, 2006 emo released in 2026, Send this to your pit
+friend, Make your sound reusable, The story behind the song, Rate this chorus 1–10 and Release countdown.
+
+The page also has a posting playbook, a release-week plan dated from your release date, hashtag sets
+of five and caption openers you can copy. Trends change weekly, so the page links to TikTok Creative
+Center for what is rising today. The trend list lives in `js/inspiration.js`.
 
 ## Sharing
 
@@ -127,6 +148,8 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/overlays.js` | Phantom TikTok / Reels / Shorts UI for the preview |
 | `js/templates.js` | App layouts and song templates |
 | `js/sfx.js` | Built-in synthesized sound effects and Openverse sound search |
+| `js/freesound.js` | Freesound API search |
+| `js/soundlib.js` | Personal sound library stored in IndexedDB |
 | `js/tab.js` | Guitar Pro tab parsing (via alphaTab), timing and drawing |
 | `js/share.js` | Share sheet and YouTube upload |
 | `vendor/alphatab/` | alphaTab 1.9.0 parser (MPL-2.0), loaded only when a tab is used |

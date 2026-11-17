@@ -7,6 +7,8 @@ import { createTimeline } from './timeline.js';
 import { createPanels } from './panels.js';
 import { h, icon, iconButton, button, toast, Binder } from './dom.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
+import { buildInspirationPage } from './page-inspiration.js';
+import { loadSettings } from './state.js';
 
 const store = createStore(loadProject() || newProject());
 
@@ -94,10 +96,11 @@ const tlToolbar = h(
   iconButton('zoomIn', 'Zoom in', () => ui.setZoom(ui.pxPerSec * 1.3)),
 );
 const timelineRoot = h('section', { class: 'timeline', 'aria-label': 'Timeline' }, tlToolbar);
+const pageEl = h('div', { class: 'page-overlay', hidden: true, role: 'region', 'aria-label': 'Inspiration' });
 
 app.append(
   header,
-  h('main', { class: 'workspace' }, tabRail, leftPanel, h('div', { class: 'center' }, stage, transport), inspector),
+  h('main', { class: 'workspace' }, tabRail, leftPanel, h('div', { class: 'center' }, stage, transport), inspector, pageEl),
   timelineRoot,
 );
 
@@ -127,7 +130,8 @@ const ui = {
     this.tab = id;
     localStorage.setItem('pvm.tab', id);
     renderRail();
-    rebuildLeft();
+    showPage();
+    if (id !== 'inspiration') rebuildLeft();
   },
   refreshPanels() {
     rebuildLeft();
@@ -172,21 +176,30 @@ let leftSig = '';
 let inspSig = '';
 
 function renderRail() {
-  tabRail.replaceChildren(
-    ...panels.tabs.map((t) =>
-      h(
-        'button',
-        {
-          type: 'button',
-          class: `rail-btn${ui.tab === t.id ? ' on' : ''}`,
-          'aria-current': ui.tab === t.id ? 'page' : null,
-          onclick: () => ui.openTab(t.id),
-        },
-        icon(t.icon, 20),
-        h('span', {}, t.label),
-      ),
-    ),
-  );
+  const railBtn = (t) =>
+    h(
+      'button',
+      {
+        type: 'button',
+        class: `rail-btn${ui.tab === t.id ? ' on' : ''}`,
+        'aria-current': ui.tab === t.id ? 'page' : null,
+        onclick: () => ui.openTab(t.id),
+      },
+      icon(t.icon, 20),
+      h('span', {}, t.label),
+    );
+  tabRail.replaceChildren(railBtn({ id: 'inspiration', label: 'Inspiration', icon: 'wand' }), h('hr', { class: 'rail-sep' }), ...panels.tabs.map(railBtn));
+}
+
+let page = null;
+function showPage() {
+  const open = ui.tab === 'inspiration';
+  pageEl.hidden = !open;
+  if (open) {
+    page = buildInspirationPage({ store, engine, ui, settings: loadSettings() });
+    pageEl.replaceChildren(page.el);
+    pageEl.scrollTop = 0;
+  }
 }
 
 function leftSignature() {
@@ -409,6 +422,7 @@ async function boot() {
   rebuildInspector();
   timeline.render();
   engine.seek(engine.t);
+  showPage();
   document.body.classList.add('ready');
 }
 boot();
