@@ -1,0 +1,14 @@
+{
+  "name": "promo-video-maker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser-based promo video maker for song releases: synced lyrics, video editing, audio and a cover-art end card.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
