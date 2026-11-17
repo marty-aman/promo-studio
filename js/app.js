@@ -196,6 +196,8 @@ function leftSignature() {
   if (ui.tab === 'text') parts.push(p.texts.map((t) => `${t.id}:${t.text}:${t.start}:${t.end}`).join('|'));
   if (ui.tab === 'export') parts.push(p.clips.length, !!p.song, p.endCard.coverMediaId, p.duration, p.endCard.enabled, p.name, p.endCard.title, p.endCard.artist, p.endCard.cta, p.endCard.subtext);
   if (ui.tab === 'media') parts.push(p.clips.length);
+  if (ui.tab === 'templates') parts.push(p.clips.length, p.template, p.layout, p.lyrics.length);
+  if (ui.tab === 'sounds') parts.push(p.audioTracks.length);
   return parts.join('#');
 }
 function inspSignature() {
@@ -203,7 +205,11 @@ function inspSignature() {
   const s = ui.selection;
   if (!s) return `none#${p.clips.length}`;
   const exists =
-    (s.type === 'clip' && p.clips.find((c) => c.id === s.id)?.filter?.preset) ||
+    (s.type === 'clip' &&
+      (() => {
+        const c = p.clips.find((x) => x.id === s.id);
+        return c && [c.filter?.preset, !!c.kenBurns, c.mask?.shape, c.mask?.background, c.grade?.preset].join('|');
+      })()) ||
     (s.type === 'lyric' && p.lyrics.some((c) => c.id === s.id) && [...p.lyrics].sort((a, b) => a.start - b.start).findIndex((c) => c.id === s.id)) ||
     (s.type === 'text' && p.texts.some((c) => c.id === s.id)) ||
     (s.type === 'audio' && p.audioTracks.some((c) => c.id === s.id)) ||

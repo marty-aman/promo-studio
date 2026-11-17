@@ -248,3 +248,29 @@ body.dropping::after { content: 'Drop to add to your library'; position: fixed; 
 /* phone-app overlay picker in the transport bar */
 .overlay-pick { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; color: var(--muted); }
 .overlay-pick select { width: auto; padding: 4px 6px; font-size: 12px; }
+
+/* templates + layouts */
+.layout-list { display: flex; flex-direction: column; gap: 6px; }
+.layout-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--panel-2); color: var(--text); cursor: pointer; }
+.layout-btn:hover { border-color: var(--border-strong); }
+.layout-btn.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.tpl-grid { display: flex; flex-direction: column; gap: 10px; }
+.tpl-card { display: grid; grid-template-columns: 76px 1fr; gap: 10px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }
+.tpl-card.on { border-color: var(--accent); }
+.tpl-thumb { width: 76px; height: 135px; border-radius: 5px; background: #000; display: block; }
+.tpl-info { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.tpl-info .btn { margin-top: auto; }
+
+/* sounds */
+.sfx-grid { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.sfx-item, .sfx-row { display: grid; grid-template-columns: 32px 1fr auto; align-items: center; gap: 6px; padding: 3px 6px; background: var(--panel-2); border-radius: 6px; }
+.sfx-meta { display: flex; flex-direction: column; min-width: 0; }
+.sfx-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sfx-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.sfx-row a { color: var(--muted); }
+
+/* keyframe editor */
+.keyframes { margin-top: 4px; }
+.kf-head, .kf-row { display: grid; grid-template-columns: 40px 1fr 1fr; gap: 8px; align-items: center; }
+.kf-row .field { margin-bottom: 4px; }
+.kf-row .range-row .val { min-width: 34px; }

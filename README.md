@@ -58,6 +58,19 @@ any other static host.
 - CTA tokens: `{date}` → "NOV 21", `{countdown}` → "OUT IN 3 DAYS" / "OUT TOMORROW" / "OUT NOW".
 
 **Extras**
+- **Templates tab:** 9 one-click song templates (Lyric spotlight, Hype teaser, Cinematic, Golden hour
+  acoustic, Neon night, Retro VHS, Punk / rock, Minimal clean, Release countdown) with live previews of
+  your own footage. Each sets the lyric style, grade, effects, transitions, text and end card.
+- **App layouts:** TikTok, Instagram Reels, YouTube Shorts, "works on all three" and full frame. A layout
+  moves lyrics, text, logo, progress bar and the end card into that app's clear area; templates keep it.
+- **Sounds tab:** 12 built-in effects generated in the browser (riser, impact, sub drop, whoosh, reverse
+  cymbal, clap, record scratch, record stop, glitch, heartbeat, camera shutter, vinyl crackle) plus a
+  search of CC0 / CC BY sounds from Freesound and Wikimedia through [Openverse](https://openverse.org).
+- **Per clip:** position X/Y (picture-in-picture over a blurred copy), zoom 0.2×–4×, custom start → end
+  keyframes for zoom and X/Y, masks (circle, oval, rounded, square, arch, heart, star, diamond, hexagon,
+  split-screen halves) with soft edge, border and outside fill, and color grading (12 looks plus exposure,
+  contrast, saturation, temperature, tint, fade and shadow/highlight tints).
+- Lyric horizontal position and a custom X/Y logo position.
 - Text overlays with presets (NEW SINGLE, PRE-SAVE NOW, …).
 - Logo watermark, progress bar, vignette, film grain, cinema bars, light leaks, scanlines, flash on the beat.
 - Phone app preview: phantom TikTok, Instagram Reels or YouTube Shorts buttons, caption and nav bar
@@ -86,6 +99,8 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/media.js` | Media library, element creation, waveform/energy analysis |
 | `js/renderer.js` | Draws a frame (video, transitions, effects, text, lyrics, end card) to a canvas |
 | `js/overlays.js` | Phantom TikTok / Reels / Shorts UI for the preview |
+| `js/templates.js` | App layouts and song templates |
+| `js/sfx.js` | Built-in synthesized sound effects and Openverse sound search |
 | `js/engine.js` | Playback clock, media sync, Web Audio mix, export |
 | `js/timeline.js` | Multi-track timeline UI |
 | `js/panels.js` | Tool panels and inspector |
