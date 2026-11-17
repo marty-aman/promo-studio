@@ -32,6 +32,8 @@ import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate, tabIntoLayout } from '.
 import { BUILTIN_SFX, synthSfx, searchSfx, SFX_CATEGORIES, SFX_LICENSES } from './sfx.js';
 import { defaultTabLayer } from './tab.js';
 import { shareFile, canShareFiles, youtube } from './share.js';
+import { soundLib, importSounds, filterSounds, storageInfo, requestPersistence } from './soundlib.js';
+import { searchFreesound, FS_LICENSES, FS_DURATIONS, FS_SORTS, FREESOUND_KEY_URL } from './freesound.js';
 
 const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.gp7,.gp8,.musicxml,.mxl,.xml';
 import { h, icon, button, iconButton, toast, download, pickFiles, field, section, Binder } from './dom.js';
@@ -252,6 +254,36 @@ export function createPanels({ store, engine, ui }) {
   const previewAudio = new Audio();
   let previewing = null;
   const soundState = { query: '', license: settings.sfxLicense || 'cc0', results: [], loading: false, error: '', page: 1 };
+  const fsState = { query: '', results: [], loading: false, error: '', page: 1, hasMore: false, count: 0 };
+  const libState = { query: '', favoritesOnly: false, limit: 60, importing: '' };
+  soundLib.onChange(() => ui.tab === 'sounds' && !libState.importing && ui.refreshPanels(true));
+
+  /** Files from a drop, walking into dropped folders. */
+  async function filesFromDrop(dt) {
+    const items = [...(dt.items || [])].map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null)).filter(Boolean);
+    if (!items.length) return [...(dt.files || [])];
+    const out = [];
+    const walk = async (entry, path) => {
+      if (entry.isFile) {
+        const f = await new Promise((res, rej) => entry.file(res, rej));
+        try {
+          Object.defineProperty(f, 'webkitRelativePath', { value: path + f.name });
+        } catch {
+          /* read-only in some browsers; tags then come from the file name */
+        }
+        out.push(f);
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        for (;;) {
+          const batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+          if (!batch.length) break;
+          for (const e of batch) await walk(e, `${path}${entry.name}/`);
+        }
+      }
+    };
+    for (const e of items) await walk(e, '');
+    return out;
+  }
   function playPreview(id, url, btn) {
     if (previewing === id && !previewAudio.paused) {
       previewAudio.pause();
@@ -273,6 +305,203 @@ export function createPanels({ store, engine, ui }) {
   }
 
   function buildSounds() {
+    // ---- My sound library (stored in this browser)
+    const libList = h('div', { class: 'sfx-list lib-list' }, h('p', { class: 'muted tiny' }, 'Loading your library…'));
+    const libInfo = h('p', { class: 'muted tiny' });
+    const progress = h('p', { class: 'small', hidden: !libState.importing }, libState.importing || '');
+    const libSearch = h('input', { type: 'search', placeholder: 'Search your sounds (name or folder)', value: libState.query, 'aria-label': 'Search your sound library' });
+    const favBtn = h('button', { type: 'button', class: `btn chip${libState.favoritesOnly ? ' on' : ''}`, 'aria-pressed': libState.favoritesOnly ? 'true' : 'false' }, '★ Starred');
+
+    const renderLib = async () => {
+      const all = await soundLib.all();
+      const shown = filterSounds(all, libState.query, { favoritesOnly: libState.favoritesOnly });
+      const info = await storageInfo();
+      const mb = (n) => (n == null ? '?' : (n / 1048576).toFixed(n > 1e8 ? 0 : 1));
+      const total = all.reduce((s, x) => s + (x.size || 0), 0);
+      libInfo.replaceChildren(
+        `${all.length} sound${all.length === 1 ? '' : 's'} · ${mb(total)} MB`,
+        info.quota ? ` · browser storage ${mb(info.usage)} of ${mb(info.quota)} MB used` : '',
+        info.persisted ? ' · protected from clean-up' : '',
+      );
+      if (!all.length) {
+        libList.replaceChildren(h('p', { class: 'muted small' }, 'No sounds yet. Add a batch of clips above; they stay here for every project.'));
+        return;
+      }
+      if (!shown.length) {
+        libList.replaceChildren(h('p', { class: 'muted small' }, 'No sounds match.'));
+        return;
+      }
+      const limit = libState.limit;
+      const more = shown.length > limit ? [button(`Show ${Math.min(60, shown.length - limit)} more of ${shown.length - limit}`, () => ((libState.limit += 60), renderLib()), { variant: 'ghost wide' })] : [];
+      libList.replaceChildren(
+        ...shown.slice(0, limit).map((s) => {
+          const play = h('button', { type: 'button', class: 'icon-btn sfx-play', 'aria-label': `Preview ${s.name}` }, icon('play', 16));
+          let url = null;
+          play.addEventListener('click', () => {
+            url = url || URL.createObjectURL(s.blob);
+            playPreview(s.id, url, play);
+          });
+          const star = h('button', { type: 'button', class: `icon-btn star${s.favorite ? ' on' : ''}`, 'aria-label': s.favorite ? `Unstar ${s.name}` : `Star ${s.name}`, 'aria-pressed': s.favorite ? 'true' : 'false', onclick: () => soundLib.update(s.id, { favorite: !s.favorite }) }, s.favorite ? '★' : '☆');
+          const nameBtn = h('button', { type: 'button', class: 'link sfx-name', title: 'Rename', onclick: async () => {
+            const n = prompt('Rename sound', s.name);
+            if (n && n.trim()) await soundLib.update(s.id, { name: n.trim() });
+          } }, s.name);
+          return h(
+            'div',
+            { class: 'sfx-row lib-row' },
+            play,
+            h('div', { class: 'sfx-meta' }, nameBtn, h('span', { class: 'muted tiny' }, [s.duration ? `${s.duration.toFixed(1)}s` : '', (s.tags || []).slice(0, 3).join(' · '), s.attribution ? `${s.attribution.license}${s.attribution.needsCredit ? ' (credit)' : ''}` : ''].filter(Boolean).join(' · '))),
+            h(
+              'div',
+              { class: 'lib-acts' },
+              star,
+              button('Add', () => addSoundBlob(s.blob, `${s.name}${(/\.[a-z0-9]+$/i.exec(s.fileName || '') || ['.mp3'])[0]}`, { source: s.source, attribution: s.attribution }), { iconName: 'plus', variant: 'sm primary', title: 'Add to the timeline at the playhead' }),
+              iconButton('trash', `Delete ${s.name}`, async () => confirm(`Delete “${s.name}” from your library?`) && soundLib.remove(s.id), 'ghost danger'),
+            ),
+          );
+        }),
+        ...more,
+      );
+    };
+
+    const doImport = async (files) => {
+      if (!files.length) return;
+      libState.importing = `Adding 0 of ${files.length}…`;
+      progress.hidden = false;
+      progress.textContent = libState.importing;
+      const res = await importSounds(files, {
+        onProgress: (i, n, name) => (progress.textContent = libState.importing = `Adding ${i} of ${n}: ${name}`),
+      });
+      libState.importing = '';
+      progress.hidden = true;
+      if (res.added.length && !(await storageInfo()).persisted) requestPersistence();
+      const why = res.skipped.length ? ` Skipped ${res.skipped.length}: ${[...new Set(res.skipped.map((s) => s.reason))].join(', ')}.` : '';
+      toast(`Added ${res.added.length} sound${res.added.length === 1 ? '' : 's'} to your library.${why}`, res.added.length ? 'info' : 'error', 6000);
+      renderLib();
+    };
+
+    const drop = h(
+      'div',
+      { class: 'dropzone small-drop', tabindex: '0', role: 'button', 'aria-label': 'Add sound files to your library' },
+      icon('upload', 22),
+      h('strong', {}, 'Drop sound files or folders here'),
+      h('span', { class: 'muted tiny' }, 'MP3, WAV, OGG, M4A, FLAC… Saved in this browser for all your projects.'),
+    );
+    drop.addEventListener('click', async () => doImport(await pickFiles('audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus', true)));
+    drop.addEventListener('keydown', async (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), doImport(await pickFiles('audio/*', true))));
+    drop.addEventListener('dragover', (e) => (e.preventDefault(), e.stopPropagation(), drop.classList.add('over')));
+    drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+    drop.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      document.body.classList.remove('dropping');
+      drop.classList.remove('over');
+      doImport(await filesFromDrop(e.dataTransfer));
+    });
+    const folderBtn = button('Add a whole folder', async () => {
+      const input = h('input', { type: 'file', multiple: true });
+      input.webkitdirectory = true;
+      input.addEventListener('change', () => doImport([...input.files]));
+      input.click();
+    }, { iconName: 'file', variant: 'sm' });
+
+    libSearch.addEventListener('input', () => {
+      libState.query = libSearch.value;
+      libState.limit = 60;
+      renderLib();
+    });
+    favBtn.addEventListener('click', () => {
+      libState.favoritesOnly = !libState.favoritesOnly;
+      favBtn.classList.toggle('on', libState.favoritesOnly);
+      favBtn.setAttribute('aria-pressed', libState.favoritesOnly ? 'true' : 'false');
+      renderLib();
+    });
+    renderLib();
+
+    // Save a downloaded result into the library
+    const saveToLib = async (blob, name, meta, btn) => {
+      btn.disabled = true;
+      const ext = (blob.type.split('/')[1] || 'mp3').replace('mpeg', 'mp3').replace(/;.*/, '');
+      const file = new File([blob], `${name.slice(0, 60)}.${ext}`, { type: blob.type || 'audio/mpeg' });
+      const res = await importSounds([file], { source: meta.source, attribution: meta.attribution || null });
+      toast(res.added.length ? `Saved “${name}” to your library` : `Not saved: ${res.skipped[0]?.reason || 'unknown error'}`, res.added.length ? 'info' : 'error');
+      btn.disabled = false;
+    };
+    const fetchBlob = async (url) => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Download failed (${res.status})`);
+      return res.blob();
+    };
+
+    // ---- Freesound
+    const fsKeyIn = h('input', { type: 'password', placeholder: 'Paste your free Freesound API key', value: settings.freesoundKey || '', autocomplete: 'off' });
+    fsKeyIn.addEventListener('change', () => ((settings.freesoundKey = fsKeyIn.value.trim()), saveSettings(settings), toast('Freesound key saved in this browser only')));
+    const sel = (opts, key, def) => {
+      const s = h('select', {}, opts.map(([v, l]) => h('option', { value: v, selected: v === (settings[key] || def) }, l)));
+      s.addEventListener('change', () => ((settings[key] = s.value), saveSettings(settings)));
+      return s;
+    };
+    const fsLic = sel(FS_LICENSES, 'fsLicense', 'cc0');
+    const fsDur = sel(FS_DURATIONS, 'fsDuration', '15');
+    const fsSort = sel(FS_SORTS, 'fsSort', 'score');
+    const fsQ = h('input', { type: 'search', placeholder: 'e.g. riser, impact, crowd scream', value: fsState.query });
+    const runFs = async (query, page = 1) => {
+      fsState.query = query;
+      fsState.page = page;
+      fsState.loading = true;
+      fsState.error = '';
+      ui.refreshPanels(true);
+      try {
+        const r = await searchFreesound(query, { key: settings.freesoundKey, license: fsLic.value, maxDuration: fsDur.value, sort: fsSort.value, page });
+        fsState.results = page === 1 ? r.results : [...fsState.results, ...r.results];
+        fsState.hasMore = r.hasMore;
+        fsState.count = r.count;
+        if (!r.results.length && page === 1) fsState.error = 'No sounds found. Try another word or a longer length.';
+      } catch (e) {
+        fsState.error = e.message;
+      }
+      fsState.loading = false;
+      ui.refreshPanels(true);
+    };
+    const fsForm = h('form', { class: 'search-row', onsubmit: (e) => (e.preventDefault(), fsQ.value.trim() && runFs(fsQ.value.trim())) }, fsQ, button('Search', null, { iconName: 'search', variant: 'primary' }));
+    fsForm.querySelector('button').type = 'submit';
+    const resultRows = (results, prefix) =>
+      results.map((r) => {
+        const play = h('button', { type: 'button', class: 'icon-btn sfx-play', 'aria-label': `Preview ${r.title}` }, icon('play', 16));
+        play.addEventListener('click', () => playPreview(r.id, r.url, play));
+        const meta = { source: prefix, attribution: { provider: prefix, providerLabel: prefix === 'freesound' ? 'Freesound' : `${r.provider || 'Openverse'} via Openverse`, source: r.provider, author: r.author, pageUrl: r.pageUrl, license: r.license, needsCredit: r.needsCredit } };
+        const add = button('Add', async () => {
+          add.disabled = true;
+          try {
+            await addSoundBlob(await fetchBlob(r.url), `${r.title.slice(0, 40)}.mp3`, meta);
+          } catch (e) {
+            toast(`${e.message}. You can download it from the sound’s page and add it to your library.`, 'error', 6000);
+          }
+          add.disabled = false;
+        }, { iconName: 'plus', variant: 'sm primary', title: 'Add to the timeline at the playhead' });
+        const save = button('Save', async () => {
+          try {
+            await saveToLib(await fetchBlob(r.url), r.title, meta, save);
+          } catch (e) {
+            toast(e.message, 'error');
+            save.disabled = false;
+          }
+        }, { variant: 'sm', title: 'Save to your sound library' });
+        return h(
+          'div',
+          { class: 'sfx-row' },
+          play,
+          h(
+            'div',
+            { class: 'sfx-meta' },
+            h('span', { class: 'sfx-name', title: r.title }, r.title),
+            h('span', { class: 'muted tiny' }, `${r.duration ? `${r.duration.toFixed(1)}s · ` : ''}`, h('a', { href: r.pageUrl, target: '_blank', rel: 'noopener noreferrer' }, r.author), ` · ${r.license}${r.needsCredit ? ' (credit needed)' : ''}`),
+          ),
+          h('div', { class: 'lib-acts' }, save, add),
+        );
+      });
+
+    // ---- built-ins
     const builtins = h(
       'div',
       { class: 'sfx-grid' },
@@ -283,16 +512,18 @@ export function createPanels({ store, engine, ui }) {
           url = url || URL.createObjectURL(await synthSfx(s.id));
           playPreview(`b-${s.id}`, url, play);
         });
+        const save = button('Save', async () => saveToLib(await synthSfx(s.id), s.label, { source: 'builtin' }, save), { variant: 'sm', title: 'Save to your sound library' });
         return h(
           'div',
           { class: 'sfx-item' },
           play,
           h('span', { class: 'sfx-name' }, s.label, h('span', { class: 'muted tiny' }, ` ${s.secs}s`)),
-          button('Add', async () => addSoundBlob(await synthSfx(s.id), `${s.label}.wav`, { source: 'builtin' }), { iconName: 'plus', variant: 'sm' }),
+          h('div', { class: 'lib-acts' }, save, button('Add', async () => addSoundBlob(await synthSfx(s.id), `${s.label}.wav`, { source: 'builtin' }), { iconName: 'plus', variant: 'sm' })),
         );
       }),
     );
 
+    // ---- Openverse
     const licSel = h('select', {}, SFX_LICENSES.map(([v, l]) => h('option', { value: v, selected: v === soundState.license }, l)));
     licSel.addEventListener('change', () => {
       soundState.license = licSel.value;
@@ -300,7 +531,7 @@ export function createPanels({ store, engine, ui }) {
       saveSettings(settings);
     });
     const q = h('input', { type: 'search', placeholder: 'e.g. whoosh, crowd cheer, thunder', value: soundState.query });
-    const run = async (query, page = 1) => {
+    const runOv = async (query, page = 1) => {
       soundState.query = query;
       soundState.page = page;
       soundState.loading = true;
@@ -316,64 +547,52 @@ export function createPanels({ store, engine, ui }) {
       soundState.loading = false;
       ui.refreshPanels(true);
     };
-    const form = h('form', { class: 'search-row', onsubmit: (e) => (e.preventDefault(), q.value.trim() && run(q.value.trim())) }, q, button('Search', null, { iconName: 'search', variant: 'primary' }));
-    form.querySelector('button').type = 'submit';
-
-    const list = h('div', { class: 'sfx-list' });
-    for (const r of soundState.results) {
-      const play = h('button', { type: 'button', class: 'icon-btn sfx-play', 'aria-label': `Preview ${r.title}` }, icon('play', 16));
-      play.addEventListener('click', () => playPreview(r.id, r.url, play));
-      const add = button('Add', async () => {
-        add.disabled = true;
-        try {
-          const res = await fetch(r.url);
-          if (!res.ok) throw new Error(`Download failed (${res.status})`);
-          const blob = await res.blob();
-          const ext = (blob.type.split('/')[1] || 'mp3').replace('mpeg', 'mp3');
-          await addSoundBlob(blob, `${r.title.slice(0, 40)}.${ext}`, {
-            source: 'openverse',
-            attribution: { provider: 'openverse', source: r.provider, author: r.author, pageUrl: r.pageUrl, license: r.license, needsCredit: r.needsCredit },
-          });
-        } catch (e) {
-          toast(`${e.message}. You can download it from the sound’s page and upload it instead.`, 'error', 6000);
-          add.disabled = false;
-        }
-      }, { iconName: 'plus', variant: 'sm primary' });
-      list.append(
-        h(
-          'div',
-          { class: 'sfx-row' },
-          play,
-          h(
-            'div',
-            { class: 'sfx-meta' },
-            h('span', { class: 'sfx-name', title: r.title }, r.title),
-            h('span', { class: 'muted tiny' }, `${r.duration ? `${r.duration.toFixed(1)}s · ` : ''}`, h('a', { href: r.pageUrl, target: '_blank', rel: 'noopener noreferrer' }, r.author), ` · ${r.license}${r.needsCredit ? ' (credit needed)' : ''}`),
-          ),
-          add,
-        ),
-      );
-    }
+    const ovForm = h('form', { class: 'search-row', onsubmit: (e) => (e.preventDefault(), q.value.trim() && runOv(q.value.trim())) }, q, button('Search', null, { iconName: 'search', variant: 'primary' }));
+    ovForm.querySelector('button').type = 'submit';
 
     return h(
       'div',
       {},
       section(
+        'My sound library',
+        h('p', { class: 'muted small' }, 'Your own collection of clips, kept in this browser for every project. Add them in bulk, star favorites, and drop them on the timeline.'),
+        drop,
+        h('div', { class: 'row' }, folderBtn, button('Add files', async () => doImport(await pickFiles('audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus', true)), { iconName: 'upload', variant: 'sm' })),
+        progress,
+        h('div', { class: 'search-row' }, libSearch, favBtn),
+        libInfo,
+        libList,
+        h('p', { class: 'muted tiny' }, 'Only add sounds you have the rights to use. The library lives in this browser on this device; clearing site data removes it.'),
+      ),
+      section(
+        'Freesound',
+        h('p', { class: 'muted small' }, 'Search 600,000+ Creative Commons sounds on ', h('a', { href: 'https://freesound.org', target: '_blank', rel: 'noopener noreferrer' }, 'Freesound'), '. Non-commercial licenses are left out, since a promo is commercial use.'),
+        settings.freesoundKey ? null : h('p', { class: 'small' }, 'Needs a free API key: sign in, then ', h('a', { href: FREESOUND_KEY_URL, target: '_blank', rel: 'noopener noreferrer' }, 'apply for an API key'), ' and paste the “Client secret/Api key” below.'),
+        field('Freesound API key', fsKeyIn, 'Stored in this browser only.'),
+        h('div', { class: 'grid3' }, field('License', fsLic), field('Length', fsDur), field('Sort', fsSort)),
+        fsForm,
+        h('div', { class: 'chips' }, SFX_CATEGORIES.slice(0, 10).map((c) => button(c, () => ((fsQ.value = c), runFs(c)), { variant: 'chip' }))),
+        fsState.loading ? h('p', { class: 'muted' }, 'Searching…') : null,
+        fsState.error ? h('p', { class: 'error-text' }, fsState.error) : null,
+        fsState.results.length ? h('p', { class: 'muted tiny' }, `${fsState.count.toLocaleString()} matches`) : null,
+        h('div', { class: 'sfx-list' }, resultRows(fsState.results, 'freesound')),
+        fsState.hasMore ? button('Load more', () => runFs(fsState.query, fsState.page + 1), { variant: 'ghost wide' }) : null,
+      ),
+      section(
         'Built-in effects',
-        h('p', { class: 'muted small' }, 'Made in your browser, so there is nothing to credit or license. They are added as a new audio track at the playhead.'),
+        h('p', { class: 'muted small' }, 'Made in your browser, so there is nothing to credit or license.'),
         builtins,
       ),
       section(
-        'Free sound library',
-        h('p', { class: 'muted small' }, 'Searches Creative Commons sound effects from Freesound, Wikimedia and others through ', h('a', { href: 'https://openverse.org', target: '_blank', rel: 'noopener noreferrer' }, 'Openverse'), '. No account needed.'),
+        'More free sounds (Openverse)',
+        h('p', { class: 'muted small' }, 'Searches Creative Commons sounds from Freesound, Wikimedia and others through ', h('a', { href: 'https://openverse.org', target: '_blank', rel: 'noopener noreferrer' }, 'Openverse'), ', with no key.'),
         field('License', licSel),
-        form,
-        h('div', { class: 'chips' }, SFX_CATEGORIES.map((c) => button(c, () => ((q.value = c), run(c)), { variant: 'chip' }))),
+        ovForm,
         soundState.loading ? h('p', { class: 'muted' }, 'Searching…') : null,
         soundState.error ? h('p', { class: 'error-text' }, soundState.error) : null,
-        list,
-        soundState.results.length ? button('Load more', () => run(soundState.query, soundState.page + 1), { variant: 'ghost wide' }) : null,
-        h('p', { class: 'muted tiny' }, 'CC BY sounds need the author credited. Their credits are added to your post caption in the Export tab automatically.'),
+        h('div', { class: 'sfx-list' }, resultRows(soundState.results, 'openverse')),
+        soundState.results.length ? button('Load more', () => runOv(soundState.query, soundState.page + 1), { variant: 'ghost wide' }) : null,
+        h('p', { class: 'muted tiny' }, 'Sounds that need credit are added to your post caption in the Export tab automatically.'),
       ),
     );
   }
@@ -526,7 +745,7 @@ export function createPanels({ store, engine, ui }) {
             h('span', { class: 'badge' }, rec.kind === 'font' ? 'font' : isFinite(rec.duration) && rec.duration ? formatTime(rec.duration, false) : rec.kind),
           ),
           h('div', { class: 'media-name', title: rec.name }, rec.name),
-          rec.attribution ? h('div', { class: 'muted tiny' }, `${PROVIDERS[rec.attribution.provider]?.label || 'Openverse'} · ${rec.attribution.author}`) : null,
+          rec.attribution ? h('div', { class: 'muted tiny' }, `${rec.attribution.providerLabel || PROVIDERS[rec.attribution.provider]?.label || 'Openverse'} · ${rec.attribution.author}`) : null,
           h('div', { class: 'media-acts' }, acts, iconButton('trash', `Remove ${rec.name}`, () => confirmRemove(rec), 'ghost danger')),
         ),
       );
@@ -1280,7 +1499,7 @@ export function createPanels({ store, engine, ui }) {
     const credits = media
       .all()
       .filter((m) => m.attribution && (p.clips.some((c) => c.mediaId === m.id) || p.audioTracks.some((a) => a.mediaId === m.id)))
-      .map((m) => `${PROVIDERS[m.attribution.provider]?.label || `${m.attribution.source || 'Openverse'} via Openverse`}: ${m.attribution.author} (${m.attribution.license}) ${m.attribution.pageUrl}`);
+      .map((m) => `${m.attribution.providerLabel || PROVIDERS[m.attribution.provider]?.label || `${m.attribution.source || 'Openverse'} via Openverse`}: ${m.attribution.author} (${m.attribution.license}) ${m.attribution.pageUrl}`);
     const caption = [
       `${p.endCard.title} by ${p.endCard.artist}: ${p.endCard.cta ? p.endCard.cta.replace(/\{date\}|\{countdown\}/gi, '').trim().toLowerCase() || 'out now' : 'out now'} 🎶`,
       p.endCard.subtext || 'Link in bio',

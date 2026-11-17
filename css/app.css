@@ -330,3 +330,14 @@ body.dropping::after { content: 'Drop to add to your library'; position: fixed; 
 .cal-day { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
 .cal-what { display: flex; flex-direction: column; }
 @media (max-width: 1100px) { .page-cols { grid-template-columns: 1fr; } }
+
+/* sound library */
+.small-drop { padding: 12px 10px; gap: 4px; }
+.dropzone.over { border-color: var(--accent); background: var(--accent-soft); }
+.lib-acts { display: flex; align-items: center; gap: 4px; }
+.lib-acts .icon-btn { width: 28px; height: 28px; }
+.sfx-row .lib-acts .btn.sm, .sfx-item .lib-acts .btn.sm { padding: 3px 7px; }
+.star { font-size: 16px; color: var(--muted); }
+.star.on { color: var(--accent); }
+.lib-list { max-height: 420px; overflow-y: auto; }
+.lib-row .link.sfx-name { padding: 0; }
