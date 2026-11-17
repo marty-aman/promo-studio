@@ -94,9 +94,14 @@ export function newProject() {
       vignette: 0.25,
       grain: 0,
       letterbox: 0,
+      lightLeak: 0,
+      scanlines: 0,
+      beatFlash: 0,
       watermark: { mediaId: null, position: 'top-right', size: 14, opacity: 0.85 },
       progress: { enabled: false, color: '#ffffff', position: 'bottom' },
-      safeZones: true, // preview only
+      overlay: 'tiktok', // preview only: off | tiktok | reels | shorts
+      overlayOpacity: 0.6,
+      overlayClear: true,
     },
     beats: null, // { bpm, period, beats:[song seconds] }
   };
@@ -197,6 +202,10 @@ export function loadProject() {
     if (!raw) return null;
     const p = JSON.parse(raw);
     const base = newProject();
+    const look = p.look || {};
+    // v1 projects had a red safe-zone toggle; it maps to the TikTok phantom overlay
+    if ('safeZones' in look && !('overlay' in look)) look.overlay = look.safeZones ? 'tiktok' : 'off';
+    delete look.safeZones;
     return {
       ...base,
       ...p,
@@ -204,9 +213,9 @@ export function loadProject() {
       endCard: { ...base.endCard, ...p.endCard },
       look: {
         ...base.look,
-        ...p.look,
-        watermark: { ...base.look.watermark, ...(p.look || {}).watermark },
-        progress: { ...base.look.progress, ...(p.look || {}).progress },
+        ...look,
+        watermark: { ...base.look.watermark, ...look.watermark },
+        progress: { ...base.look.progress, ...look.progress },
       },
     };
   } catch {

@@ -25,7 +25,12 @@ any other static host.
   duplicate, delete.
 - Per clip: speed (0.25×–4×), fill / fit / fit with blurred background, zoom, pan, rotate, mirror,
   slow zoom or drift motion, color presets (Mono, Noir, Warm, Cold, Vivid, Faded, Dream) plus
-  brightness/contrast/saturation/blur, and transitions (fade, crossfade, flash, zoom punch, slide, glitch).
+  brightness/contrast/saturation/blur.
+- 24 transitions: crossfade, fade/dip to black or white, flash, blur dissolve, zoom punch / out / through,
+  spin, push left/up, slide over, whip pan, wipes, split open, circle reveal, pixelate, glitch, RGB split,
+  shake, light leak. Apply one to every cut, or mix them randomly.
+- Clip effects: zoom pulse, strobe and invert on the beat, camera shake, RGB split, flicker, VHS tape,
+  mirror / kaleidoscope.
 - Formats: 9:16, 4:5, 1:1, 16:9.
 
 **Lyrics**
@@ -35,8 +40,9 @@ any other static host.
 - Import/export `.lrc` files.
 - Lyric times are stored in *song time*, so choosing a different section of the song keeps them in sync.
 - Styles: 10 fonts (or upload your own), size, position, width, alignment, colors, outline, shadow,
-  background box, ALL CAPS, per-line height override. Animations: pop, fade, slide, typewriter,
-  karaoke highlight, word by word. One-click presets.
+  background box, ALL CAPS, per-line height override. 17 animations including pop, words rise,
+  drop & bounce, zoom, blur, spin, flip, typewriter, karaoke, word by word, wave, neon flicker, glitch
+  and pulse on the beat. One-click presets.
 
 **Audio**
 - Song with waveform. Drag it on the timeline or click the overview to choose the section.
@@ -47,13 +53,16 @@ any other static host.
 
 **End card / call to action**
 - Cover art with blurred-cover, color or dimmed-video background, title, artist, CTA pill,
-  streaming platform badges, small text, entrance animation.
+  streaming platform badges, small text. Entrances: rise, zoom, spin, drop & bounce, card flip,
+  vinyl slides out, glitch.
 - CTA tokens: `{date}` → "NOV 21", `{countdown}` → "OUT IN 3 DAYS" / "OUT TOMORROW" / "OUT NOW".
 
 **Extras**
 - Text overlays with presets (NEW SINGLE, PRE-SAVE NOW, …).
-- Logo watermark, progress bar, vignette, film grain, cinema bars.
-- App safe-zone overlay (preview only) so text stays clear of TikTok/Reels buttons.
+- Logo watermark, progress bar, vignette, film grain, cinema bars, light leaks, scanlines, flash on the beat.
+- Phone app preview: phantom TikTok, Instagram Reels or YouTube Shorts buttons, caption and nav bar
+  over the 9:16 preview, plus a "clear area" guide for text. Switch it from the bar under the preview
+  or press O. Preview only, never exported.
 - Style templates to reuse a look on the next release.
 - Undo/redo, autosave, keyboard shortcuts, PNG frame export, generated post caption with credits.
 
@@ -75,7 +84,8 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/core.js` | Pure logic: time math, lyrics/LRC, tap-sync, audio analysis (unit tested) |
 | `js/state.js` | Project model, undo/redo store, persistence |
 | `js/media.js` | Media library, element creation, waveform/energy analysis |
-| `js/renderer.js` | Draws a frame (video, effects, text, lyrics, end card) to a canvas |
+| `js/renderer.js` | Draws a frame (video, transitions, effects, text, lyrics, end card) to a canvas |
+| `js/overlays.js` | Phantom TikTok / Reels / Shorts UI for the preview |
 | `js/engine.js` | Playback clock, media sync, Web Audio mix, export |
 | `js/timeline.js` | Multi-track timeline UI |
 | `js/panels.js` | Tool panels and inspector |

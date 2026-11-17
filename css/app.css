@@ -244,3 +244,7 @@ body.dropping::after { content: 'Drop to add to your library'; position: fixed; 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* phone-app overlay picker in the transport bar */
+.overlay-pick { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; color: var(--muted); }
+.overlay-pick select { width: auto; padding: 4px 6px; font-size: 12px; }
