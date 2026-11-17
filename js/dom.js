@@ -58,6 +58,9 @@ const ICONS = {
   arrowLeft: 'M19 12H5M12 19l-7-7 7-7',
   arrowRight: 'M5 12h14M12 5l7 7-7 7',
   file: 'M14 3H6v18h12V7zM14 3v4h4',
+  volume: 'M11 5L6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14',
+  layout: 'M3 3h18v18H3zM3 9h18M9 21V9',
+  stop: 'M6 6h12v12H6z',
 };
 
 export function icon(name, size = 18) {

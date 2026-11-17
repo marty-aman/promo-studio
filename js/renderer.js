@@ -16,10 +16,14 @@ import { drawPlatformOverlay, overlaySupported } from './overlays.js';
 
 // ------------------------------------------------------------ helpers
 
-function filterString(f, extraBlurPx = 0) {
-  if (!f) return extraBlurPx ? `blur(${extraBlurPx}px)` : 'none';
-  const base = FILTER_PRESETS[f.preset] || FILTER_PRESETS.none;
-  const v = { ...base, ...f.adjust };
+function filterString(f, extraBlurPx = 0, grade = null) {
+  const base = FILTER_PRESETS[(f && f.preset) || 'none'] || FILTER_PRESETS.none;
+  const v = { ...base, ...((f && f.adjust) || {}) };
+  if (grade) {
+    v.brightness *= grade.exposure ?? 1;
+    v.contrast *= grade.contrast ?? 1;
+    v.saturate *= grade.saturation ?? 1;
+  }
   const parts = [];
   if (v.brightness !== 1) parts.push(`brightness(${v.brightness})`);
   if (v.contrast !== 1) parts.push(`contrast(${v.contrast})`);
@@ -49,14 +53,7 @@ function hasFrame(src) {
 /** Draw src into the W x H frame. fit: cover | contain | blurfill. */
 function drawFitted(ctx, src, W, H, { fit = 'cover', zoom = 1, x = 0, y = 0, rotate = 0 } = {}) {
   const { w, h } = srcSize(src);
-  if (fit === 'blurfill') {
-    ctx.save();
-    const prev = ctx.filter;
-    ctx.filter = `${prev === 'none' ? '' : prev + ' '}blur(${Math.round(W * 0.03)}px) brightness(0.7)`;
-    const s = Math.max(W / w, H / h) * 1.1;
-    ctx.drawImage(src, (W - w * s) / 2, (H - h * s) / 2, w * s, h * s);
-    ctx.restore();
-  }
+  if (fit === 'blurfill') fit = 'contain';
   const scale = (fit === 'cover' ? Math.max(W / w, H / h) : Math.min(W / w, H / h)) * zoom;
   const dw = w * scale;
   const dh = h * scale;
@@ -73,6 +70,16 @@ function drawFitted(ctx, src, W, H, { fit = 'cover', zoom = 1, x = 0, y = 0, rot
   } else {
     ctx.drawImage(src, ox, oy, dw, dh);
   }
+}
+
+/** Blurred, darkened full-frame copy of src (background for "Fit + blur", masks and small pictures). */
+function drawBlurBg(ctx, src, W, H, filter = 'none') {
+  const { w, h } = srcSize(src);
+  ctx.save();
+  ctx.filter = `${filter === 'none' ? '' : filter + ' '}blur(${Math.round(W * 0.03)}px) brightness(0.7)`;
+  const s = Math.max(W / w, H / h) * 1.1;
+  ctx.drawImage(src, (W - w * s) / 2, (H - h * s) / 2, w * s, h * s);
+  ctx.restore();
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -454,26 +461,192 @@ function clipMotion(clip, local) {
   };
 }
 
+export const MASK_SHAPES = [
+  ['none', 'No mask'],
+  ['circle', 'Circle'],
+  ['oval', 'Oval'],
+  ['rounded', 'Rounded rectangle'],
+  ['square', 'Square'],
+  ['arch', 'Arch window'],
+  ['heart', 'Heart'],
+  ['star', 'Star'],
+  ['diamond', 'Diamond'],
+  ['hexagon', 'Hexagon'],
+  ['topHalf', 'Top part (split screen)'],
+  ['bottomHalf', 'Bottom part (split screen)'],
+  ['leftHalf', 'Left part'],
+  ['rightHalf', 'Right part'],
+];
+
+/** Build the mask path on g (centered at the mask position, rotated) and run paint(g). */
+function withMaskPath(g, W, H, m, paint) {
+  const s = m.size ?? 0.8;
+  const cx = W / 2 + ((m.x || 0) * W) / 2;
+  const cy = H / 2 + ((m.y || 0) * H) / 2;
+  g.save();
+  g.beginPath();
+  const halves = { topHalf: [0, 0, W, cy], bottomHalf: [0, cy, W, H - cy], leftHalf: [0, 0, cx, H], rightHalf: [cx, 0, W - cx, H] };
+  if (halves[m.shape]) {
+    g.rect(...halves[m.shape]);
+  } else {
+    g.translate(cx, cy);
+    if (m.rotate) g.rotate((m.rotate * Math.PI) / 180);
+    const r = (W * s) / 2;
+    const poly = (n, inner = null, ry = 1) => {
+      const pts = inner ? n * 2 : n;
+      for (let i = 0; i < pts; i++) {
+        const rad = inner && i % 2 ? r * inner : r;
+        const a = -Math.PI / 2 + (i * Math.PI * 2) / pts;
+        const fn = i ? 'lineTo' : 'moveTo';
+        g[fn](Math.cos(a) * rad, Math.sin(a) * rad * ry);
+      }
+      g.closePath();
+    };
+    switch (m.shape) {
+      case 'circle':
+        g.arc(0, 0, r, 0, Math.PI * 2);
+        break;
+      case 'oval':
+        g.ellipse(0, 0, r, r * 1.4, 0, 0, Math.PI * 2);
+        break;
+      case 'rounded':
+        roundRect(g, -(W * s) / 2, -(H * s) / 2, W * s, H * s, W * 0.06);
+        break;
+      case 'square':
+        roundRect(g, -r, -r, r * 2, r * 2, W * 0.02);
+        break;
+      case 'arch': {
+        const hh = r * 2.8;
+        g.moveTo(-r, hh / 2);
+        g.lineTo(-r, -hh / 2 + r);
+        g.arc(0, -hh / 2 + r, r, Math.PI, 0);
+        g.lineTo(r, hh / 2);
+        g.closePath();
+        break;
+      }
+      case 'heart': {
+        const k = (r * 2) / 34;
+        for (let i = 0; i <= 64; i++) {
+          const t = (i / 64) * Math.PI * 2;
+          const x = 16 * Math.pow(Math.sin(t), 3) * k;
+          const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) * k;
+          g[i ? 'lineTo' : 'moveTo'](x, y);
+        }
+        g.closePath();
+        break;
+      }
+      case 'star':
+        poly(5, 0.45);
+        break;
+      case 'diamond':
+        poly(4, null, 1.3);
+        break;
+      case 'hexagon':
+        poly(6);
+        break;
+      default:
+        g.rect(-W, -H, W * 2, H * 2);
+    }
+  }
+  paint(g);
+  g.restore();
+}
+
+export const GRADE_PRESETS = {
+  none: { label: 'None' },
+  tealOrange: { label: 'Teal & orange', contrast: 1.15, saturation: 1.1, shadows: '#00586e', shadowsAmt: 0.45, highlights: '#ffb066', highlightsAmt: 0.3 },
+  golden: { label: 'Golden hour', exposure: 1.05, saturation: 1.1, temperature: 0.6, highlights: '#ffd28c', highlightsAmt: 0.3 },
+  moody: { label: 'Moody', exposure: 0.9, contrast: 1.1, saturation: 0.8, shadows: '#141e3c', shadowsAmt: 0.45, fade: 0.15 },
+  cyberpunk: { label: 'Cyberpunk', contrast: 1.2, saturation: 1.3, tint: 0.45, shadows: '#1e005a', shadowsAmt: 0.5, highlights: '#00ffe6', highlightsAmt: 0.25 },
+  bleach: { label: 'Bleach bypass', exposure: 1.05, contrast: 1.35, saturation: 0.55 },
+  vintage: { label: 'Vintage film', contrast: 0.9, saturation: 0.75, temperature: 0.3, fade: 0.35, highlights: '#ffebc8', highlightsAmt: 0.2 },
+  crossProcess: { label: 'Cross process', saturation: 1.2, tint: 0.25, shadows: '#003c78', shadowsAmt: 0.3, highlights: '#fff096', highlightsAmt: 0.3 },
+  cold: { label: 'Cold blue', saturation: 0.85, temperature: -0.55, shadows: '#0a1e3c', shadowsAmt: 0.3 },
+  matte: { label: 'Matte', contrast: 0.9, fade: 0.3 },
+  mono: { label: 'High-contrast mono', contrast: 1.3, saturation: 0 },
+  sunset: { label: 'Sunset pink', temperature: 0.35, tint: 0.3, highlights: '#ff9ec4', highlightsAmt: 0.35, saturation: 1.15 },
+};
+
+/** Temperature, tint, split-toning and fade, applied over the frame with blend modes. */
+function applyGradeWash(ctx, W, H, gr) {
+  if (!gr) return;
+  const fill = (color, alpha, op) => {
+    if (alpha <= 0.001) return;
+    ctx.save();
+    ctx.globalCompositeOperation = op;
+    ctx.globalAlpha = Math.min(1, alpha);
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  };
+  const temp = gr.temperature || 0;
+  if (temp) fill(temp > 0 ? '#ff9628' : '#2880ff', Math.abs(temp) * 0.5, 'soft-light');
+  const tint = gr.tint || 0;
+  if (tint) fill(tint > 0 ? '#ff00c8' : '#00ff50', Math.abs(tint) * 0.35, 'soft-light');
+  if (gr.shadows) fill(gr.shadows, (gr.shadowsAmt || 0) * 0.6, 'lighten');
+  if (gr.highlights) fill(gr.highlights, (gr.highlightsAmt || 0) * 0.6, 'darken');
+  if (gr.fade) fill('#2a2a2a', gr.fade, 'lighten');
+}
+
 /** extra: { alpha, dx, dy, zoom, blur, rot (deg) } on top of the clip's own framing. */
 function drawClip(ctx, W, H, clip, local, src, extra = {}) {
   if (!hasFrame(src)) return false;
   const m = clipMotion(clip, local);
-  ctx.save();
-  ctx.filter = filterString(clip.filter, extra.blur || 0);
-  if (extra.alpha != null) ctx.globalAlpha *= clamp(extra.alpha, 0, 1);
-  if (extra.dx || extra.dy) ctx.translate(extra.dx || 0, extra.dy || 0);
-  if (clip.flip) {
-    ctx.translate(W, 0);
-    ctx.scale(-1, 1);
+  const mask = clip.mask && clip.mask.shape && clip.mask.shape !== 'none' ? clip.mask : null;
+  const filter = filterString(clip.filter, extra.blur || 0, clip.grade);
+  const alpha = extra.alpha != null ? clamp(extra.alpha, 0, 1) : 1;
+  const small = (m.zoom * (extra.zoom || 1) < 1 || clip.posX || clip.posY) && clip.fit !== 'contain';
+
+  // what shows around the picture: blurred copy, a color, or nothing
+  const bg = mask ? mask.background || 'blur' : clip.fit === 'blurfill' || small ? 'blur' : 'none';
+  if (bg !== 'none') {
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    if (bg === 'blur') drawBlurBg(ctx, src, W, H, filter);
+    else {
+      ctx.fillStyle = mask.color || '#000';
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.restore();
   }
-  drawFitted(ctx, src, W, H, {
+
+  const [lc, lg] = mask ? layer('mask', W, H) : [null, null];
+  const g = mask ? lg : ctx;
+  g.save();
+  g.filter = filter;
+  if (!mask) g.globalAlpha *= alpha;
+  g.translate((extra.dx || 0) + ((clip.posX || 0) * W) / 2, (extra.dy || 0) + ((clip.posY || 0) * H) / 2);
+  if (clip.flip) {
+    g.translate(W, 0);
+    g.scale(-1, 1);
+  }
+  drawFitted(g, src, W, H, {
     fit: clip.fit || 'cover',
     zoom: m.zoom * (extra.zoom || 1),
     x: m.x,
     y: m.y,
     rotate: (clip.rotate || 0) + (extra.rot || 0),
   });
-  ctx.restore();
+  g.restore();
+
+  if (mask) {
+    lg.globalCompositeOperation = 'destination-in';
+    lg.filter = mask.feather ? `blur(${(mask.feather * W * 0.04).toFixed(1)}px)` : 'none';
+    lg.fillStyle = '#000';
+    withMaskPath(lg, W, H, mask, (p) => p.fill());
+    lg.globalCompositeOperation = 'source-over';
+    lg.filter = 'none';
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.drawImage(lc, 0, 0);
+    if (mask.border > 0) {
+      ctx.strokeStyle = mask.borderColor || '#ffffff';
+      ctx.lineWidth = mask.border * W * 0.012;
+      ctx.lineJoin = 'round';
+      withMaskPath(ctx, W, H, mask, (p) => p.stroke());
+    }
+    ctx.restore();
+  }
   return true;
 }
 
@@ -745,6 +918,7 @@ function drawVideoLane(ctx, W, H, project, t, env) {
   const inTransition = tr.type !== 'none' && local < d && (i > 0 || tr.type === 'fade' || tr.type === 'flash' || tr.type === 'zoom' || tr.type === 'shake' || tr.type === 'glitch');
   if (inTransition) drawTransition(ctx, W, H, tr.type, clamp(local / d, 0, 1), curState, laid[i - 1], { ...env, t });
   else drawClip(ctx, W, H, cur.clip, local, env.sourceFor(cur.clip), curState.fx);
+  applyGradeWash(ctx, W, H, cur.clip.grade);
   postEffects(ctx, W, H, fx, t, beat);
 }
 
@@ -787,12 +961,12 @@ function drawLook(ctx, W, H, look, t, beat) {
 }
 
 
-function drawTexts(ctx, W, H, texts, t, beat = 0) {
+function drawTexts(ctx, W, H, texts, t, beat = 0, releaseDate = '') {
   for (const tx of texts) {
     if (t < tx.start || t >= tx.end) continue;
     drawAnimatedText(
       ctx,
-      tx.text,
+      /\{(date|countdown)\}/i.test(tx.text) ? ctaText(tx.text, releaseDate) : tx.text,
       (W * tx.x) / 100,
       (H * tx.y) / 100,
       {
@@ -827,7 +1001,7 @@ function drawLyrics(ctx, W, H, project, t, beat = 0) {
   drawAnimatedText(
     ctx,
     line.text,
-    W / 2,
+    (W * (line.x ?? s.x ?? 50)) / 100,
     (H * y) / 100,
     { ...s, sizePx: (W * s.size) / 100, maxW: (W * s.maxWidth) / 100 },
     ts - line.start,
@@ -843,7 +1017,13 @@ function drawEndCard(ctx, W, H, project, t, env) {
   const life = t - start;
   const fadeIn = clamp(life / 0.5, 0, 1);
   const cover = ec.coverMediaId ? env.image(ec.coverMediaId) : null;
-  const portrait = H >= W * 0.95;
+  // layout area: the whole frame, or an app's clear area when a platform layout is active
+  const [ax0, ay0, ax1, ay1] = ec.area || [0, 0, 1, 1];
+  const AX = W * ax0;
+  const AY = H * ay0;
+  const AW = W * (ax1 - ax0);
+  const AH = H * (ay1 - ay0);
+  const portrait = AH >= AW * 0.95;
 
   ctx.save();
   ctx.globalAlpha = fadeIn;
@@ -866,12 +1046,12 @@ function drawEndCard(ctx, W, H, project, t, env) {
   const rise = (delay) => (anim === 'none' ? { a: fadeIn, dy: 0 } : { a: step(delay), dy: (1 - ease.outCubic(step(delay))) * H * 0.04 });
 
   // layout
-  const coverSize = portrait ? Math.min(W * 0.66, H * 0.4) : Math.min(H * 0.62, W * 0.4);
-  const cx = portrait ? W / 2 : W * 0.3;
-  const coverY = portrait ? H * 0.12 : (H - coverSize) / 2;
-  const textX = portrait ? W / 2 : W * 0.68;
-  let ty = portrait ? coverY + coverSize + H * 0.06 : H * 0.3;
-  const unit = portrait ? W : W * 0.55;
+  const coverSize = portrait ? Math.min(AW * 0.66, AH * 0.4) : Math.min(AH * 0.62, AW * 0.4);
+  const cx = portrait ? AX + AW / 2 : AX + AW * 0.3;
+  const coverY = portrait ? AY + AH * 0.1 : AY + (AH - coverSize) / 2;
+  const textX = portrait ? AX + AW / 2 : AX + AW * 0.68;
+  let ty = portrait ? coverY + coverSize + AH * 0.06 : AY + AH * 0.3;
+  const unit = portrait ? AW : AW * 0.55;
 
   // cover
   const cp = step(0);
@@ -969,7 +1149,7 @@ function drawEndCard(ctx, W, H, project, t, env) {
     ctx.fillStyle = color;
     ctx.shadowColor = 'rgba(0,0,0,0.5)';
     ctx.shadowBlur = px * 0.2;
-    const maxW = portrait ? W * 0.9 : W * 0.5;
+    const maxW = portrait ? AW * 0.92 : AW * 0.5;
     let size = px;
     while (ctx.measureText(text).width > maxW && size > 8) {
       size *= 0.92;
@@ -1020,7 +1200,7 @@ function drawEndCard(ctx, W, H, project, t, env) {
     const padX = px * 0.8;
     const h = px * 2;
     const gap = px * 0.6;
-    const maxRow = portrait ? W * 0.9 : W * 0.55;
+    const maxRow = portrait ? AW * 0.92 : AW * 0.55;
     const items = plats.map((p) => ({ ...p, w: ctx.measureText(p.label).width + padX * 2 + px * 1.1 }));
     const rows = [[]];
     let rowW = 0;
@@ -1067,9 +1247,16 @@ function drawWatermark(ctx, W, H, wm, env) {
   const dw = (W * wm.size) / 100;
   const dh = (dw * h) / w;
   const m = W * 0.04;
-  const [vy, hx] = wm.position.split('-');
-  const x = hx === 'left' ? m : hx === 'center' ? (W - dw) / 2 : W - dw - m;
-  const y = vy === 'top' ? m * 1.6 : H - dh - m * 1.6;
+  let x;
+  let y;
+  if (wm.position === 'custom') {
+    x = (W * (wm.x ?? 50)) / 100 - dw / 2;
+    y = (H * (wm.y ?? 10)) / 100 - dh / 2;
+  } else {
+    const [vy, hx] = wm.position.split('-');
+    x = hx === 'left' ? m : hx === 'center' ? (W - dw) / 2 : W - dw - m;
+    y = vy === 'top' ? m * 1.6 : H - dh - m * 1.6;
+  }
   ctx.save();
   ctx.globalAlpha = wm.opacity;
   ctx.drawImage(img, x, y, dw, dh);
@@ -1098,7 +1285,7 @@ export function renderFrame(ctx, W, H, project, t, env) {
   drawVideoLane(ctx, W, H, project, t, env);
   drawLook(ctx, W, H, project.look, t, beat);
   const ecStart = project.endCard.enabled ? project.duration - project.endCard.duration : Infinity;
-  drawTexts(ctx, W, H, project.texts, t, beat);
+  drawTexts(ctx, W, H, project.texts, t, beat, project.endCard.releaseDate);
   if (t < ecStart) drawLyrics(ctx, W, H, project, t, beat);
   drawEndCard(ctx, W, H, project, t, env);
   drawWatermark(ctx, W, H, project.look.watermark, env);

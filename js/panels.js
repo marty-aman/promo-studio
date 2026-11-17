@@ -26,8 +26,10 @@ import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSetti
 import { media, addMedia, removeMedia } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
-import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS } from './renderer.js';
+import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS, MASK_SHAPES, GRADE_PRESETS, renderFrame } from './renderer.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
+import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate } from './templates.js';
+import { BUILTIN_SFX, synthSfx, searchSfx, SFX_CATEGORIES, SFX_LICENSES } from './sfx.js';
 import { h, icon, button, iconButton, toast, download, pickFiles, field, section, Binder } from './dom.js';
 
 const fontOptions = () => [
@@ -143,15 +145,223 @@ export function createPanels({ store, engine, ui }) {
   // -------------------------------------------------------------- tabs
 
   const tabs = [
+    { id: 'templates', label: 'Templates', icon: 'layout', build: buildTemplates },
     { id: 'media', label: 'Media', icon: 'film', build: buildMedia },
     { id: 'stock', label: 'Stock', icon: 'search', build: buildStock },
     { id: 'lyrics', label: 'Lyrics', icon: 'mic', build: buildLyrics },
     { id: 'audio', label: 'Audio', icon: 'music', build: buildAudio },
+    { id: 'sounds', label: 'Sounds', icon: 'volume', build: buildSounds },
     { id: 'text', label: 'Text', icon: 'type', build: buildText },
     { id: 'endcard', label: 'End card', icon: 'disc', build: buildEndCard },
     { id: 'style', label: 'Style', icon: 'palette', build: buildStyle },
     { id: 'export', label: 'Export', icon: 'download', build: buildExport },
   ];
+
+  // ---------------------------------------------------------------- TEMPLATES
+  function buildTemplates() {
+    const p = store.get();
+    const layoutBtns = h(
+      'div',
+      { class: 'layout-list' },
+      LAYOUTS.map((l) =>
+        h(
+          'button',
+          {
+            type: 'button',
+            class: `layout-btn${p.layout === l.id ? ' on' : ''}`,
+            'aria-pressed': p.layout === l.id ? 'true' : 'false',
+            onclick: () => {
+              store.update((d) => applyLayout(d, l.id));
+              toast(`${l.label} layout applied to lyrics, text, logo, progress bar and end card`);
+            },
+          },
+          h('strong', {}, l.label),
+          h('span', { class: 'muted tiny' }, l.desc),
+        ),
+      ),
+    );
+
+    // live thumbnails of each template using your own media
+    const firstLyric = sortLyrics(p.lyrics)[0];
+    const lyricT = firstLyric ? songToTimeline(firstLyric.start, p.song) + 0.7 : null;
+    const previewT = lyricT != null && lyricT > 0 && lyricT < p.duration - (p.endCard.enabled ? p.endCard.duration : 0) ? lyricT : Math.min(1.5, p.duration / 3);
+    const cards = TEMPLATES.map((tpl) => {
+      const c = h('canvas', { width: 108, height: 192, class: 'tpl-thumb', 'aria-hidden': 'true' });
+      requestAnimationFrame(() => {
+        const draft = structuredClone(store.get());
+        applyTemplate(draft, tpl.id);
+        draft.look.overlay = 'off';
+        try {
+          renderFrame(c.getContext('2d'), c.width, c.height, draft, previewT, engine.env(false));
+        } catch (e) {
+          console.warn('template preview failed', e);
+        }
+      });
+      return h(
+        'div',
+        { class: `tpl-card${p.template === tpl.id ? ' on' : ''}` },
+        c,
+        h(
+          'div',
+          { class: 'tpl-info' },
+          h('strong', {}, tpl.name),
+          h('span', { class: 'muted tiny' }, tpl.blurb),
+          button(p.template === tpl.id ? 'Applied · re-apply' : 'Use this template', () => {
+            store.update((d) => applyTemplate(d, tpl.id));
+            toast(`“${tpl.name}” applied. Undo (Ctrl+Z) to go back.`);
+            ui.refreshPanels(true);
+          }, { variant: `sm${p.template === tpl.id ? '' : ' primary'}` }),
+        ),
+      );
+    });
+
+    return h(
+      'div',
+      {},
+      section(
+        'Layout for the app you post to',
+        h('p', { class: 'muted small' }, 'Moves lyrics, text, your logo, the progress bar and the end card into the area that app leaves clear. Templates keep the layout you pick here.'),
+        p.aspect !== '9:16' ? h('p', { class: 'warn-list' }, 'App layouts are made for 9:16. Switch Format to 9:16 first.') : null,
+        layoutBtns,
+      ),
+      section(
+        'Song templates',
+        h('p', { class: 'muted small' }, 'Each template sets the lyric style, color grade, effects, transitions, text and end card in one click, using your clips and song. Previews show your own footage.'),
+        p.clips.length ? null : h('p', { class: 'muted tiny' }, 'Add a few clips first to see the previews properly.'),
+        h('div', { class: 'tpl-grid' }, cards),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------- SOUNDS
+  const previewAudio = new Audio();
+  let previewing = null;
+  const soundState = { query: '', license: settings.sfxLicense || 'cc0', results: [], loading: false, error: '', page: 1 };
+  function playPreview(id, url, btn) {
+    if (previewing === id && !previewAudio.paused) {
+      previewAudio.pause();
+      previewing = null;
+      btn.replaceChildren(icon('play', 16));
+      return;
+    }
+    document.querySelectorAll('.sfx-play').forEach((b) => b.replaceChildren(icon('play', 16)));
+    previewAudio.src = url;
+    previewAudio.play().catch(() => toast('Could not play this preview.', 'error'));
+    previewing = id;
+    btn.replaceChildren(icon('stop', 16));
+    previewAudio.onended = () => btn.replaceChildren(icon('play', 16));
+  }
+  async function addSoundBlob(blob, name, meta) {
+    const rec = await addMedia(blob, name, meta);
+    actions.addAudioTrack(rec);
+    ui.refreshPanels(true);
+  }
+
+  function buildSounds() {
+    const builtins = h(
+      'div',
+      { class: 'sfx-grid' },
+      BUILTIN_SFX.map((s) => {
+        let url = null;
+        const play = h('button', { type: 'button', class: 'icon-btn sfx-play', 'aria-label': `Preview ${s.label}` }, icon('play', 16));
+        play.addEventListener('click', async () => {
+          url = url || URL.createObjectURL(await synthSfx(s.id));
+          playPreview(`b-${s.id}`, url, play);
+        });
+        return h(
+          'div',
+          { class: 'sfx-item' },
+          play,
+          h('span', { class: 'sfx-name' }, s.label, h('span', { class: 'muted tiny' }, ` ${s.secs}s`)),
+          button('Add', async () => addSoundBlob(await synthSfx(s.id), `${s.label}.wav`, { source: 'builtin' }), { iconName: 'plus', variant: 'sm' }),
+        );
+      }),
+    );
+
+    const licSel = h('select', {}, SFX_LICENSES.map(([v, l]) => h('option', { value: v, selected: v === soundState.license }, l)));
+    licSel.addEventListener('change', () => {
+      soundState.license = licSel.value;
+      settings.sfxLicense = licSel.value;
+      saveSettings(settings);
+    });
+    const q = h('input', { type: 'search', placeholder: 'e.g. whoosh, crowd cheer, thunder', value: soundState.query });
+    const run = async (query, page = 1) => {
+      soundState.query = query;
+      soundState.page = page;
+      soundState.loading = true;
+      soundState.error = '';
+      ui.refreshPanels(true);
+      try {
+        const res = await searchSfx(query, { license: soundState.license, page });
+        soundState.results = page === 1 ? res : [...soundState.results, ...res];
+        if (!res.length && page === 1) soundState.error = 'No sounds found. Try another word.';
+      } catch (e) {
+        soundState.error = e.message || 'Search failed';
+      }
+      soundState.loading = false;
+      ui.refreshPanels(true);
+    };
+    const form = h('form', { class: 'search-row', onsubmit: (e) => (e.preventDefault(), q.value.trim() && run(q.value.trim())) }, q, button('Search', null, { iconName: 'search', variant: 'primary' }));
+    form.querySelector('button').type = 'submit';
+
+    const list = h('div', { class: 'sfx-list' });
+    for (const r of soundState.results) {
+      const play = h('button', { type: 'button', class: 'icon-btn sfx-play', 'aria-label': `Preview ${r.title}` }, icon('play', 16));
+      play.addEventListener('click', () => playPreview(r.id, r.url, play));
+      const add = button('Add', async () => {
+        add.disabled = true;
+        try {
+          const res = await fetch(r.url);
+          if (!res.ok) throw new Error(`Download failed (${res.status})`);
+          const blob = await res.blob();
+          const ext = (blob.type.split('/')[1] || 'mp3').replace('mpeg', 'mp3');
+          await addSoundBlob(blob, `${r.title.slice(0, 40)}.${ext}`, {
+            source: 'openverse',
+            attribution: { provider: 'openverse', source: r.provider, author: r.author, pageUrl: r.pageUrl, license: r.license, needsCredit: r.needsCredit },
+          });
+        } catch (e) {
+          toast(`${e.message}. You can download it from the sound’s page and upload it instead.`, 'error', 6000);
+          add.disabled = false;
+        }
+      }, { iconName: 'plus', variant: 'sm primary' });
+      list.append(
+        h(
+          'div',
+          { class: 'sfx-row' },
+          play,
+          h(
+            'div',
+            { class: 'sfx-meta' },
+            h('span', { class: 'sfx-name', title: r.title }, r.title),
+            h('span', { class: 'muted tiny' }, `${r.duration ? `${r.duration.toFixed(1)}s · ` : ''}`, h('a', { href: r.pageUrl, target: '_blank', rel: 'noopener noreferrer' }, r.author), ` · ${r.license}${r.needsCredit ? ' (credit needed)' : ''}`),
+          ),
+          add,
+        ),
+      );
+    }
+
+    return h(
+      'div',
+      {},
+      section(
+        'Built-in effects',
+        h('p', { class: 'muted small' }, 'Made in your browser, so there is nothing to credit or license. They are added as a new audio track at the playhead.'),
+        builtins,
+      ),
+      section(
+        'Free sound library',
+        h('p', { class: 'muted small' }, 'Searches Creative Commons sound effects from Freesound, Wikimedia and others through ', h('a', { href: 'https://openverse.org', target: '_blank', rel: 'noopener noreferrer' }, 'Openverse'), '. No account needed.'),
+        field('License', licSel),
+        form,
+        h('div', { class: 'chips' }, SFX_CATEGORIES.map((c) => button(c, () => ((q.value = c), run(c)), { variant: 'chip' }))),
+        soundState.loading ? h('p', { class: 'muted' }, 'Searching…') : null,
+        soundState.error ? h('p', { class: 'error-text' }, soundState.error) : null,
+        list,
+        soundState.results.length ? button('Load more', () => run(soundState.query, soundState.page + 1), { variant: 'ghost wide' }) : null,
+        h('p', { class: 'muted tiny' }, 'CC BY sounds need the author credited. Their credits are added to your post caption in the Export tab automatically.'),
+      ),
+    );
+  }
 
   // ---------------------------------------------------------------- MEDIA
   function buildMedia(b) {
@@ -189,7 +399,7 @@ export function createPanels({ store, engine, ui }) {
             h('span', { class: 'badge' }, rec.kind === 'font' ? 'font' : isFinite(rec.duration) && rec.duration ? formatTime(rec.duration, false) : rec.kind),
           ),
           h('div', { class: 'media-name', title: rec.name }, rec.name),
-          rec.attribution ? h('div', { class: 'muted tiny' }, `${PROVIDERS[rec.attribution.provider]?.label || ''} · ${rec.attribution.author}`) : null,
+          rec.attribution ? h('div', { class: 'muted tiny' }, `${PROVIDERS[rec.attribution.provider]?.label || 'Openverse'} · ${rec.attribution.author}`) : null,
           h('div', { class: 'media-acts' }, acts, iconButton('trash', `Remove ${rec.name}`, () => confirmRemove(rec), 'ghost danger')),
         ),
       );
@@ -503,6 +713,7 @@ export function createPanels({ store, engine, ui }) {
         b.select('Animation', (p) => p.lyricStyle.animation, s((o, v) => (o.animation = v)), ANIMATIONS),
         b.range('Size', (p) => p.lyricStyle.size, s((o, v) => (o.size = v)), { min: 2.5, max: 14, step: 0.1, fmt: (v) => v.toFixed(1) }),
         b.range('Vertical position', (p) => p.lyricStyle.y, s((o, v) => (o.y = v)), { min: 5, max: 95, step: 1, fmt: (v) => `${v}%` }),
+        b.range('Horizontal position', (p) => p.lyricStyle.x ?? 50, s((o, v) => (o.x = v)), { min: 10, max: 90, step: 0.5, fmt: (v) => `${v}%` }),
         b.range('Max width', (p) => p.lyricStyle.maxWidth, s((o, v) => (o.maxWidth = v)), { min: 40, max: 98, step: 1, fmt: (v) => `${v}%` }),
         b.segmented('Align', (p) => p.lyricStyle.align, s((o, v) => (o.align = v)), [['left', 'Left'], ['center', 'Center'], ['right', 'Right']]),
         h('div', { class: 'grid2' }, b.color('Text', (p) => p.lyricStyle.color, s((o, v) => (o.color = v))), b.color('Highlight', (p) => p.lyricStyle.highlight, s((o, v) => (o.highlight = v)))),
@@ -863,7 +1074,11 @@ export function createPanels({ store, engine, ui }) {
       section(
         'Logo watermark',
         field('Image', wmSel, images.length ? 'A transparent PNG of your band logo works best.' : 'Upload your logo in the Media tab.'),
-        b.select('Position', (p) => p.look.watermark.position, l((o, v) => (o.watermark.position = v)), [['top-left', 'Top left'], ['top-center', 'Top center'], ['top-right', 'Top right'], ['bottom-left', 'Bottom left'], ['bottom-center', 'Bottom center'], ['bottom-right', 'Bottom right']]),
+        b.select('Position', (p) => p.look.watermark.position, l((o, v) => (o.watermark.position = v)), [['top-left', 'Top left'], ['top-center', 'Top center'], ['top-right', 'Top right'], ['bottom-left', 'Bottom left'], ['bottom-center', 'Bottom center'], ['bottom-right', 'Bottom right'], ['custom', 'Custom (X / Y below)']]),
+        h('div', { class: 'grid2' },
+          b.range('Logo X', (p) => p.look.watermark.x ?? 50, l((o, v) => ((o.watermark.x = v), (o.watermark.position = 'custom'))), { min: 0, max: 100, step: 0.5, fmt: (v) => `${v}%` }),
+          b.range('Logo Y', (p) => p.look.watermark.y ?? 10, l((o, v) => ((o.watermark.y = v), (o.watermark.position = 'custom'))), { min: 0, max: 100, step: 0.5, fmt: (v) => `${v}%` }),
+        ),
         b.range('Size', (p) => p.look.watermark.size, l((o, v) => (o.watermark.size = v)), { min: 5, max: 40, step: 1, fmt: (v) => `${v}%` }),
         b.range('Opacity', (p) => p.look.watermark.opacity, l((o, v) => (o.watermark.opacity = v)), { min: 0.1, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` }),
       ),
@@ -936,8 +1151,8 @@ export function createPanels({ store, engine, ui }) {
 
     const credits = media
       .all()
-      .filter((m) => m.attribution && (p.clips.some((c) => c.mediaId === m.id)))
-      .map((m) => `${PROVIDERS[m.attribution.provider]?.label}: ${m.attribution.author} (${m.attribution.license}) ${m.attribution.pageUrl}`);
+      .filter((m) => m.attribution && (p.clips.some((c) => c.mediaId === m.id) || p.audioTracks.some((a) => a.mediaId === m.id)))
+      .map((m) => `${PROVIDERS[m.attribution.provider]?.label || `${m.attribution.source || 'Openverse'} via Openverse`}: ${m.attribution.author} (${m.attribution.license}) ${m.attribution.pageUrl}`);
     const caption = [
       `${p.endCard.title} by ${p.endCard.artist}: ${p.endCard.cta ? p.endCard.cta.replace(/\{date\}|\{countdown\}/gi, '').trim().toLowerCase() || 'out now' : 'out now'} 🎶`,
       p.endCard.subtext || 'Link in bio',
@@ -1002,6 +1217,7 @@ export function createPanels({ store, engine, ui }) {
         if (x) fn(x, v, d);
       };
       const isVideo = clip.kind === 'video';
+      const G = () => store.get().clips.find((x) => x.id === sel.id) || {};
       const maxDur = maxClipDuration(clip, rec ? rec.duration : Infinity);
       return h(
         'div',
@@ -1033,16 +1249,95 @@ export function createPanels({ store, engine, ui }) {
         ),
         section(
           'Frame',
-          b.segmented('Fit', () => store.get().clips.find((x) => x.id === sel.id)?.fit, c((x, v) => (x.fit = v)), [['cover', 'Fill'], ['contain', 'Fit'], ['blurfill', 'Fit + blur']]),
-          b.range('Zoom', () => store.get().clips.find((x) => x.id === sel.id)?.zoom, c((x, v) => (x.zoom = v)), { min: 0.5, max: 3, step: 0.01, fmt: (v) => `${v.toFixed(2)}×` }),
-          b.range('Pan left/right', () => store.get().clips.find((x) => x.id === sel.id)?.panX, c((x, v) => (x.panX = v)), { min: -1, max: 1, step: 0.01, fmt: (v) => v.toFixed(2) }),
-          b.range('Pan up/down', () => store.get().clips.find((x) => x.id === sel.id)?.panY, c((x, v) => (x.panY = v)), { min: -1, max: 1, step: 0.01, fmt: (v) => v.toFixed(2) }),
-          b.range('Rotate', () => store.get().clips.find((x) => x.id === sel.id)?.rotate, c((x, v) => (x.rotate = v)), { min: -180, max: 180, step: 1, fmt: (v) => `${v}°` }),
-          b.toggle('Mirror', () => store.get().clips.find((x) => x.id === sel.id)?.flip, c((x, v) => (x.flip = v))),
-          b.select('Motion', () => motionName(store.get().clips.find((x) => x.id === sel.id)?.kenBurns), c((x, v) => (x.kenBurns = MOTIONS[v] ? { ...MOTIONS[v] } : null)), [['none', 'Still'], ['in', 'Slow zoom in'], ['out', 'Slow zoom out'], ['left', 'Drift left'], ['right', 'Drift right'], ['up', 'Drift up']]),
+          b.segmented('Fit', () => G().fit, c((x, v) => (x.fit = v)), [['cover', 'Fill'], ['contain', 'Fit'], ['blurfill', 'Fit + blur']]),
+          b.range('Zoom', () => G().zoom, c((x, v) => (x.zoom = v)), { min: 0.2, max: 4, step: 0.01, fmt: (v) => `${v.toFixed(2)}×` }),
+          h('div', { class: 'grid2' },
+            b.range('Position X', () => G().posX || 0, c((x, v) => (x.posX = v)), { min: -1, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 50)}%` }),
+            b.range('Position Y', () => G().posY || 0, c((x, v) => (x.posY = v)), { min: -1, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 50)}%` }),
+          ),
+          h('div', { class: 'grid2' },
+            b.range('Pan inside X', () => G().panX, c((x, v) => (x.panX = v)), { min: -1, max: 1, step: 0.01, fmt: (v) => v.toFixed(2) }),
+            b.range('Pan inside Y', () => G().panY, c((x, v) => (x.panY = v)), { min: -1, max: 1, step: 0.01, fmt: (v) => v.toFixed(2) }),
+          ),
+          b.range('Rotate', () => G().rotate, c((x, v) => (x.rotate = v)), { min: -180, max: 180, step: 1, fmt: (v) => `${v}°` }),
+          b.toggle('Mirror', () => G().flip, c((x, v) => (x.flip = v))),
+          h('p', { class: 'muted tiny' }, 'Zoom below 1× or move the picture to show a blurred copy behind it (picture-in-picture look). “Pan inside” moves the image within the frame when it is zoomed in.'),
+          button('Reset framing', () => store.update(c((x) => Object.assign(x, { zoom: 1, posX: 0, posY: 0, panX: 0, panY: 0, rotate: 0, flip: false }))), { variant: 'ghost sm' }),
         ),
         section(
-          'Color',
+          'Motion (keyframes)',
+          b.select('Motion', () => motionName(G().kenBurns), c((x, v) => (x.kenBurns = v === 'custom' ? { ...(x.kenBurns || MOTIONS.in) } : MOTIONS[v] ? { ...MOTIONS[v] } : null)), [['none', 'Still'], ['in', 'Slow zoom in'], ['out', 'Slow zoom out'], ['left', 'Drift left'], ['right', 'Drift right'], ['up', 'Drift up'], ['custom', 'Custom start → end']]),
+          clip.kenBurns
+            ? h(
+                'div',
+                { class: 'keyframes' },
+                h('div', { class: 'kf-head muted tiny' }, h('span', {}, ''), h('span', {}, 'Start'), h('span', {}, 'End')),
+                ...[['Zoom', 'Zoom', 0.5, 3], ['X', 'X', -1, 1], ['Y', 'Y', -1, 1]].map(([label, key, min, max]) =>
+                  h(
+                    'div',
+                    { class: 'kf-row' },
+                    h('span', { class: 'lbl' }, label),
+                    b.range('', () => G().kenBurns?.[`from${key}`], c((x, v) => (x.kenBurns = { ...(x.kenBurns || MOTIONS.in), [`from${key}`]: v })), { min, max, step: 0.01, fmt: (v) => v.toFixed(2) }),
+                    b.range('', () => G().kenBurns?.[`to${key}`], c((x, v) => (x.kenBurns = { ...(x.kenBurns || MOTIONS.in), [`to${key}`]: v })), { min, max, step: 0.01, fmt: (v) => v.toFixed(2) }),
+                  ),
+                ),
+                h('p', { class: 'muted tiny' }, 'The clip moves smoothly from Start to End over its length. Any change here switches Motion to Custom.'),
+              )
+            : null,
+        ),
+        section(
+          'Mask',
+          b.select('Shape', () => G().mask?.shape || 'none', c((x, v) => (x.mask = { size: 0.8, x: 0, y: 0, rotate: 0, feather: 0, border: 0, borderColor: '#ffffff', background: 'blur', color: '#000000', ...(x.mask || {}), shape: v })), MASK_SHAPES),
+          clip.mask && clip.mask.shape && clip.mask.shape !== 'none'
+            ? h(
+                'div',
+                {},
+                /Half$/.test(clip.mask.shape) ? null : b.range('Size', () => G().mask?.size ?? 0.8, c((x, v) => (x.mask = { ...x.mask, size: v })), { min: 0.1, max: 1.6, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
+                h('div', { class: 'grid2' },
+                  b.range(/Half$/.test(clip.mask.shape) ? 'Split X' : 'Mask X', () => G().mask?.x || 0, c((x, v) => (x.mask = { ...x.mask, x: v })), { min: -1, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 50)}%` }),
+                  b.range(/Half$/.test(clip.mask.shape) ? 'Split Y' : 'Mask Y', () => G().mask?.y || 0, c((x, v) => (x.mask = { ...x.mask, y: v })), { min: -1, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 50)}%` }),
+                ),
+                /Half$/.test(clip.mask.shape) ? null : b.range('Mask rotation', () => G().mask?.rotate || 0, c((x, v) => (x.mask = { ...x.mask, rotate: v })), { min: -180, max: 180, step: 1, fmt: (v) => `${v}°` }),
+                b.range('Soft edge', () => G().mask?.feather || 0, c((x, v) => (x.mask = { ...x.mask, feather: v })), { min: 0, max: 1, step: 0.01, fmt: (v) => (v ? `${Math.round(v * 100)}%` : 'Sharp') }),
+                h('div', { class: 'grid2' },
+                  b.range('Border', () => G().mask?.border || 0, c((x, v) => (x.mask = { ...x.mask, border: v })), { min: 0, max: 2, step: 0.05, fmt: (v) => (v ? v.toFixed(2) : 'None') }),
+                  b.color('Border color', () => G().mask?.borderColor, c((x, v) => (x.mask = { ...x.mask, borderColor: v }))),
+                ),
+                b.segmented('Outside the mask', () => G().mask?.background || 'blur', c((x, v) => (x.mask = { ...x.mask, background: v })), [['blur', 'Blurred clip'], ['color', 'Color'], ['none', 'Background']]),
+                G().mask?.background === 'color' ? b.color('Outside color', () => G().mask?.color, c((x, v) => (x.mask = { ...x.mask, color: v }))) : null,
+              )
+            : null,
+        ),
+        section(
+          'Color grade',
+          h('div', { class: 'chips' }, Object.entries(GRADE_PRESETS).map(([k, g]) => button(g.label, () => store.update(c((x) => {
+            const { label, ...vals } = g;
+            x.grade = k === 'none' ? null : { preset: k, ...vals };
+          })), { variant: `chip${(clip.grade?.preset || 'none') === k ? ' on' : ''}` }))),
+          ...[['exposure', 'Exposure', 0.4, 1.6], ['contrast', 'Contrast', 0.5, 1.8], ['saturation', 'Saturation', 0, 2]].map(([k, label, min, max]) =>
+            b.range(label, () => G().grade?.[k] ?? 1, c((x, v) => (x.grade = { ...(x.grade || {}), preset: 'custom', [k]: v })), { min, max, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
+          ),
+          h('div', { class: 'grid2' },
+            b.range('Temperature', () => G().grade?.temperature || 0, c((x, v) => (x.grade = { ...(x.grade || {}), preset: 'custom', temperature: v })), { min: -1, max: 1, step: 0.01, fmt: (v) => (v > 0 ? `Warm ${Math.round(v * 100)}` : v < 0 ? `Cool ${Math.round(-v * 100)}` : '0') }),
+            b.range('Tint', () => G().grade?.tint || 0, c((x, v) => (x.grade = { ...(x.grade || {}), preset: 'custom', tint: v })), { min: -1, max: 1, step: 0.01, fmt: (v) => (v > 0 ? `Magenta ${Math.round(v * 100)}` : v < 0 ? `Green ${Math.round(-v * 100)}` : '0') }),
+          ),
+          b.range('Fade (matte blacks)', () => G().grade?.fade || 0, c((x, v) => (x.grade = { ...(x.grade || {}), preset: 'custom', fade: v })), { min: 0, max: 0.6, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
+          h('div', { class: 'grid2' },
+            b.color('Shadows tint', () => G().grade?.shadows || '#000000', c((x, v) => (x.grade = { ...(x.grade || {}), preset: 'custom', shadows: v, shadowsAmt: x.grade?.shadowsAmt || 0.3 }))),
+            b.range('Shadows amount', () => G().grade?.shadowsAmt || 0, c((x, v) => (x.grade = { ...(x.grade || {}), preset: 'custom', shadowsAmt: v, shadows: x.grade?.shadows || '#003c5a' })), { min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
+          ),
+          h('div', { class: 'grid2' },
+            b.color('Highlights tint', () => G().grade?.highlights || '#ffffff', c((x, v) => (x.grade = { ...(x.grade || {}), preset: 'custom', highlights: v, highlightsAmt: x.grade?.highlightsAmt || 0.3 }))),
+            b.range('Highlights amount', () => G().grade?.highlightsAmt || 0, c((x, v) => (x.grade = { ...(x.grade || {}), preset: 'custom', highlightsAmt: v, highlights: x.grade?.highlights || '#ffc890' })), { min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
+          ),
+          button('Apply this grade to all clips', () => {
+            const gr = G().grade;
+            store.update((d) => d.clips.forEach((x) => (x.grade = gr ? { ...gr } : null)));
+            toast('Grade copied to every clip');
+          }, { variant: 'sm' }),
+        ),
+        section(
+          'Filter',
           h('div', { class: 'chips' }, Object.entries(FILTER_PRESETS).map(([k, f]) => button(f.label, () => store.update(c((x) => (x.filter = { preset: k, adjust: {} }))), { variant: `chip${clip.filter?.preset === k ? ' on' : ''}` }))),
           ...['brightness', 'contrast', 'saturate'].map((k) =>
             b.range(k === 'saturate' ? 'Saturation' : k[0].toUpperCase() + k.slice(1), () => {
@@ -1252,7 +1547,7 @@ function motionName(k) {
   for (const [name, m] of Object.entries(MOTIONS)) {
     if (Object.keys(m).every((key) => Math.abs(m[key] - k[key]) < 1e-6)) return name;
   }
-  return 'in';
+  return 'custom';
 }
 
 export function slug(s) {

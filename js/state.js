@@ -49,6 +49,7 @@ export function defaultLyricStyle() {
     boxColor: '#000000',
     boxOpacity: 0.55,
     y: 72, // % from top
+    x: 50, // % from left (center of the text block)
     align: 'center',
     uppercase: true,
     maxWidth: 86, // % of frame width
