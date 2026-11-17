@@ -423,6 +423,35 @@ export function beatCutPlan(media, beats, beatsPerCut, duration) {
 
 // ---------------------------------------------------------------- misc
 
+/** Deterministic 0..1 noise for frame-stable random effects (same frame = same jitter). */
+export function noise(n) {
+  const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/**
+ * Beat envelope at song time ts: 1 right on a beat, decaying towards 0 until the next one.
+ * Falls back to a 120 BPM grid when no beats were detected.
+ */
+export function beatEnvelope(beats, ts, decay = 9) {
+  let last;
+  if (beats && beats.length) {
+    let lo = 0;
+    let hi = beats.length - 1;
+    if (ts < beats[0]) return 0;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (beats[mid] <= ts) lo = mid;
+      else hi = mid - 1;
+    }
+    last = beats[lo];
+  } else {
+    if (ts < 0) return 0;
+    last = Math.floor(ts / 0.5) * 0.5;
+  }
+  return Math.exp(-(ts - last) * decay);
+}
+
 /** End-card call to action, with {date} and {countdown} tokens. */
 export function ctaText(template, releaseDate, now = new Date()) {
   let s = String(template || '');

@@ -6,6 +6,7 @@ import { Engine } from './engine.js';
 import { createTimeline } from './timeline.js';
 import { createPanels } from './panels.js';
 import { h, icon, iconButton, button, toast, Binder } from './dom.js';
+import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 
 const store = createStore(loadProject() || newProject());
 
@@ -21,6 +22,19 @@ const loopBtn = iconButton('repeat', 'Loop playback', () => {
   loopBtn.classList.toggle('on', engine.loop);
   loopBtn.setAttribute('aria-pressed', engine.loop ? 'true' : 'false');
 });
+const overlaySel = h(
+  'select',
+  { class: 'overlay-sel', 'aria-label': 'Preview with phone app buttons', title: 'Show where each app puts its buttons (preview only, press O to cycle)' },
+  PLATFORM_OVERLAYS.map(([k, label]) => h('option', { value: k }, k === 'off' ? 'No app buttons' : `${label} buttons`)),
+);
+overlaySel.addEventListener('change', () => store.update((d) => (d.look.overlay = overlaySel.value)));
+const cycleOverlay = () => {
+  const ids = PLATFORM_OVERLAYS.map(([k]) => k);
+  const cur = ids.indexOf(store.get().look.overlay || 'off');
+  const next = ids[(cur + 1) % ids.length];
+  store.update((d) => (d.look.overlay = next));
+  toast(next === 'off' ? 'App buttons hidden' : `Showing ${PLATFORM_OVERLAYS.find(([k]) => k === next)[1]} buttons`);
+};
 const transport = h(
   'div',
   { class: 'transport' },
@@ -29,6 +43,7 @@ const transport = h(
   iconButton('skipFwd', 'Go to end (End)', () => engine.seek(store.get().duration)),
   timeLabel,
   loopBtn,
+  h('label', { class: 'overlay-pick' }, icon('eye', 16), overlaySel),
 );
 const tabRail = h('nav', { class: 'rail', 'aria-label': 'Tools' });
 const leftPanel = h('aside', { class: 'panel left', 'aria-label': 'Tool settings' });
@@ -246,6 +261,9 @@ function syncHeader() {
   const p = store.get();
   if (document.activeElement !== nameInput) nameInput.value = p.name;
   aspectSel.value = p.aspect;
+  overlaySel.value = p.look.overlay || 'off';
+  overlaySel.disabled = !overlaySupported(p.aspect);
+  overlaySel.title = overlaySel.disabled ? 'App button previews are for 9:16 videos' : 'Show where each app puts its buttons (preview only, press O to cycle)';
   undoBtn.disabled = !store.canUndo();
   redoBtn.disabled = !store.canRedo();
   fitStage();
@@ -341,6 +359,10 @@ window.addEventListener('keydown', (e) => {
       break;
     case 'Escape':
       ui.select(null);
+      break;
+    case 'o':
+    case 'O':
+      if (overlaySupported(store.get().aspect)) cycleOverlay();
       break;
     default:
   }

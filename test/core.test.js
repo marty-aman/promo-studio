@@ -216,3 +216,22 @@ test('ctaText date and countdown tokens', () => {
   assert.equal(ctaText('{countdown}', '2026-11-10', now), 'OUT NOW');
   assert.equal(ctaText('OUT NOW {date}', '', now), 'OUT NOW');
 });
+
+import { beatEnvelope, noise } from '../js/core.js';
+
+test('beatEnvelope peaks on beats and decays between them', () => {
+  const beats = [1, 1.5, 2, 2.5];
+  assert.equal(beatEnvelope(beats, 0.5), 0); // before the first beat
+  assert.equal(beatEnvelope(beats, 1.5), 1);
+  assert.ok(beatEnvelope(beats, 1.6) < beatEnvelope(beats, 1.55));
+  assert.ok(Math.abs(beatEnvelope(beats, 2.1) - Math.exp(-0.9)) < 1e-9);
+  assert.equal(beatEnvelope(null, 1.0), 1); // 120 BPM fallback grid
+});
+
+test('noise is deterministic and in 0..1', () => {
+  assert.equal(noise(42), noise(42));
+  for (let i = 0; i < 100; i++) {
+    const v = noise(i);
+    assert.ok(v >= 0 && v < 1);
+  }
+});

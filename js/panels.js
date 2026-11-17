@@ -26,6 +26,8 @@ import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSetti
 import { media, addMedia, removeMedia } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
+import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS } from './renderer.js';
+import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { h, icon, button, iconButton, toast, download, pickFiles, field, section, Binder } from './dom.js';
 
 const fontOptions = () => [
@@ -36,15 +38,7 @@ const fontOptions = () => [
     .map((m) => [m.family, `${m.family} (uploaded)`]),
 ];
 
-const ANIMATIONS = [
-  ['pop', 'Pop in'],
-  ['fade', 'Fade'],
-  ['slide', 'Slide up'],
-  ['typewriter', 'Typewriter'],
-  ['karaoke', 'Karaoke highlight'],
-  ['words', 'Word by word'],
-  ['none', 'No animation'],
-];
+const ANIMATIONS = TEXT_ANIMATIONS;
 
 const LYRIC_PRESETS = {
   'Bold pop': { font: 'Bebas Neue', size: 10, color: '#ffffff', outline: '#000000', outlineWidth: 0.6, shadow: true, box: false, animation: 'pop', uppercase: true },
@@ -52,6 +46,10 @@ const LYRIC_PRESETS = {
   'Word by word': { font: 'Oswald', size: 7.5, color: '#ffffff', highlight: '#ff4d6d', outline: '#000000', outlineWidth: 0.4, shadow: true, box: false, animation: 'words', uppercase: true },
   Boxed: { font: 'Inter', size: 5.2, color: '#111111', box: true, boxColor: '#ffffff', boxOpacity: 0.95, outlineWidth: 0, shadow: false, animation: 'slide', uppercase: false },
   Typewriter: { font: 'Courier New', size: 5.5, color: '#f5f5f5', outlineWidth: 0, shadow: true, box: true, boxColor: '#000000', boxOpacity: 0.6, animation: 'typewriter', uppercase: false },
+  Neon: { font: 'Montserrat', size: 7, color: '#ffffff', highlight: '#ff2bd6', outline: '#ff2bd6', outlineWidth: 0.25, shadow: false, box: false, animation: 'neon', uppercase: true },
+  'Drop & bounce': { font: 'Bebas Neue', size: 10, color: '#ffd400', outline: '#000000', outlineWidth: 0.7, shadow: true, box: false, animation: 'bounce', uppercase: true },
+  Glitch: { font: 'Oswald', size: 8, color: '#ffffff', outline: '#000000', outlineWidth: 0.3, shadow: true, box: false, animation: 'glitch', uppercase: true },
+  'Beat pulse': { font: 'Bebas Neue', size: 9.5, color: '#ffffff', outline: '#000000', outlineWidth: 0.6, shadow: true, box: false, animation: 'beat', uppercase: true },
   'Hand drawn': { font: 'Permanent Marker', size: 7, color: '#fff7d6', outline: '#1a1a1a', outlineWidth: 0.5, shadow: true, box: false, animation: 'fade', uppercase: false },
 };
 
@@ -794,7 +792,7 @@ export function createPanels({ store, engine, ui }) {
         b.segmented('Background', (p) => p.endCard.background, e((o, v) => (o.background = v)), [['blur', 'Blurred cover'], ['color', 'Color'], ['video', 'Dimmed video']]),
         h('div', { class: 'grid3' }, b.color('Background', (p) => p.endCard.bgColor, e((o, v) => (o.bgColor = v))), b.color('Accent', (p) => p.endCard.accent, e((o, v) => (o.accent = v))), b.color('Text', (p) => p.endCard.textColor, e((o, v) => (o.textColor = v)))),
         b.select('Title font', (p) => p.endCard.font, e((o, v) => (o.font = v)), fontOptions()),
-        b.select('Entrance', (p) => p.endCard.animation, e((o, v) => (o.animation = v)), [['rise', 'Rise up'], ['zoom', 'Zoom'], ['spin', 'Spin in'], ['none', 'None']]),
+        b.select('Entrance', (p) => p.endCard.animation, e((o, v) => (o.animation = v)), END_ANIMATIONS),
         button('Preview end card', () => {
           const p = store.get();
           engine.seek(Math.max(0, p.duration - p.endCard.duration));
@@ -857,6 +855,9 @@ export function createPanels({ store, engine, ui }) {
         b.range('Vignette', (p) => p.look.vignette, l((o, v) => (o.vignette = v)), { min: 0, max: 0.9, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
         b.range('Film grain', (p) => p.look.grain, l((o, v) => (o.grain = v)), { min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
         b.range('Cinema bars', (p) => p.look.letterbox, l((o, v) => (o.letterbox = v)), { min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
+        b.range('Light leaks', (p) => p.look.lightLeak || 0, l((o, v) => (o.lightLeak = v)), { min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
+        b.range('Scanlines', (p) => p.look.scanlines || 0, l((o, v) => (o.scanlines = v)), { min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
+        b.range('Flash on the beat', (p) => p.look.beatFlash || 0, l((o, v) => (o.beatFlash = v)), { min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
         h('p', { class: 'muted tiny' }, 'Color filters, zoom and speed are per clip: select a clip on the timeline.'),
       ),
       section(
@@ -871,7 +872,15 @@ export function createPanels({ store, engine, ui }) {
         b.toggle('Show a progress bar', (p) => p.look.progress.enabled, l((o, v) => (o.progress.enabled = v))),
         h('div', { class: 'grid2' }, b.color('Color', (p) => p.look.progress.color, l((o, v) => (o.progress.color = v))), b.segmented('Position', (p) => p.look.progress.position, l((o, v) => (o.progress.position = v)), [['top', 'Top'], ['bottom', 'Bottom']])),
       ),
-      section('Preview aids', b.toggle('Show app safe zones (not exported)', (p) => p.look.safeZones, l((o, v) => (o.safeZones = v))), h('p', { class: 'muted tiny' }, 'Red areas are where TikTok/Reels/Shorts put buttons and captions. Keep lyrics and text out of them.')),
+      section(
+        'Phone app preview',
+        b.segmented('Show buttons from', (p) => p.look.overlay || 'off', l((o, v) => (o.overlay = v)), PLATFORM_OVERLAYS.map(([k, label]) => [k, label.replace('Instagram ', '').replace('YouTube ', '')])),
+        b.range('Ghost opacity', (p) => p.look.overlayOpacity ?? 0.6, l((o, v) => (o.overlayOpacity = v)), { min: 0.15, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` }),
+        b.toggle('Show the clear area for text', (p) => p.look.overlayClear !== false, l((o, v) => (o.overlayClear = v))),
+        overlaySupported(store.get().aspect)
+          ? h('p', { class: 'muted tiny' }, 'Ghost buttons show where each app puts its icons, caption and nav bar, so you can keep lyrics and text clear of them. Preview only, never exported. Shortcut: O cycles the apps.')
+          : h('p', { class: 'warn-list' }, 'The phone preview is for 9:16 videos. Switch Format to 9:16 to see it.'),
+      ),
       section('Templates', h('p', { class: 'muted small' }, 'Save your lyric style, end-card look, watermark and effects to reuse on the next release.'), tplList, button('Save current style as template', saveTpl, { iconName: 'plus' })),
     );
   }
@@ -1048,8 +1057,32 @@ export function createPanels({ store, engine, ui }) {
         ),
         section(
           'Transition in',
-          b.select('Type', () => store.get().clips.find((x) => x.id === sel.id)?.transition?.type || 'none', c((x, v) => (x.transition = { ...(x.transition || { duration: 0.4 }), type: v })), [['none', 'Hard cut'], ['fade', 'Fade from black'], ['crossfade', 'Crossfade'], ['flash', 'White flash'], ['zoom', 'Zoom punch'], ['slide', 'Slide'], ['glitch', 'Glitch']]),
+          b.select('Type', () => store.get().clips.find((x) => x.id === sel.id)?.transition?.type || 'none', c((x, v) => (x.transition = { ...(x.transition || { duration: 0.4 }), type: v })), TRANSITIONS),
           b.range('Length', () => store.get().clips.find((x) => x.id === sel.id)?.transition?.duration ?? 0.4, c((x, v) => (x.transition = { ...(x.transition || { type: 'fade' }), duration: v })), { min: 0.1, max: 2, step: 0.05, fmt: (v) => `${v.toFixed(2)}s` }),
+          h(
+            'div',
+            { class: 'row' },
+            button('Use on every cut', () => {
+              const tr = store.get().clips.find((x) => x.id === sel.id)?.transition;
+              store.update((d) => d.clips.forEach((x, i) => i > 0 && (x.transition = { ...tr })));
+              toast('Applied to every cut');
+            }, { variant: 'sm' }),
+            button('Random on every cut', () => {
+              const pool = TRANSITIONS.filter(([k]) => !['none', 'fade', 'dipBlack', 'dipWhite'].includes(k)).map(([k]) => k);
+              store.update((d) => d.clips.forEach((x, i) => i > 0 && (x.transition = { type: pool[Math.floor(Math.random() * pool.length)], duration: x.transition?.duration ?? 0.4 })));
+              toast('Mixed transitions applied');
+            }, { iconName: 'wand', variant: 'sm' }),
+          ),
+        ),
+        section(
+          'Effects',
+          h('p', { class: 'muted tiny' }, 'Beat effects follow the song’s beat. Run “Detect BPM” in the Audio tab first; otherwise they use 120 BPM.'),
+          ...['beatPulse', 'shake', 'rgb', 'flicker'].map((k) =>
+            b.range(CLIP_EFFECTS[k], () => store.get().clips.find((x) => x.id === sel.id)?.effects?.[k] || 0, c((x, v) => (x.effects = { ...(x.effects || {}), [k]: v })), { min: 0, max: 1, step: 0.01, fmt: (v) => (v ? `${Math.round(v * 100)}%` : 'Off') }),
+          ),
+          ...['vhs', 'strobe', 'invertBeat'].map((k) => b.toggle(CLIP_EFFECTS[k], () => store.get().clips.find((x) => x.id === sel.id)?.effects?.[k], c((x, v) => (x.effects = { ...(x.effects || {}), [k]: v })))),
+          b.select('Mirror', () => store.get().clips.find((x) => x.id === sel.id)?.effects?.mirror || 'none', c((x, v) => (x.effects = { ...(x.effects || {}), mirror: v })), MIRRORS),
+          button('Clear effects', () => store.update(c((x) => (x.effects = {}))), { variant: 'ghost sm' }),
         ),
         isVideo ? section('Clip sound', b.range('Volume', () => store.get().clips.find((x) => x.id === sel.id)?.volume, c((x, v) => (x.volume = v)), { min: 0, max: 1.5, step: 0.01, fmt: (v) => (v ? `${Math.round(v * 100)}%` : 'Muted') })) : null,
       );
@@ -1198,7 +1231,7 @@ export function createPanels({ store, engine, ui }) {
         h(
           'dl',
           { class: 'keys' },
-          [['Space', 'Play / pause'], ['← →', 'Step one frame (Shift: 1 s)'], ['S', 'Split clip at playhead'], ['Delete', 'Delete selected'], ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo'], ['Ctrl+wheel', 'Zoom timeline'], ['Home / End', 'Jump to start / end']].map(([k, v]) => [h('dt', {}, h('kbd', {}, k)), h('dd', {}, v)]),
+          [['Space', 'Play / pause'], ['← →', 'Step one frame (Shift: 1 s)'], ['S', 'Split clip at playhead'], ['O', 'Cycle phone app buttons'], ['Delete', 'Delete selected'], ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo'], ['Ctrl+wheel', 'Zoom timeline'], ['Home / End', 'Jump to start / end']].map(([k, v]) => [h('dt', {}, h('kbd', {}, k)), h('dd', {}, v)]),
         ),
       ),
     );
