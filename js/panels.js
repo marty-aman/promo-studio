@@ -24,6 +24,8 @@ import {
 } from './core.js';
 import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSettings, saveSettings, loadTemplates, saveTemplates, findClip, findLayer, LAYER_TYPES } from './state.js';
 import { buildLayersPanel, makeLayer, TAB_ACCEPT } from './panel-layers.js';
+import { bgRemoveSection } from './panel-bgremove.js';
+import { buildSuggestPanel, hasNewSuggestions } from './panel-suggest.js';
 import { ensureLayerAnalyses } from './media.js';
 import { media, addMedia, removeMedia, tabTimeline } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
@@ -68,6 +70,14 @@ export function createPanels({ store, engine, ui }) {
 
   // -------------------------------------------------------------- media actions
   const actions = {
+    /** Open the Stock tab and search for `query` (used by the suggested-background chips). */
+    stockSearch(query) {
+      stockState.query = query;
+      stockState.autorun = true;
+      ui.select(null);
+      ui.openTab('stock');
+      ui.refreshPanels(true);
+    },
     addClip(rec, at = null) {
       store.update((d) => {
         const clip = {
@@ -184,6 +194,7 @@ export function createPanels({ store, engine, ui }) {
   // -------------------------------------------------------------- tabs
 
   const tabs = [
+    { id: 'suggested', label: 'Suggested', icon: 'sparkle', build: () => buildSuggestPanel({ store, engine, ui }), dot: () => hasNewSuggestions(store.get()) },
     { id: 'templates', label: 'Templates', icon: 'layout', build: buildTemplates },
     { id: 'media', label: 'Media', icon: 'film', build: buildMedia },
     { id: 'stock', label: 'Stock', icon: 'search', build: buildStock },
@@ -802,6 +813,10 @@ export function createPanels({ store, engine, ui }) {
     };
     const form = h('form', { class: 'search-row', onsubmit: (e) => (e.preventDefault(), run(1)) }, q, button('Search', null, { iconName: 'search', variant: 'primary' }));
     form.querySelector('button').type = 'submit';
+    if (stockState.autorun) {
+      stockState.autorun = false;
+      queueMicrotask(() => run(1));
+    }
 
     const grid = h('div', { class: 'stock-grid' });
     for (const item of stockState.results) {
@@ -1416,7 +1431,8 @@ export function createPanels({ store, engine, ui }) {
       exportState.error = '';
       ui.refreshPanels(true);
       try {
-        await ensureLayerAnalyses(store.get());
+        const cutsReady = await ensureLayerAnalyses(store.get());
+        if (cutsReady === false) toast('A background removal could not be prepared, so that clip exports with its original background.', 'error');
         const res = await exportVideo(engine, {
           format: fmt.value,
           bitrate: Number(quality.value),
@@ -1689,6 +1705,7 @@ export function createPanels({ store, engine, ui }) {
           h('p', { class: 'muted tiny' }, 'Zoom below 1× or move the picture to show a blurred copy behind it (picture-in-picture look). “Pan inside” moves the image within the frame when it is zoomed in.'),
           button('Reset framing', () => store.update(c((x) => Object.assign(x, { zoom: 1, posX: 0, posY: 0, panX: 0, panY: 0, rotate: 0, flip: false }))), { variant: 'ghost sm' }),
         ),
+        rec ? bgRemoveSection({ store, media, actions, b, c, G, rec }) : null,
         section(
           'Motion (keyframes)',
           b.select('Motion', () => motionName(G().kenBurns), c((x, v) => (x.kenBurns = v === 'custom' ? { ...(x.kenBurns || MOTIONS.in) } : MOTIONS[v] ? { ...MOTIONS[v] } : null)), [['none', 'Still'], ['in', 'Slow zoom in'], ['out', 'Slow zoom out'], ['left', 'Drift left'], ['right', 'Drift right'], ['up', 'Drift up'], ['custom', 'Custom start → end']]),

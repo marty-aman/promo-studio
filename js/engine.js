@@ -3,6 +3,7 @@ import { ASPECTS, layoutClips, fadeGain, clamp, timelineToSong } from './core.js
 import { media, clipElement, pruneClipElements, tabTimeline, drumTimeline, drumHitsFromStem, vizFeatures } from './media.js';
 import { isVisible } from './state.js';
 import { renderFrame } from './renderer.js';
+import { matteFor, preparePerson, onMatteChange } from './bgremove.js';
 
 export class Engine {
   constructor(store, canvas) {
@@ -13,6 +14,7 @@ export class Engine {
     this.playing = false;
     this.loop = false;
     this.listeners = new Set();
+    onMatteChange(() => !this.playing && this.render());
     this.audioEls = new Map(); // key -> {el, mediaId}
     this.nodes = new Map(); // element -> {src, gain}
     this.audioCtx = null;
@@ -277,6 +279,27 @@ export class Engine {
         if (prev && Math.abs(el.currentTime - outPoint) > 0.1 && !el.seeking) el.currentTime = outPoint;
       }
     });
+    // a clip of yours used as the background behind a cut-out loops along with it
+    for (const l of laid) {
+      const bg = l.clip.bgRemove && l.clip.bgRemove.enabled && l.clip.bgRemove.background;
+      if (!bg || bg.kind !== 'media') continue;
+      const rec = media.get(bg.mediaId);
+      if (!rec || rec.kind !== 'video') continue;
+      const pseudo = { id: `${l.clip.id}~bg`, mediaId: rec.id };
+      live.add(pseudo.id);
+      const e = clipElement(pseudo);
+      if (!e) continue;
+      const el = e.el;
+      const active = t >= l.start && t < l.end;
+      const dur = rec.duration || el.duration || 1;
+      const target = (((t - l.start) % dur) + dur) % dur;
+      if (active) {
+        if ((force || !playing) && Math.abs(el.currentTime - target) > tol && !el.seeking) el.currentTime = target;
+        if (playing && el.paused) el.play().catch(() => {});
+        if (!playing && !el.paused) el.pause();
+        el.loop = true;
+      } else if (!el.paused) el.pause();
+    }
     // overlay clips on video layers: placed freely by start time
     for (const l of p.layers || []) {
       if (l.type !== 'video') continue;
@@ -389,6 +412,28 @@ export class Engine {
       image: (id) => {
         const r = media.get(id);
         return r && r.kind === 'image' ? r.el : null;
+      },
+      // cut-out matte for Remove background (person mattes are prepared in the background)
+      matte: (clip, src) => {
+        if (clip.bgRemove.mode === 'person') {
+          const p = this.project;
+          const all = [...p.clips, ...(p.layers || []).filter((l) => l.type === 'video').flatMap((l) => l.clips)];
+          const uses = all.filter((c) => c.mediaId === clip.mediaId && c.bgRemove && c.bgRemove.enabled && c.bgRemove.mode === 'person');
+          preparePerson(media.get(clip.mediaId), uses.length ? uses : [clip]);
+        }
+        return matteFor(clip, src);
+      },
+      backdropSource: (clip) => {
+        const bg = clip.bgRemove && clip.bgRemove.background;
+        const rec = bg && media.get(bg.mediaId);
+        if (!rec) return null;
+        if (rec.kind === 'image') return rec.el;
+        const e = clipElement({ id: `${clip.id}~bg`, mediaId: rec.id });
+        if (e && !e._hooked) {
+          e.el.addEventListener('seeked', () => !this.playing && this.render());
+          e._hooked = true;
+        }
+        return e ? e.el : null;
       },
       tab: (id, track) => tabTimeline(media.get(id), track),
       drums: (l) => {

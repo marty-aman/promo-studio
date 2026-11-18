@@ -22,6 +22,8 @@ const TYPES = {
   '.webm': 'video/webm',
   '.wav': 'audio/wav',
   '.md': 'text/plain; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.tflite': 'application/octet-stream',
 };
 
 const server = http.createServer(async (req, res) => {

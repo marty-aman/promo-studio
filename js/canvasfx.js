@@ -19,9 +19,9 @@ export function buf(name, w, h) {
 }
 
 /** Blur `src` into a same-size buffer. Uses ctx.filter where the browser has it, else a downscale round trip. */
-export function blurred(name, src, px, extra = '') {
+export function blurred(name, src, px, extra = '', base = true) {
   const [t, tg] = buf(name, src.width, src.height);
-  tg.drawImage(src, 0, 0); // base copy keeps the edges filled
+  if (base) tg.drawImage(src, 0, 0); // base copy keeps the edges filled
   if (typeof tg.filter === 'string') {
     tg.filter = `blur(${Math.max(0.5, px).toFixed(1)}px) ${extra}`;
     tg.drawImage(src, 0, 0);

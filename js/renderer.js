@@ -17,6 +17,11 @@ import { drawTab } from './tab.js';
 import { drawDrums } from './drums.js';
 import { drawViz } from './viz.js';
 import { drawLyricDisplay } from './lyricviz.js';
+import { drawBackdrop } from './backgrounds.js';
+import { blurred } from './canvasfx.js';
+
+// what the frame being rendered needs deep inside drawClip (set at the start of renderFrame)
+const FRAME = { env: null, t: 0, beat: 0 };
 
 // ------------------------------------------------------------ helpers
 
@@ -600,6 +605,62 @@ function drawClip(ctx, W, H, clip, local, src, extra = {}) {
   const filter = filterString(clip.filter, extra.blur || 0, clip.grade);
   const alpha = extra.alpha != null ? clamp(extra.alpha, 0, 1) : 1;
   const small = (m.zoom * (extra.zoom || 1) < 1 || clip.posX || clip.posY) && clip.fit !== 'contain';
+  // the picture's framing, shared by the frame and its cut-out matte so they line up exactly
+  const paint = (g, source) => {
+    g.save();
+    g.translate((extra.dx || 0) + ((clip.posX || 0) * W) / 2, (extra.dy || 0) + ((clip.posY || 0) * H) / 2);
+    if (clip.flip) {
+      g.translate(W, 0);
+      g.scale(-1, 1);
+    }
+    drawFitted(g, source, W, H, {
+      fit: clip.fit || 'cover',
+      zoom: m.zoom * (extra.zoom || 1),
+      x: m.x,
+      y: m.y,
+      rotate: (clip.rotate || 0) + (extra.rot || 0),
+    });
+    g.restore();
+  };
+
+  // remove background: draw the chosen background, then only the cut-out of the picture
+  const matte = clip.bgRemove && clip.bgRemove.enabled && FRAME.env && FRAME.env.matte ? FRAME.env.matte(clip, src) : null;
+  if (matte) {
+    const bgCfg = clip.bgRemove.background || { kind: 'blur' };
+    if (!extra.noBg) {
+      ctx.save();
+      ctx.globalAlpha *= alpha;
+      if (!drawBackdrop(ctx, W, H, bgCfg, FRAME.t, FRAME.beat)) {
+        const other = bgCfg.kind === 'media' && FRAME.env.backdropSource ? FRAME.env.backdropSource(clip) : null;
+        if (other && hasFrame(other)) drawFitted(ctx, other, W, H, { fit: 'cover' });
+        else drawBlurBg(ctx, src, W, H, filter);
+      }
+      ctx.restore();
+    }
+    const [fc, fg] = layer('cutout', W, H);
+    fg.filter = filter;
+    paint(fg, src);
+    fg.globalCompositeOperation = 'destination-in';
+    // soften the edge on the small matte (cheap) rather than blurring at full frame size
+    const soft = clip.bgRemove.softness ?? 0.35;
+    const edgeMatte = soft > 0.05 ? blurred('matte-soft', matte, 0.6 + soft * 2.4, '', false) : matte;
+    fg.filter = 'none';
+    fg.imageSmoothingEnabled = true;
+    fg.imageSmoothingQuality = 'high';
+    paint(fg, edgeMatte);
+    if (mask) {
+      fg.filter = mask.feather ? `blur(${(mask.feather * W * 0.04).toFixed(1)}px)` : 'none';
+      fg.fillStyle = '#000';
+      withMaskPath(fg, W, H, mask, (p) => p.fill());
+    }
+    fg.globalCompositeOperation = 'source-over';
+    fg.filter = 'none';
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.drawImage(fc, 0, 0);
+    ctx.restore();
+    return true;
+  }
 
   // what shows around the picture: blurred copy, a color, or nothing
   const bg = extra.noBg ? (mask && mask.background === 'color' ? 'color' : 'none') : mask ? mask.background || 'blur' : clip.fit === 'blurfill' || small ? 'blur' : 'none';
@@ -616,22 +677,14 @@ function drawClip(ctx, W, H, clip, local, src, extra = {}) {
 
   const [lc, lg] = mask ? layer('mask', W, H) : [null, null];
   const g = mask ? lg : ctx;
-  g.save();
-  g.filter = filter;
-  if (!mask) g.globalAlpha *= alpha;
-  g.translate((extra.dx || 0) + ((clip.posX || 0) * W) / 2, (extra.dy || 0) + ((clip.posY || 0) * H) / 2);
-  if (clip.flip) {
-    g.translate(W, 0);
-    g.scale(-1, 1);
+  if (!mask) {
+    g.save();
+    g.globalAlpha *= alpha;
   }
-  drawFitted(g, src, W, H, {
-    fit: clip.fit || 'cover',
-    zoom: m.zoom * (extra.zoom || 1),
-    x: m.x,
-    y: m.y,
-    rotate: (clip.rotate || 0) + (extra.rot || 0),
-  });
-  g.restore();
+  g.filter = filter;
+  paint(g, src);
+  g.filter = 'none';
+  if (!mask) g.restore();
 
   if (mask) {
     lg.globalCompositeOperation = 'destination-in';
@@ -1299,6 +1352,9 @@ function drawVideoLayer(ctx, W, H, layer, t, env) {
  * env: { sourceFor(clip), image(mediaId), tab(mediaId, track), drums(layer), viz(layer), preview: bool }
  */
 export function renderFrame(ctx, W, H, project, t, env) {
+  FRAME.env = env;
+  FRAME.t = t;
+  FRAME.beat = beatEnvelope(project.beats && project.beats.beats, timelineToSong(t, project.song));
   ctx.save();
   ctx.fillStyle = project.background || '#000';
   ctx.fillRect(0, 0, W, H);
