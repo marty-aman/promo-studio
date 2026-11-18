@@ -157,15 +157,15 @@ export const TRENDS = [
 ];
 
 export const PLAYBOOK = [
-  { rule: 'Hook in the first 1.5–3 seconds', detail: 'Text on screen from frame one and the strongest part of the song first. Viewers decide that fast.', sources: ['qoncert', 'revid'] },
-  { rule: '7–15 seconds for performance clips', detail: 'Short clips get watched to the end and replayed, which is what both apps reward.', sources: ['freebeat'] },
-  { rule: 'Ask for shares, not likes', detail: 'Instagram now weights DM shares about 4× more than likes.', sources: ['hypebot'] },
-  { rule: 'Get people to use your sound', detail: 'Each video someone makes with your track shows it to a new audience.', sources: ['virlo'] },
-  { rule: 'Batch 20–30 clips per song', detail: 'Cut many 15–45 s clips from one track in one or two sessions before release.', sources: ['otw'] },
-  { rule: '3–5 Reels a week, judge after 4–6 weeks', detail: 'Consistency beats one big post. Give a format time before dropping it.', sources: ['artistpr'] },
-  { rule: 'At most 5 hashtags, under 3 minutes, original 9:16', detail: 'Searchable caption, a few precise tags; try new ideas as Instagram trial reels.', sources: ['revid'] },
-  { rule: 'Show the real band', detail: 'Process, mistakes and reactions cut through better than polished ads.', sources: ['koa', 'droptrack'] },
-  { rule: 'Cut the music video into 5–10 clips', detail: 'Short clips send more new viewers to the full video than any single tactic.', sources: ['unhurd'] },
+  { action: 'hook', rule: 'Hook in the first 1.5–3 seconds', detail: 'Text on screen from frame one and the strongest part of the song first. Viewers decide that fast.', sources: ['qoncert', 'revid'] },
+  { action: 'length', rule: '7–15 seconds for performance clips', detail: 'Short clips get watched to the end and replayed, which is what both apps reward.', sources: ['freebeat'] },
+  { action: 'shares', rule: 'Ask for shares, not likes', detail: 'Instagram now weights DM shares about 4× more than likes.', sources: ['hypebot'] },
+  { action: 'sound', rule: 'Get people to use your sound', detail: 'Each video someone makes with your track shows it to a new audience.', sources: ['virlo'] },
+  { action: 'batch', rule: 'Batch 20–30 clips per song', detail: 'Cut many 15–45 s clips from one track in one or two sessions before release.', sources: ['otw'] },
+  { action: 'calendar', rule: '3–5 Reels a week, judge after 4–6 weeks', detail: 'Consistency beats one big post. Give a format time before dropping it.', sources: ['artistpr'] },
+  { action: 'caption', rule: 'At most 5 hashtags, under 3 minutes, original 9:16', detail: 'Searchable caption, a few precise tags; try new ideas as Instagram trial reels.', sources: ['revid'] },
+  { action: 'raw', rule: 'Show the real band', detail: 'Process, mistakes and reactions cut through better than polished ads.', sources: ['koa', 'droptrack'] },
+  { action: 'mv', rule: 'Cut the music video into 5–10 clips', detail: 'Short clips send more new viewers to the full video than any single tactic.', sources: ['unhurd'] },
 ];
 
 export const HASHTAG_SETS = [
@@ -269,4 +269,77 @@ export function applyRecipe(d, trend, ctx = {}) {
   }
   d.inspiration = trend.id;
   if (d.layout) applyLayout(d, d.layout);
+}
+
+// ------------------------------------------------------------ playbook "Apply" buttons
+
+/** What each playbook button does: 'edit' changes the project, 'tool' opens a tool on this page. */
+export const PLAYBOOK_ACTIONS = {
+  hook: { kind: 'edit', label: 'Put the hook first', done: 'The loudest part of the song now starts the video, with a hook line from frame one. Pick an opener below for an even stronger start.' },
+  length: { kind: 'edit', label: 'Make it 12 seconds', done: 'Trimmed to a 12 s hook plus a short end card.' },
+  shares: { kind: 'edit', label: 'Add a share ask', done: 'A “send this to…” line now shows before the end card, and the end card asks for a send.' },
+  sound: { kind: 'edit', label: 'Add “use this sound”', done: 'A “use this sound” line now shows in the video.' },
+  batch: { kind: 'tool', label: 'Batch export…' },
+  calendar: { kind: 'tool', label: 'Make a posting calendar…' },
+  caption: { kind: 'tool', label: 'Write my caption…' },
+  raw: { kind: 'edit', label: 'Use a raw, real look', done: 'Effects, grades and zooms are off, with light grain: it looks like a real phone video.' },
+  mv: { kind: 'tool', label: 'Split a music video…' },
+};
+
+const overlayText = (text, start, end, extra = {}) => ({
+  id: uid('txt'), text, start: +start.toFixed(2), end: +end.toFixed(2), x: 50, y: 22, size: text.length > 26 ? 6 : 7.5, font: 'Bebas Neue',
+  color: '#ffffff', outline: '#000000', box: true, boxColor: '#111111', boxOpacity: 0.9, animation: 'pop', ...extra,
+});
+
+/**
+ * Apply an 'edit' playbook action to draft `d`.
+ * ctx: { hookStart(len) -> song offset | null, lyric (best line) , similar }
+ */
+export function applyPlaybook(d, action, ctx = {}) {
+  const ecLen = d.endCard.enabled ? d.endCard.duration : 0;
+  const content = Math.max(3, d.duration - ecLen);
+  d.texts ||= [];
+  if (action === 'hook' || action === 'length') {
+    if (action === 'length') {
+      if (d.endCard.enabled) d.endCard.duration = Math.min(d.endCard.duration, 2.5);
+      d.duration = +(12 + (d.endCard.enabled ? d.endCard.duration : 0)).toFixed(2);
+    }
+    const len = Math.max(3, d.duration - (d.endCard.enabled ? d.endCard.duration : 0));
+    const start = d.song && ctx.hookStart ? ctx.hookStart(len) : null;
+    if (start != null) d.song.offset = start;
+    if (action === 'hook' && !d.texts.some((t) => t.start < 0.3)) {
+      const line = ctx.lyric ? ctx.lyric.toUpperCase() : d.endCard.title && d.endCard.title !== 'Song Title' ? `${d.endCard.title.toUpperCase()} · OUT NOW` : 'WAIT FOR IT';
+      d.texts.unshift(overlayText(line.length > 40 ? 'WAIT FOR IT' : line, 0, Math.min(2.8, len), { y: 18, boxColor: '#e0182d', hook: true }));
+    }
+    d.texts.forEach((t) => (t.end = Math.min(t.end, len)));
+    return;
+  }
+  if (action === 'shares') {
+    d.texts = d.texts.filter((t) => t.kind !== 'share');
+    const line = /emo/i.test(d.inspiration || '') ? 'SEND THIS TO YOUR EMO FRIEND' : 'SEND THIS TO THE FRIEND WHO STARTS THE PIT';
+    d.texts.push({ ...overlayText(line, Math.max(0, content - 3.2), content, { y: 26 }), kind: 'share' });
+    d.endCard.subtext = 'Send it to a friend 📩';
+    d.captionStyle = 'share';
+    return;
+  }
+  if (action === 'sound') {
+    d.texts = d.texts.filter((t) => t.kind !== 'sound');
+    d.texts.push({ ...overlayText('USE THIS SOUND 🔊', Math.min(content - 1, 2.8), Math.min(content, 6.5), { y: 82, size: 6, boxColor: '#1d1f27' }), kind: 'sound' });
+    d.captionStyle = 'sound';
+    return;
+  }
+  if (action === 'raw') {
+    d.clips.forEach((c) => {
+      c.effects = {};
+      c.grade = null;
+      c.kenBurns = null;
+      c.filter = { preset: 'none', adjust: {} };
+      c.transition = { type: 'none', duration: 0.3 };
+    });
+    Object.assign(d.look, { grain: 0.15, vignette: 0.15, lightLeak: 0, scanlines: 0, letterbox: 0, beatFlash: 0 });
+    d.lyricStyle.animation = 'fade';
+    d.lyricStyle.box = true;
+    return;
+  }
+  throw new Error(`not an edit action: ${action}`);
 }

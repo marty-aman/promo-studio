@@ -293,6 +293,7 @@ export function buildLayersPanel(b, ctx) {
     if (L.type === 'tab') {
       const tabs = media.all().filter((m) => m.kind === 'tab' && m.tracks && m.tracks.length);
       const upload = button('Upload Guitar Pro tab', async () => importFiles(await pickFiles(TAB_ACCEPT, false), { tabLayer: L.id }), { iconName: 'upload', variant: tabs.length ? 'ghost sm' : 'primary' });
+      const studio = button('Edit in Tab Studio', () => ui.openTab('tabstudio'), { iconName: 'guitar', variant: 'ghost sm', title: 'Edit notes, or make a tab from your stems' });
       const rec = media.get(L.mediaId);
       const tl = () => {
         const x = findLayer(store.get(), L.id);
@@ -304,7 +305,7 @@ export function buildLayersPanel(b, ctx) {
         const r = media.get(fileSel.value);
         x.track = r ? r.tracks[0].index : 0;
       })));
-      if (!rec) return h('div', {}, common, field('Tab file', fileSel), upload, h('p', { class: 'muted small' }, 'Guitar Pro (.gp, .gp5, .gp4, .gp3, .gpx) or MusicXML.'));
+      if (!rec) return h('div', {}, common, field('Tab file', fileSel), h('div', { class: 'row' }, upload, studio), h('p', { class: 'muted small' }, 'Guitar Pro (.gp, .gp5, .gp4, .gp3, .gpx) or MusicXML. No file? Tab Studio can make one from your stems.'));
       const T = set;
       const g = (k, def) => get((x) => x[k] ?? def);
       const style = L.style || 'tab';
@@ -356,7 +357,7 @@ export function buildLayersPanel(b, ctx) {
         {},
         common,
         field('Tab file', fileSel),
-        upload,
+        h('div', { class: 'row' }, upload, studio),
         b.select('Track', () => String(findLayer(store.get(), L.id)?.track ?? 0), T((o, v) => (o.track = parseInt(v, 10))), rec.tracks.map((tr) => [String(tr.index), `${tr.name} · ${tr.strings} strings (${tr.tuning.slice().reverse().join(' ')})`])),
         h('div', { class: 'lbl' }, 'Style'),
         styleGrid,

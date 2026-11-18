@@ -5,13 +5,15 @@ import { media } from './media.js';
 import { renderFrame } from './renderer.js';
 import { saveSettings } from './state.js';
 import { h, icon, button, toast } from './dom.js';
-import { RESEARCHED_ON, NICHE, SOURCES, TRENDS, PLAYBOOK, HASHTAG_SETS, CAPTION_HOOKS, CALENDAR, applyRecipe, fillTokens } from './inspiration.js';
+import { RESEARCHED_ON, NICHE, SOURCES, TRENDS, PLAYBOOK, PLAYBOOK_ACTIONS, HASHTAG_SETS, CAPTION_HOOKS, CALENDAR, applyRecipe, applyPlaybook, fillTokens } from './inspiration.js';
+import { batchTool, calendarTool, captionTool, hookOpeners } from './page-tools.js';
+import { bestLyric } from './captions.js';
 import { tabSources } from './templates.js';
 
 const PLATFORM_FILTERS = ['All', 'TikTok', 'Reels', 'Shorts'];
 
-export function buildInspirationPage({ store, engine, ui, settings }) {
-  const state = { filter: 'All' };
+export function buildInspirationPage({ store, engine, ui, settings, panels }) {
+  const state = { filter: 'All', tool: null };
   const root = h('div', { class: 'page' });
 
   const similarIn = h('input', { type: 'text', value: settings.similarBands || 'Bad Omens, Spiritbox, Pierce the Veil', 'aria-label': 'Bands your fans also like' });
@@ -30,6 +32,42 @@ export function buildInspirationPage({ store, engine, ui, settings }) {
       return rec && rec.envelope ? findHook(rec.envelope, rec.envRate, len, rec.duration) : null;
     },
   });
+
+  const cityIn = h('input', { type: 'text', value: settings.city ?? 'Seattle', 'aria-label': 'Your city (for captions)' });
+  cityIn.addEventListener('change', () => {
+    settings.city = cityIn.value.trim();
+    saveSettings(settings);
+    render();
+  });
+
+  const playbookApply = (rule) => {
+    const a = PLAYBOOK_ACTIONS[rule.action];
+    if (!a) return;
+    if (a.kind === 'tool') {
+      state.tool = state.tool === rule.action ? null : rule.action;
+      render();
+      const el = root.querySelector('.tool-box');
+      if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      return;
+    }
+    const p = store.get();
+    const from = p.song ? p.song.offset : 0;
+    const lyric = bestLyric(p.lyrics, from, from + 15);
+    store.update((d) => applyPlaybook(d, rule.action, { ...ctx(), lyric: lyric && lyric.text }));
+    engine.seek(0);
+    toast(`${a.done} Undo (Ctrl+Z) to go back.`, 'info', 5000);
+    if (rule.action === 'hook') {
+      const el = root.querySelector('#hook-openers');
+      if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+  };
+
+  const toolFor = (id) =>
+    id === 'batch' ? batchTool({ store, engine, render, mode: 'song' })
+      : id === 'mv' ? batchTool({ store, engine, render, mode: 'mv' })
+        : id === 'calendar' ? calendarTool({ store })
+          : id === 'caption' ? captionTool({ store, settings })
+            : null;
 
   const build = (trend) => {
     store.update((d) => applyRecipe(d, trend, ctx()));
@@ -118,6 +156,7 @@ export function buildInspirationPage({ store, engine, ui, settings }) {
         'div',
         { class: 'page-bar' },
         h('label', { class: 'similar' }, h('span', { class: 'lbl' }, 'Bands your fans also like'), similarIn),
+        h('label', { class: 'similar city' }, h('span', { class: 'lbl' }, 'Your city'), cityIn),
         h(
           'div',
           { class: 'seg', role: 'radiogroup', 'aria-label': 'Platform' },
@@ -128,6 +167,7 @@ export function buildInspirationPage({ store, engine, ui, settings }) {
       ),
       h('p', { class: 'muted tiny note' }, 'Trends move every week. Before you post, check what sounds and hashtags are rising today in ', h('a', { href: SOURCES.creative.url, target: '_blank', rel: 'noopener noreferrer' }, 'TikTok Creative Center'), ' and the trending audio list in the Instagram Reels editor.'),
       h('section', {}, h('h3', { class: 'page-sect' }, 'Trending formats in your niche'), h('div', { class: 'trend-grid' }, trends.map(trendCard))),
+      h('section', { id: 'hook-openers' }, h('h3', { class: 'page-sect' }, 'Hook openers for the first second'), hookOpeners({ store, engine, ui, settings, panels })),
       h(
         'div',
         { class: 'page-cols' },
@@ -138,7 +178,17 @@ export function buildInspirationPage({ store, engine, ui, settings }) {
           h(
             'div',
             { class: 'playbook' },
-            PLAYBOOK.map((p) => h('div', { class: 'rule' }, h('strong', {}, p.rule), h('span', { class: 'small' }, p.detail), sourceLinks(p.sources))),
+            PLAYBOOK.map((p) =>
+              h('div', { class: `rule${state.tool === p.action ? ' on' : ''}` },
+                h('strong', {}, p.rule),
+                h('span', { class: 'small' }, p.detail),
+                sourceLinks(p.sources),
+                PLAYBOOK_ACTIONS[p.action]
+                  ? button(PLAYBOOK_ACTIONS[p.action].label, () => playbookApply(p), { iconName: PLAYBOOK_ACTIONS[p.action].kind === 'tool' ? 'settings' : 'wand', variant: `sm${PLAYBOOK_ACTIONS[p.action].kind === 'edit' ? ' primary' : ''}` })
+                  : null,
+                state.tool === p.action ? toolFor(p.action) : null,
+              ),
+            ),
           ),
         ),
         h(

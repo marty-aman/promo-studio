@@ -63,6 +63,56 @@ any other static host.
 - CTA tokens: `{date}` → "NOV 21", `{countdown}` → "OUT IN 3 DAYS" / "OUT TOMORROW" / "OUT NOW".
 
 **Extras**
+- **Carousel page:** Instagram carousel posts built from your cover art, photos, frames from your clips,
+  stills from the edit itself (with lyrics and tab) and your release info.
+  - Suggested carousels: release announcement, lyric reveal, behind the song, photo dump, rate the
+    frames, and learn the riff when the edit has a tab. Each follows the 2026 research: slide 1 earns the
+    swipe, each slide pays off one idea, the last asks for one thing, 5–10 slides.
+  - Edit any slide: its picture (with the exact moment for clip frames), layout, text, and 11 looks with
+    a preview of that slide in each: flash, film, grit, noir, neon, cinematic, VHS, dreamy, duotone in
+    your cover colours, and polaroid. Each look says what it does for a post.
+  - Reorder, duplicate or delete slides, with up to 20 per post.
+  - Suggested captions written for carousels.
+  - Downloads all 1080×1350 slides and the caption as one .zip, or shares them to the app from a phone.
+- **Tab Studio** (its own page, also opened from a tab layer's “Edit in Tab Studio”): open any Guitar Pro
+  file from your media, or start a new tab. All tracks (guitar, bass, 7-string, 5-string, drums) are
+  stacked and scroll together.
+  - Keyboard editing: arrows move, digits type frets (two quickly for 10–24), + / − change length,
+    `.` dots, R rests, I inserts a beat. Techniques: H hammer-on, S slide, B bend, V vibrato, P palm mute,
+    X dead note, G ghost.
+  - Drum rows you click or press Enter on, tunings (drop D, drop C, 7-string, 5-string bass…), tempo
+    changes, time signatures, add and delete bars, undo, and playback with a simple synth.
+  - Save writes a new Guitar Pro 7 file into your media. “Save & use in video” also points the video's
+    tab and drum layers at it.
+- **Tab from stems** (in Tab Studio): upload an isolated stem and pick the part.
+  - Bass lines and lead riffs are pitch-tracked note by note and placed on strings and frets that keep
+    the hand in one position.
+  - Rhythm guitar becomes power-chord shapes with the chord names (E5, G, Am…).
+  - Drums give kick, snare and hi-hat.
+  - Everything is lined up with the song's tempo, or the stem's own, with the stem's waveform under the
+    track so you can check it by eye and fix it by ear.
+- **Posting playbook buttons** (Inspiration page): every rule has an Apply button. Put the hook first,
+  make it 12 seconds, add a “send this to…” share ask, add “use this sound”, and use a raw real-phone look
+  change the edit directly. The rest open tools on the page:
+  - **Batch export:** several promos from the loudest non-overlapping sections of the song, downloaded as
+    one .zip.
+  - **Split a music video:** its strongest moments, each as its own short, with the song in sync.
+  - **Posting calendar:** 3–5 posts a week for 4–6 weeks, downloaded as an .ics file for Google, Apple or
+    Outlook calendar.
+  - **Caption writer:** opens the caption suggestions.
+- **Hook openers:** ideas for the first second, grouped as things you film yourselves (staged fall onto a
+  mat, the outrageous one-liner, the soft fake-out, the wrong-instrument breakdown…), licensed stock
+  searches, and TikTok's own Stitch and reply tools. “Add as intro” sets the on-screen line, a sound effect
+  and a punchy first cut, optionally with one of your clips first. Reposting other people's clips isn't
+  offered, because it gets reels muted or taken down.
+- **Suggested captions** (Export tab, Inspiration page and carousel tool): written from the edit (song,
+  look, hook lyric, release date, tab layers, your city and similar bands) in the formats the 2026 research
+  found work: a 3–7 word hook first, searchable plain words, one specific ask (sends to a friend count most
+  on Instagram) and at most 5 hashtags, with TikTok versions under 150 characters. Sources are linked in
+  the app.
+- **From Spotify** (End card tab): paste a track or album link to fill in the title, cover art and a
+  “Listen on Spotify” link for your bio. Spotify doesn't let other apps download songs, so the audio
+  still comes from your own file.
 - **Suggested tab:** add a song and some clips (plus a Guitar Pro file or lyrics if you have them) and it
   builds three different ready-to-post edits. Each one picks the hook, cuts your clips on the beat, applies
   a fitting template, lines tab and drum layers up with the song's first beat and tempo (layers you synced
