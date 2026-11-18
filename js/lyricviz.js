@@ -2,6 +2,7 @@
 // They replace the one-line-at-a-time lyric when lyricStyle.display is set.
 import { wordTimings } from './core.js';
 import { glowPass } from './canvasfx.js';
+import { lineStyle } from './linestyle.js';
 
 export const LYRIC_DISPLAYS = [
   ['line', 'One line at a time', 'Each line on its own with the animation you pick'],
@@ -102,7 +103,7 @@ function wrap(ctx, words, maxW) {
 
 // ------------------------------------------------------------ A: scrolling lyric sheet
 
-function drawSheet(ctx, W, H, lines, s, ts) {
+function drawSheet(ctx, W, H, lines, s, ts, beat, styleOf = () => s) {
   const pos = sheetPosition(lines, ts);
   if (!pos || pos.alpha <= 0) return;
   const { index: i, scroll } = pos;
@@ -116,11 +117,12 @@ function drawSheet(ctx, W, H, lines, s, ts) {
   const items = [];
   for (let j = Math.max(0, i - 3); j <= Math.min(lines.length - 1, i + 4); j++) {
     const dist = Math.abs(j - f);
+    const ls = styleOf(lines[j]);
     const size = big + (small - big) * clamp(dist, 0, 1);
-    ctx.font = fontOf(size, s.font);
-    const words = caseOf(s, lines[j].text).split(/\s+/).filter(Boolean);
+    ctx.font = fontOf(size, ls.font);
+    const words = caseOf(ls, lines[j].text).split(/\s+/).filter(Boolean);
     const { rows, space } = wrap(ctx, words, maxW * (size / big));
-    items.push({ j, size, rows, space, h: rows.length * size * 1.08, dist });
+    items.push({ j, size, rows, space, h: rows.length * size * 1.08, dist, ls });
   }
   // stack the blocks, then shift so the scroll position sits on y0
   const posY = new Map();
@@ -141,7 +143,8 @@ function drawSheet(ctx, W, H, lines, s, ts) {
     if (alpha <= 0.01) continue;
     const cy = y0 + posY.get(it.j) - offset;
     if (cy < -it.h || cy > H + it.h) continue;
-    ctx.font = fontOf(it.size, s.font);
+    const ls = it.ls;
+    ctx.font = fontOf(it.size, ls.font);
     const line = lines[it.j];
     const isCur = it.j === i && ts >= line.start;
     const times = isCur ? wordTimes(line) : null;
@@ -153,17 +156,17 @@ function drawSheet(ctx, W, H, lines, s, ts) {
         const ww = ctx.measureText(word).width;
         const sung = times && times[wi] && ts >= times[wi].start;
         ctx.globalAlpha = alpha;
-        if ((s.outlineWidth || 0) > 0) {
-          ctx.strokeStyle = s.outline;
-          ctx.lineWidth = it.size * s.outlineWidth * 0.12;
+        if ((ls.outlineWidth || 0) > 0) {
+          ctx.strokeStyle = ls.outline;
+          ctx.lineWidth = it.size * ls.outlineWidth * 0.12;
           ctx.strokeText(word, x, ry);
-        } else if (s.shadow !== false) {
+        } else if (ls.shadow !== false) {
           // soft dark edge so the sheet reads over bright video
           ctx.strokeStyle = 'rgba(0,0,0,0.35)';
           ctx.lineWidth = it.size * 0.1;
           ctx.strokeText(word, x, ry);
         }
-        ctx.fillStyle = isCur ? (sung ? s.highlight : rgba(s.color, 0.6)) : s.color;
+        ctx.fillStyle = isCur ? (sung ? ls.highlight : rgba(ls.color, 0.6)) : ls.color;
         ctx.textAlign = 'left';
         ctx.fillText(word, x, ry);
         x += ww + it.space;
@@ -262,9 +265,10 @@ function currentLine(lines, ts, tail) {
   return null;
 }
 
-function drawPoster(ctx, W, H, lines, s, ts, beat) {
+function drawPoster(ctx, W, H, lines, s0, ts, beat, styleOf = () => s0) {
   const line = currentLine(lines, ts, 0.2);
   if (!line) return;
+  const s = styleOf(line);
   const next = lines[lastStarted(lines, ts) + 1];
   const endAt = Math.min(line.end + 0.2, next ? next.start : Infinity);
   const out = clamp((endAt - ts) / 0.2, 0, 1);
@@ -331,7 +335,7 @@ function drawPoster(ctx, W, H, lines, s, ts, beat) {
 
 // ------------------------------------------------------------ C: 3D word tunnel
 
-function drawTunnel(ctx, W, H, lines, s, ts, beat) {
+function drawTunnel(ctx, W, H, lines, s, ts, beat, styleOf = () => s) {
   const cx = (W * (s.x ?? 50)) / 100;
   const cy = (H * s.y) / 100;
   const i = lastStarted(lines, ts);
@@ -404,7 +408,8 @@ function drawTunnel(ctx, W, H, lines, s, ts, beat) {
       const ang = rnd(seed * 53 + wi) * Math.PI * 2;
       const ox = Math.cos(ang) * W * 0.3 * m;
       const oy = Math.sin(ang) * W * 0.3 * m;
-      items.push({ text: caseOf(s, w.word), z, alpha, ox, oy, current: ts >= w.start && ts < holdEnd });
+      const ls = styleOf(line);
+      items.push({ text: caseOf(ls, w.word), z, alpha, ox, oy, current: ts >= w.start && ts < holdEnd, ls });
     });
   }
   items.sort((a, b) => b.z - a.z);
@@ -415,12 +420,12 @@ function drawTunnel(ctx, W, H, lines, s, ts, beat) {
     if (size > W * 0.9) continue;
     const x = cx + it.ox / it.z;
     const y = cy + it.oy / it.z;
-    ctx.font = fontOf(size, s.font, 900);
+    ctx.font = fontOf(size, it.ls.font, 900);
     ctx.globalAlpha = it.alpha;
-    ctx.strokeStyle = s.highlight;
+    ctx.strokeStyle = it.ls.highlight;
     ctx.lineWidth = Math.max(1, size * 0.05);
     ctx.strokeText(it.text, x, y);
-    ctx.fillStyle = s.color;
+    ctx.fillStyle = it.ls.color;
     ctx.fillText(it.text, x, y);
     if (it.current) {
       const font = ctx.font;
@@ -430,7 +435,7 @@ function drawTunnel(ctx, W, H, lines, s, ts, beat) {
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         g.globalAlpha = a;
-        g.strokeStyle = s.highlight;
+        g.strokeStyle = it.ls.highlight;
         g.lineWidth = size * 0.12;
         g.strokeText(it.text, x, y);
       });
@@ -444,10 +449,15 @@ function drawTunnel(ctx, W, H, lines, s, ts, beat) {
 const DRAW = { sheet: drawSheet, poster: drawPoster, tunnel: drawTunnel };
 
 /** Draw the lyrics with a whole-song display. `ts` is song time. Returns false for the one-line display. */
-export function drawLyricDisplay(ctx, W, H, lyrics, s, ts, beat = 0) {
+export function drawLyricDisplay(ctx, W, H, lyrics, s, ts, beat = 0, theme = null) {
   const fn = DRAW[s.display];
   if (!fn) return false;
   const lines = sorted(lyrics || []);
-  if (lines.length) fn(ctx, W, H, lines, s, ts, beat);
+  // each line can carry its own look (font, colours, case); the layout stays the shared one
+  const styleOf = (line) => {
+    const ls = lineStyle(s, line, theme);
+    return ls === s ? s : { ...s, font: ls.font, color: ls.color, highlight: ls.highlight, outline: ls.outline, outlineWidth: ls.outlineWidth, uppercase: ls.uppercase, size: ls.size };
+  };
+  if (lines.length) fn(ctx, W, H, lines, s, ts, beat, styleOf);
   return true;
 }

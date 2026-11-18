@@ -481,6 +481,11 @@ export const STYLE_PLACEMENT = {
   glass: { y: 24, width: 92, height: 20 },
 };
 
+// Colours of the chart itself (backdrop, road, grid, glow). Themes set layer.chrome; these defaults are
+// the original purple-night look.
+export const DRUM_CHROME = { bg0: '#05030f', bg1: '#140a2e', bg2: '#230b3d', road: '#0a061e', grid: '#a078ff', glow: '#ff5ac8', edge: '#c8a0ff', shell: '#1e1830', kickShell: '#1e0e18' };
+const chromeOf = (layer) => ({ ...DRUM_CHROME, ...(layer.chrome || {}) });
+
 const laneColor = (layer, id) => (layer.colors && layer.colors[id]) || (LANES.find((l) => l.id === id) || {}).color || '#ffffff';
 const laneLabel = (id) => (LANES.find((l) => l.id === id) || {}).label || id;
 const fract = (x) => x - Math.floor(x);
@@ -507,6 +512,7 @@ function box(W, H, layer) {
 // ---- A: neon highway
 function drawNeon(ctx, W, H, layer, data, dt, { shownFrom }) {
   const { bw, bh, bx, by } = box(W, H, layer);
+  const C = chromeOf(layer);
   const lanes = (data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat']).filter((l) => l !== 'kick');
   const hasKick = data.lanes.includes('kick');
   const cols = Math.max(1, lanes.length);
@@ -529,9 +535,9 @@ function drawNeon(ctx, W, H, layer, data, dt, { shownFrom }) {
   rrect(ctx, bx, by, bw, bh, unit * 0.06);
   ctx.clip();
   const bg = ctx.createLinearGradient(0, by, 0, by + bh);
-  bg.addColorStop(0, rgba('#05030f', layer.bgOpacity ?? 0.7));
-  bg.addColorStop(0.6, rgba('#140a2e', layer.bgOpacity ?? 0.7));
-  bg.addColorStop(1, rgba('#230b3d', layer.bgOpacity ?? 0.7));
+  bg.addColorStop(0, rgba(C.bg0, layer.bgOpacity ?? 0.7));
+  bg.addColorStop(0.6, rgba(C.bg1, layer.bgOpacity ?? 0.7));
+  bg.addColorStop(1, rgba(C.bg2, layer.bgOpacity ?? 0.7));
   ctx.fillStyle = bg;
   ctx.fillRect(bx, by, bw, bh);
   for (let s = 0; s < 40; s++) {
@@ -541,8 +547,8 @@ function drawNeon(ctx, W, H, layer, data, dt, { shownFrom }) {
     ctx.fillRect(sx, sy, Math.max(1, unit * 0.004), Math.max(1, unit * 0.004));
   }
   const hg = ctx.createRadialGradient(cx, horizon, 0, cx, horizon, bw * 0.5);
-  hg.addColorStop(0, 'rgba(255,90,200,0.45)');
-  hg.addColorStop(1, 'rgba(255,90,200,0)');
+  hg.addColorStop(0, rgba(C.glow, 0.45));
+  hg.addColorStop(1, rgba(C.glow, 0));
   ctx.fillStyle = hg;
   ctx.fillRect(bx, by, bw, bh * 0.5);
 
@@ -553,9 +559,9 @@ function drawNeon(ctx, W, H, layer, data, dt, { shownFrom }) {
   ctx.lineTo(xAt(1, strike), strike);
   ctx.lineTo(xAt(0, strike), strike);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(10,6,30,0.55)';
+  ctx.fillStyle = rgba(C.road, 0.55);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(160,120,255,0.18)';
+  ctx.strokeStyle = rgba(C.grid, 0.18);
   ctx.lineWidth = Math.max(1, unit * 0.003);
   const spacing = 0.25;
   for (let k = Math.ceil((dt - 0.2) / spacing); k * spacing < dt + win; k++) {
@@ -755,8 +761,8 @@ function drawNeon(ctx, W, H, layer, data, dt, { shownFrom }) {
 
   // horizon fade so notes emerge from the haze
   const fg = ctx.createLinearGradient(0, horizon, 0, horizon + (strike - horizon) * 0.25);
-  fg.addColorStop(0, 'rgba(5,3,15,0.9)');
-  fg.addColorStop(1, 'rgba(5,3,15,0)');
+  fg.addColorStop(0, rgba(C.bg0, 0.9));
+  fg.addColorStop(1, rgba(C.bg0, 0));
   ctx.fillStyle = fg;
   ctx.fillRect(bx, horizon - 2, bw, (strike - horizon) * 0.25 + 2);
 
@@ -774,7 +780,7 @@ function drawNeon(ctx, W, H, layer, data, dt, { shownFrom }) {
       const ty = by + bh * 0.975;
       ctx.lineJoin = 'round';
       for (const [lw, a] of [[fs * 0.3, 0.18], [fs * 0.14, 0.35]]) {
-        ctx.strokeStyle = rgba('#ff5ac8', a);
+        ctx.strokeStyle = rgba(C.glow, a);
         ctx.lineWidth = lw;
         ctx.strokeText(label, cx, ty);
       }
@@ -783,7 +789,7 @@ function drawNeon(ctx, W, H, layer, data, dt, { shownFrom }) {
     }
   }
   ctx.restore();
-  ctx.strokeStyle = 'rgba(200,160,255,0.35)';
+  ctx.strokeStyle = rgba(C.edge, 0.35);
   ctx.lineWidth = Math.max(1, unit * 0.004);
   rrect(ctx, bx, by, bw, bh, unit * 0.06);
   ctx.stroke();
@@ -875,7 +881,7 @@ function drawKit(ctx, W, H, layer, data, dt) {
     ctx.translate(x, y);
     ctx.scale(s, s);
     // shell
-    ctx.fillStyle = 'rgba(30,24,48,0.95)';
+    ctx.fillStyle = rgba(chromeOf(layer).shell, 0.95);
     ctx.fillRect(-rx, 0, rx * 2, depth);
     ctx.beginPath();
     ctx.ellipse(0, depth, rx, ry, 0, 0, Math.PI);
@@ -951,7 +957,7 @@ function drawKit(ctx, W, H, layer, data, dt) {
       g.arc(kx, ky, r, 0, Math.PI * 2);
       g.stroke();
     });
-    ctx.fillStyle = 'rgba(30,14,24,0.95)';
+    ctx.fillStyle = rgba(chromeOf(layer).kickShell, 0.95);
     ctx.beginPath();
     ctx.arc(kx, ky, r, 0, Math.PI * 2);
     ctx.fill();

@@ -28,6 +28,10 @@ import { bgRemoveSection } from './panel-bgremove.js';
 import { buildSuggestPanel, hasNewSuggestions } from './panel-suggest.js';
 import { captionPicker } from './panel-captions.js';
 import { fetchSpotifyInfo } from './spotify.js';
+import { LINE_PRESETS, lineStyle, hasLineStyle } from './linestyle.js';
+import { THEMES, themeById, applyTheme } from './themes.js';
+
+const themeState = { motion: false };
 import { ensureLayerAnalyses } from './media.js';
 import { media, addMedia, removeMedia, tabTimeline } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
@@ -284,6 +288,7 @@ export function createPanels({ store, engine, ui }) {
     return h(
       'div',
       {},
+      themeSection(p, previewT),
       section(
         'Layout for the app you post to',
         h('p', { class: 'muted small' }, 'Moves lyrics, text, your logo, the progress bar and the end card into the area that app leaves clear. Templates keep the layout you pick here.'),
@@ -296,6 +301,75 @@ export function createPanels({ store, engine, ui }) {
         p.clips.length ? null : h('p', { class: 'muted tiny' }, 'Add a few clips first to see the previews properly.'),
         h('div', { class: 'tpl-grid' }, cards),
       ),
+    );
+  }
+
+  // ---------------------------------------------------------------- THEMES
+  function themeSection(p, previewT) {
+    const cur = p.theme && themeById(p.theme.id);
+    const cards = THEMES.map((t) => {
+      const c = h('canvas', { width: 54, height: 96, class: 'theme-thumb', 'aria-hidden': 'true' });
+      requestAnimationFrame(() => {
+        const draft = structuredClone(store.get());
+        applyTheme(draft, t.id, { colors: p.theme && p.theme.id === t.id && p.theme.custom ? p.theme.colors : null });
+        draft.look.overlay = 'off';
+        try {
+          renderFrame(c.getContext('2d'), c.width, c.height, draft, previewT, engine.env(false));
+        } catch (e) {
+          console.warn('theme preview failed', e);
+        }
+      });
+      const on = p.theme && p.theme.id === t.id;
+      const cols = on ? p.theme.colors : t.colors;
+      return h(
+        'button',
+        {
+          type: 'button',
+          class: `theme-card${on ? ' on' : ''}`,
+          'aria-pressed': on ? 'true' : 'false',
+          title: t.blurb,
+          onclick: () => {
+            store.update((d) => applyTheme(d, t.id, { motion: themeState.motion }));
+            toast(`${t.name} applied to lyrics, text, picture, end card, layers and backgrounds. Undo (Ctrl+Z) to go back.`, 'info', 4500);
+            ui.refreshPanels(true);
+          },
+        },
+        c,
+        h('span', { class: 'theme-info' },
+          h('strong', {}, t.name),
+          h('span', { class: 'theme-sw', 'aria-hidden': 'true' }, ['bg', 'deep', 'accent', 'light'].map((k) => h('i', { style: { background: cols[k] } }))),
+          h('span', { class: 'muted tiny' }, t.blurb)),
+      );
+    });
+    const motion = h('input', { type: 'checkbox', checked: themeState.motion });
+    motion.addEventListener('change', () => (themeState.motion = motion.checked));
+    const own = cur
+      ? (() => {
+          const pick = (k, label) => {
+            const inp = h('input', { type: 'color', value: p.theme.colors[k], 'aria-label': label });
+            inp.addEventListener('change', () => {
+              store.update((d) => applyTheme(d, cur.id, { colors: { ...d.theme.colors, [k]: inp.value } }), `theme-${k}`);
+              ui.refreshPanels(true);
+            });
+            return h('label', { class: 'theme-pick' }, inp, h('span', { class: 'tiny' }, label));
+          };
+          return h('div', { class: 'theme-own' },
+            h('div', { class: 'lbl' }, `Make my own ${cur.name}`),
+            h('div', { class: 'row' }, pick('bg', 'Background'), pick('deep', 'Dark tone'), pick('accent', 'Accent'), pick('light', 'Text')),
+            h('div', { class: 'row' },
+              p.theme.custom ? button('Back to the theme’s colours', () => (store.update((d) => applyTheme(d, cur.id)), ui.refreshPanels(true)), { variant: 'ghost sm' }) : null,
+              button('Also use its cuts and motion', () => {
+                store.update((d) => applyTheme(d, cur.id, { colors: d.theme.colors, motion: true }));
+                toast(`${cur.name} cuts, clip effects and lyric motion applied`);
+              }, { variant: 'ghost sm' })));
+        })()
+      : null;
+    return section(
+      'Theme',
+      h('p', { class: 'muted small' }, 'Dark looks for heavy music. A theme recolours everything at once: lyrics and text, the picture, the end card, tab, drum and visualizer layers, cut-out backgrounds and carousel slides. Your clips, timing and lyrics stay. Templates you pick afterwards keep the theme.'),
+      h('div', { class: 'theme-grid' }, cards),
+      h('label', { class: 'toggle' }, motion, h('span', {}, 'Also use the theme’s cuts, clip effects and lyric motion')),
+      own,
     );
   }
 
@@ -1672,6 +1746,70 @@ export function createPanels({ store, engine, ui }) {
   }
 
   // ---------------------------------------------------------------- INSPECTOR
+  // ---------------------------------------------------------------- per-line lyric look
+  function lineLookSection(b, L, get, line) {
+    const shared = () => store.get().lyricStyle;
+    const cur = () => lineStyle(shared(), get() || line, store.get().theme);
+    const st = line.style || {};
+    const edit = (key) => L((x, v) => {
+      x.style = { ...(x.style || {}), [key]: v };
+    });
+    const chips = h(
+      'div',
+      { class: 'chips', role: 'radiogroup', 'aria-label': 'Look for this line' },
+      h('button', { type: 'button', role: 'radio', 'aria-checked': hasLineStyle(line) ? 'false' : 'true', class: `btn chip${hasLineStyle(line) ? '' : ' on'}`, onclick: () => store.update(L((x) => delete x.style)) }, 'Same as the others'),
+      LINE_PRESETS.map(([id, label, hint]) =>
+        h('button', { type: 'button', role: 'radio', title: hint, 'aria-checked': st.preset === id ? 'true' : 'false', class: `btn chip${st.preset === id ? ' on' : ''}`, onclick: () => store.update(L((x) => (x.style = { preset: id }))) }, label)),
+    );
+    const sameText = () => {
+      const t = (get() || line).text.trim().toLowerCase();
+      return store.get().lyrics.filter((x) => x.id !== line.id && x.text.trim().toLowerCase() === t);
+    };
+    const twins = sameText().length;
+    return section(
+      'This line’s look',
+      h('p', { class: 'muted tiny' }, 'Make one line stand out: a screamed line, a whisper, a gang-vocal shout. The other lines keep the style from the Lyrics tab.'),
+      chips,
+      hasLineStyle(line)
+        ? h('div', {},
+            b.select('Font', () => cur().font, edit('font'), fontOptions()),
+            b.range('Size', () => cur().size, edit('size'), { min: 2.5, max: 18, step: 0.1, fmt: (v) => Number(v).toFixed(1) }),
+            h('div', { class: 'grid2' }, b.color('Text', () => cur().color, edit('color')), b.color('Highlight', () => cur().highlight, edit('highlight'))),
+            h('div', { class: 'grid2' }, b.color('Outline', () => cur().outline, edit('outline')), b.range('Outline width', () => cur().outlineWidth || 0, edit('outlineWidth'), { min: 0, max: 2, step: 0.05, fmt: (v) => Number(v).toFixed(2) })),
+            b.select('Animation', () => cur().animation, edit('animation'), ANIMATIONS),
+            h('div', { class: 'grid2' }, b.toggle('ALL CAPS', () => !!cur().uppercase, edit('uppercase')), b.toggle('Background box', () => !!cur().box, edit('box'))),
+            cur().box ? b.color('Box color', () => cur().boxColor, edit('boxColor')) : null,
+            h('p', { class: 'muted tiny' }, store.get().lyricStyle.display && store.get().lyricStyle.display !== 'line' ? 'In the lyric sheet, poster and tunnel displays this line keeps its font, colours and case; size and animation follow the display.' : 'Changes here only affect this line.'),
+          )
+        : null,
+      h('div', { class: 'row' },
+        hasLineStyle(line) && twins
+          ? button(`Use on the ${twins} other line${twins === 1 ? '' : 's'} with these words`, () => {
+              const ids = new Set(sameText().map((x) => x.id));
+              const s2 = structuredClone((get() || line).style);
+              store.update((d) => d.lyrics.forEach((x) => ids.has(x.id) && (x.style = structuredClone(s2))));
+              toast(`Applied to ${ids.size} more line${ids.size === 1 ? '' : 's'} (the repeats of this line)`);
+            }, { variant: 'ghost sm', iconName: 'copy' })
+          : null,
+        hasLineStyle(line)
+          ? button('Copy look to the next line', () => {
+              const sorted = sortLyrics(store.get().lyrics);
+              const i = sorted.findIndex((x) => x.id === line.id);
+              const next = sorted[i + 1];
+              if (!next) return toast('This is the last line.', 'error');
+              const s2 = structuredClone((get() || line).style);
+              store.update((d) => {
+                const x = d.lyrics.find((y) => y.id === next.id);
+                if (x) x.style = s2;
+              });
+              selectLyric(next);
+            }, { variant: 'ghost sm' })
+          : null,
+      ),
+      h('p', { class: 'muted tiny' }, 'The shared font, colours and animation are in the Lyrics tab.'),
+    );
+  }
+
   function buildInspector(b) {
     const sel = ui.selection;
     const p = store.get();
@@ -1897,7 +2035,7 @@ export function createPanels({ store, engine, ui }) {
         ),
         b.range('This line’s height', () => get()?.y ?? store.get().lyricStyle.y, L((x, v) => (x.y = v)), { min: 5, max: 95, step: 1, fmt: (v) => `${v}%` }),
         button('Use the shared height', () => store.update(L((x) => delete x.y)), { variant: 'ghost sm' }),
-        h('p', { class: 'muted tiny' }, 'Font, colors and animation for all lines are in the Lyrics tab.'),
+        lineLookSection(b, L, get, l),
       );
     }
     if (sel.type === 'text') {

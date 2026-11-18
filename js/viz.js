@@ -2,6 +2,7 @@
 // or bass, or the song itself). Analysis is done once up front, so preview and export match.
 import { clamp, noise, energyEnvelope } from './core.js';
 import { detectOnsets } from './drums.js';
+import { REAL_STYLES, REAL_DRAW } from './vizreal.js';
 
 export const VIZ_STYLES = [
   ['ripple', 'Water ripple', 'Rings that bend the picture on every hit (great for drums)'],
@@ -12,6 +13,7 @@ export const VIZ_STYLES = [
   ['particles', 'Particles', 'Sparks burst out on every hit'],
   ['glow', 'Glow pulse', 'The whole frame glows with the level (vocals, pads)'],
   ['rings', 'Speaker rings', 'Concentric rings pump with the level'],
+  ...REAL_STYLES,
 ];
 
 export const BLENDS = [
@@ -39,6 +41,7 @@ export function defaultVizLayer() {
     blend: 'screen',
     scatter: false,
     playAudio: false,
+    classic: true, // realistic styles: real-world colours (themes switch this off)
     start: 0,
     end: null,
   };
@@ -438,6 +441,7 @@ export function drawViz(ctx, W, H, layer, feat, t, songTime, visibleEnd) {
       break;
     }
     default:
+      if (REAL_DRAW[layer.style]) REAL_DRAW[layer.style](ctx, W, H, layer, feat, ts, { cx, cy, S, I, lvl, onsetsFor });
   }
   ctx.restore();
 }

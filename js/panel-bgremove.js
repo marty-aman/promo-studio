@@ -2,6 +2,7 @@
 import { h, button, section, toast } from './dom.js';
 import { BG_MODES, defaultBgRemove, personStatus, onMatteChange, preparePerson } from './bgremove.js';
 import { suggestBackdrops, backdropSearches, drawBackdrop, coverPalette } from './backgrounds.js';
+import { themeById, themeBackdrop } from './themes.js';
 
 let paletteCache = { id: null, pal: null };
 function paletteFor(media, p) {
@@ -73,7 +74,13 @@ export function bgRemoveSection({ store, media, actions, b, c, G, rec }) {
   const g = (k, def) => () => (G().bgRemove || {})[k] ?? def;
   const br = G().bgRemove;
   const on = !!(br && br.enabled);
-  const toggle = b.toggle('Remove background', () => !!(G().bgRemove && G().bgRemove.enabled), set((o, v) => (o.enabled = v)));
+  const toggle = b.toggle('Remove background', () => !!(G().bgRemove && G().bgRemove.enabled), c((x, v, d) => {
+    const first = !x.bgRemove;
+    x.bgRemove = { ...defaultBgRemove(), ...(x.bgRemove || {}), enabled: v };
+    // the first time on a themed project, start with the theme's background
+    const t = d && d.theme && themeById(d.theme.id);
+    if (v && first && t) x.bgRemove.background = themeBackdrop(t, d.theme.colors);
+  }));
   if (!on) {
     return section(
       'Remove background',
@@ -146,7 +153,8 @@ export function bgRemoveSection({ store, media, actions, b, c, G, rec }) {
   // suggested backgrounds
   const palette = paletteFor(media, p);
   const others = media.all().filter((m) => (m.kind === 'video' || m.kind === 'image') && m.id !== rec.id && m.id !== (p.endCard && p.endCard.coverMediaId));
-  const sugg = suggestBackdrops({ template: p.template || null, palette, otherMedia: others.map((m) => ({ id: m.id, name: m.name, kind: m.kind })) });
+  const th = p.theme && themeById(p.theme.id);
+  const sugg = suggestBackdrops({ template: p.template || null, palette, otherMedia: others.map((m) => ({ id: m.id, name: m.name, kind: m.kind })), theme: th ? { ...th, colors: p.theme.colors } : null });
   const cur = br.background;
   const grid = h(
     'div',

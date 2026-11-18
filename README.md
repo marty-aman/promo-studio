@@ -48,6 +48,14 @@ any other static host.
     dimmed, and the sheet glides to the next line.
   - **Kinetic poster:** each word slams in on its beat at its own size and angle, building a poster.
   - **3D word tunnel:** words fly at the camera out of a neon tunnel that pulses on the beat.
+- **A look per line:** select a lyric line and pick a look for just that line: **Scream** (huge, glitchy
+  capitals in the accent colour), **Breakdown** (the biggest text, pulsing on the beat), **Gang vocals**
+  (boxed capitals that drop in word by word), **Clean vocal** (karaoke fill), **Whisper** (small, soft
+  serif) or **Spoken word** (typewriter on a dark strip), or keep it the same as the others. You can then change that line's font, colours,
+  outline, box, size, case and animation. Presets take their colours from the theme if one is set.
+  "Use on the other lines with these words" styles every repeat of a line (a chorus) at once, and
+  "Copy look to the next line" carries it forward. Styled lines show a ✦ on the timeline. In the lyric
+  sheet, poster and tunnel, a line keeps its own font, colours and case.
 
 **Audio**
 - Song with waveform. Drag it on the timeline or click the overview to choose the section.
@@ -132,6 +140,18 @@ any other static host.
     other clips, or a solid colour. Ranked for your template and colours. One click puts the same
     background behind every cut-out, and stock searches ("concert lights", "smoke background"…) open the
     Stock tab.
+- **Themes (top of the Templates tab):** six dark looks for heavy music that restyle everything at once:
+  lyrics and text, the picture's colour grade and film look, the end card, guitar/bass tab, drum chart and
+  visualizer colours (including the drawn wood, frets, drum shells and highway roads), cut-out
+  backgrounds and carousel filters.
+  - **Blood & Ash** (black, deep red, bone white), **Funeral Doom** (faded sepia and old gold, cinema
+    bars), **Frostbite** (icy black-metal grey-blue), **Hellfire** (ember orange, light leaks),
+    **Toxic Sludge** (acid green, scanlines), **Rust & Steel** (gunmetal and rust orange).
+  - **Make my own:** change the theme's four colours (background, deep, accent, light). "Back to the
+    theme's colours" undoes it.
+  - A theme changes colours and fonts only. Tick "Also use the theme's cuts, clip effects and lyric
+    motion" to take its transitions and animations too.
+  - Templates keep your theme, and layers you add later are themed as well.
 - **Templates tab:** 16 one-click song templates with live previews of your own footage. Each sets the
   lyric style, grade, effects, transitions, text and end card.
   - Song looks: Lyric spotlight, Hype teaser, Cinematic, Golden hour acoustic, Neon night, Retro VHS,
@@ -198,8 +218,17 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
   Choosing a style also moves the chart to a spot that suits it.
 - **Visualizer:** reacts to any audio you give it: a stem (drums, bass, vocals…) or the song.
   Styles: water ripple (bends the picture on each hit), electricity, spectrum bars, circular spectrum,
-  waveform, particles, glow pulse and speaker rings. Stems drive the visuals silently unless you switch
-  their sound on. Analysis runs once per file, so preview and export match.
+  waveform, particles, glow pulse and speaker rings, plus six that look like real things:
+  - **VU meters:** a pair of analog needle meters with ballistics and a peak light.
+  - **LED spectrum rack:** a rack-mounted analyzer with lit segments and peak-hold caps.
+  - **CRT oscilloscope:** a phosphor trace with afterglow on a gridded tube.
+  - **Speaker cone:** a woofer that pumps with the low end (best on a kick or bass stem).
+  - **Fire:** flames that roar with the music, with rising embers.
+  - **Spectrogram:** a scrolling heat map of the last few seconds.
+
+  They use real-world colours (amber meters, green phosphor, orange fire) unless you switch "Real-world
+  colours" off to use the layer's colours; themes do that for you. Stems drive the visuals silently unless
+  you switch their sound on. Analysis runs once per file, so preview and export match.
 
 Old projects with a single guitar tab are moved into the layer list automatically.
 
@@ -272,7 +301,10 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/soundlib.js` | Personal sound library stored in IndexedDB |
 | `js/tab.js` | Guitar Pro tab parsing (via alphaTab), timing and drawing |
 | `js/drums.js` | Drum chart: GP drum tracks, drum-stem hit detection, lanes / highway / circle drawing |
-| `js/viz.js` | Audio visualizers: FFT analysis and the eight styles |
+| `js/viz.js` | Audio visualizers: FFT analysis and the styles |
+| `js/vizreal.js` | Realistic visualizers: VU meters, LED rack, oscilloscope, speaker, fire, spectrogram |
+| `js/themes.js` | The six dark themes and how they restyle a project |
+| `js/linestyle.js` | Per-line lyric looks (presets and overrides) |
 | `js/panel-layers.js` | Layers panel |
 | `js/share.js` | Share sheet and YouTube upload |
 | `vendor/alphatab/` | alphaTab 1.9.0 parser (MPL-2.0), loaded only when a tab is used |

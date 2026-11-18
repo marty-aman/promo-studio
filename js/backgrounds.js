@@ -119,13 +119,15 @@ const DEFAULT_SCENES = ['smoke', 'stage', 'concrete', 'neongrid', 'lasers'];
  * ctx: { template, palette: [c1, c2], otherMedia: [{id, name, kind}] }
  * Returns [{ id, label, why, bg }] where bg is a clip.bgRemove.background value.
  */
-export function suggestBackdrops({ template = null, palette = null, otherMedia = [] } = {}) {
+export function suggestBackdrops({ template = null, palette = null, otherMedia = [], theme = null } = {}) {
   const [c1, c2] = palette && palette.length >= 2 ? palette : ['#ff2bd6', '#2b6bff'];
   const fromCover = !!(palette && palette.length >= 2);
   const out = [];
   const add = (id, label, why, bg) => {
     if (!out.some((o) => o.id === id)) out.push({ id, label, why, bg });
   };
+  // a theme's own background comes first, in the theme's colours
+  if (theme && theme.backdrop && theme.colors) add(`scene:${theme.backdrop}`, `${(SCENES.find((x) => x[0] === theme.backdrop) || [0, 'Scene'])[1]} (${theme.name})`, `matches the ${theme.name} theme`, { kind: 'scene', scene: theme.backdrop, color: theme.colors.accent, color2: theme.backdrop === 'smoke' || theme.backdrop === 'stage' ? theme.colors.deep : theme.colors.light });
   const preferred = template && SCENE_FOR[template] ? SCENE_FOR[template] : DEFAULT_SCENES;
   const why = template && SCENE_FOR[template] ? 'fits your template' : 'fits alt / heavy music';
   for (const s of preferred) add(`scene:${s}`, SCENES.find((x) => x[0] === s)[1], why, { kind: 'scene', scene: s, color: c1, color2: c2 });

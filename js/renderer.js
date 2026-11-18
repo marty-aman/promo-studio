@@ -17,6 +17,7 @@ import { drawTab } from './tab.js';
 import { drawDrums } from './drums.js';
 import { drawViz } from './viz.js';
 import { drawLyricDisplay } from './lyricviz.js';
+import { lineStyle } from './linestyle.js';
 import { drawBackdrop } from './backgrounds.js';
 import { blurred } from './canvasfx.js';
 
@@ -1051,10 +1052,10 @@ function drawTexts(ctx, W, H, texts, t, beat = 0, releaseDate = '') {
 
 function drawLyrics(ctx, W, H, project, t, beat = 0) {
   const ts = timelineToSong(t, project.song);
-  if (drawLyricDisplay(ctx, W, H, project.lyrics, project.lyricStyle, ts, beat)) return;
+  if (drawLyricDisplay(ctx, W, H, project.lyrics, project.lyricStyle, ts, beat, project.theme)) return;
   const line = activeLyric(project.lyrics, ts);
   if (!line) return;
-  const s = project.lyricStyle;
+  const s = lineStyle(project.lyricStyle, line, project.theme);
   const y = clamp(line.y ?? s.y, 5, 95);
   drawAnimatedText(
     ctx,
