@@ -46,6 +46,7 @@ import { LYRIC_DISPLAYS, DISPLAY_DEFAULTS } from './lyricviz.js';
 import { BUILTIN_SFX, synthSfx, searchSfx, SFX_CATEGORIES, SFX_LICENSES } from './sfx.js';
 import { shareFile, canShareFiles, youtube } from './share.js';
 import { soundLib, importSounds, filterSounds, storageInfo, requestPersistence } from './soundlib.js';
+import { loadPack, packCategories, filterPack, packResult } from './soundpack.js';
 import { searchFreesound, FS_LICENSES, FS_DURATIONS, FS_SORTS, FREESOUND_KEY_URL } from './freesound.js';
 
 import { h, icon, button, iconButton, toast, download, pickFiles, field, section, fold, setFold, keyBox, Binder } from './dom.js';
@@ -678,6 +679,7 @@ export function createPanels({ store, engine, ui }) {
     ui.refreshPanels(true);
   }
 
+  const packState = { q: '', cat: '', limit: 30 };
   function buildSounds() {
     // ---- My sound library (stored in this browser)
     const libList = h('div', { class: 'sfx-list lib-list' }, h('p', { class: 'muted tiny' }, 'Loading your library…'));
@@ -848,7 +850,7 @@ export function createPanels({ store, engine, ui }) {
       results.map((r) => {
         const play = h('button', { type: 'button', class: 'icon-btn sfx-play', 'aria-label': `Preview ${r.title}` }, icon('play', 16));
         play.addEventListener('click', () => playPreview(r.id, r.url, play));
-        const meta = { source: prefix, attribution: { provider: prefix, providerLabel: prefix === 'freesound' ? 'Freesound' : `${r.provider || 'Openverse'} via Openverse`, source: r.provider, author: r.author, pageUrl: r.pageUrl, license: r.license, needsCredit: r.needsCredit } };
+        const meta = { source: prefix, attribution: { provider: prefix, providerLabel: prefix === 'freesound' ? 'Freesound' : prefix === 'pack' ? 'Free sound pack (CC0)' : `${r.provider || 'Openverse'} via Openverse`, source: r.provider, author: r.author, pageUrl: r.pageUrl, license: r.license, needsCredit: r.needsCredit } };
         const add = button('Add', async () => {
           add.disabled = true;
           try {
@@ -929,9 +931,48 @@ export function createPanels({ store, engine, ui }) {
     const ovForm = h('form', { class: 'search-row', onsubmit: (e) => (e.preventDefault(), q.value.trim() && runOv(q.value.trim())) }, q, button('Search', null, { iconName: 'search', variant: 'primary' }));
     ovForm.querySelector('button').type = 'submit';
 
+    // ---- the bundled free sound pack (CC0, ships with the app)
+    const packList = loadPack(() => ui.refreshPanels(true));
+    const packBox = h('div', { class: 'sfx-list pack-list' });
+    const packIn = h('input', { type: 'search', placeholder: 'Search the pack: airhorn, boom, crowd, scratch…', value: packState.q, 'aria-label': 'Search the free sound pack' });
+    const packChips = h('div', { class: 'chips' });
+    const renderPack = () => {
+      if (!packList) return packBox.replaceChildren(h('p', { class: 'muted tiny' }, 'Loading the sound pack…'));
+      if (!packList.length) return packBox.replaceChildren(h('p', { class: 'muted tiny' }, 'The sound pack isn’t installed (sounds/pack is missing).'));
+      packChips.replaceChildren(
+        button('All', () => ((packState.cat = ''), (packState.limit = 30), renderPack()), { variant: `chip${packState.cat ? '' : ' on'}` }),
+        ...packCategories(packList).map((c) => button(c.name, () => ((packState.cat = packState.cat === c.name ? '' : c.name), (packState.limit = 30), renderPack()), { variant: `chip${packState.cat === c.name ? ' on' : ''}` })),
+      );
+      const found = filterPack(packList, packState.q, packState.cat);
+      const shown = found.slice(0, packState.limit);
+      packBox.replaceChildren(
+        h('p', { class: 'muted tiny' }, found.length ? `${found.length} sound${found.length > 1 ? 's' : ''}${packState.q ? ` for “${packState.q}”` : ''}` : 'Nothing in the pack matches. Try the free libraries below, or MyInstants.'),
+        ...resultRows(shown.map(packResult), 'pack'),
+        found.length > shown.length ? button(`Show more (${found.length - shown.length})`, () => ((packState.limit += 30), renderPack()), { variant: 'ghost wide' }) : null,
+      );
+    };
+    let packTimer = null;
+    packIn.addEventListener('input', () => {
+      clearTimeout(packTimer);
+      packTimer = setTimeout(() => ((packState.q = packIn.value.trim()), (packState.limit = 30), renderPack()), 120);
+    });
+    renderPack();
+    const myInstants = h('a', { class: 'btn sm ghost', target: '_blank', rel: 'noopener noreferrer', href: 'https://www.myinstants.com/en/search/?name=' }, 'Find on MyInstants');
+    const syncMi = () => (myInstants.href = `https://www.myinstants.com/en/search/?name=${encodeURIComponent(packIn.value.trim())}`);
+    packIn.addEventListener('input', syncMi);
+    syncMi();
+
     return h(
       'div',
       {},
+      section(
+        `Free sound pack${packList && packList.length ? ` · ${packList.length} sounds` : ''}`,
+        h('p', { class: 'muted small' }, 'Public-domain (CC0) effects that ship with the app: no key, no credit needed, fine for promos.'),
+        h('div', { class: 'search-row' }, packIn),
+        packChips,
+        packBox,
+        h('div', { class: 'row' }, myInstants, h('span', { class: 'muted tiny' }, 'Opens MyInstants. Most clips there are cut from movies, TV and songs, so only use ones you have the rights to; drop downloads into My sound library.')),
+      ),
       section(
         'My sound library',
         h('p', { class: 'muted small' }, 'Your own collection of clips, kept in this browser for every project. Add them in bulk, star favorites, and drop them on the timeline.'),

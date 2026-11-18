@@ -591,3 +591,6 @@ h4.sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; col
 .idea-lines { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 11.5px; }
 .idea-lines li { display: flex; gap: 6px; }
 .idea-lines .tag { flex: none; font-size: 10px; padding: 0 6px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--muted); }
+
+/* ---- free sound pack */
+.pack-list { max-height: 440px; overflow-y: auto; padding-right: 2px; }

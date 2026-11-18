@@ -15,6 +15,58 @@ No `npm install` is needed: there are no dependencies. Use a recent Chrome or Ed
 (Firefox exports WebM). Since the app is plain static files, it can also be hosted on Netlify or
 any other static host.
 
+## How it's laid out
+
+The rail on the left has one **Start** tab for ideas, then a tab for each kind of thing you build:
+
+| Tab | What's in it |
+|---|---|
+| **Start** | Stacked, collapsible sections: *Suggested for you* (ideas from your lyrics and three ready-made edits), *Templates and themes*, *My templates*, and links to the full-screen *Inspiration*, *Tab Studio* and *Carousel* pages |
+| **Video** | My clips (upload and arrange), Stock video, From your YouTube channel, Video layers |
+| **Audio** | Song and your own audio (beats, hook, voice-over, clip sound), Sound effects (the free sound pack, your library, Freesound, built-in, Openverse) |
+| **Lyrics** | Lines, sync, display and style; select a line for its own look |
+| **Visualizer** | Visualizer layers and all 18 styles |
+| **Guitar Pro** | Guitar, bass and drum layers, and Tab Studio |
+| **Text**, **End card**, **Look**, **Export** | As before; Look also has the pop-up tips switch |
+
+Sections remember whether you left them open. API key boxes fold away once a key is saved. Every
+layer tab has an *All layers and rows* section to reorder or hide everything at once.
+
+**Post check.** The pill in the top bar scores the edit against the posting playbook (Start →
+Inspiration): vertical format, a hook in the first 1.5 s, 7–15 s length, cut pace, a share ask,
+"use this sound", text clear of the app buttons, not too many layers at once, and a short end card.
+Click it for what helps or hurts, each with a one-click fix (undo works) or a jump to the right tab.
+
+**Pop-up tips.** As you add layers, clips, the song or lyrics, a small card at the bottom right of
+the preview suggests the next improvement, for example pointing a new visualizer at your drum stem,
+moving lyrics off a new tab, or cutting on the beat once you have two clips. Each card has a fix,
+"Got it" and "Don't show this again". Turn them off in Look → Editing tips.
+
+**Ideas from your lyrics.** Start → Suggested for you reads your lyrics (in the browser, nothing is
+sent anywhere) and suggests a theme, a visualizer, how lyrics are shown and per-line looks, quoting
+the words it matched: fire and burn words point to Hellfire and the fire visualizer, storm and static
+words to lightning, cold words to Frostbite, long lines to the scrolling sheet, short ones to the
+kinetic poster, shouted lines to Scream and repeated lines to Gang vocals. Use them one at a time or
+all at once.
+
+**My templates.** Start → My templates saves the look of the current edit (theme, fonts, lyric style,
+grades and effects per clip, text overlays, end card, visualizer and tab styles, length) without your
+clips, song, lyrics or cover. Using one on a new release reuses your own layers' files and sync and
+says which parts still need a file. Download a template as a `.promo-template.json` file to share it,
+and import one from a file (imported files are checked and cleaned).
+
+**From your YouTube channel.** YouTube only allows downloading videos you uploaded yourself, from
+YouTube Studio (Content → ⋮ → Download). The Video tab walks you through it and takes the file.
+Promo Studio doesn't download other channels' videos.
+
+**Free sound pack.** 362 short public-domain (CC0) sound effects ship in `sounds/pack`:
+hits, risers, airhorns, crowds, cymbals, guitar noises, scratches, cartoon and meme sounds, horror
+stings, sci-fi zaps, everyday sounds and weather. Search them by name, category or tag, preview, add
+at the playhead or save to your library. No key and no credit needed (each sound's creator and page are
+still listed in `sounds/pack/index.json`). The pack was gathered through [Openverse](https://openverse.org),
+mostly from Freesound. A *Find on MyInstants* link opens the same search there; most MyInstants
+clips are cut from films, TV and songs, so only use ones you have the rights to.
+
 ## Features
 
 **Video**
@@ -121,7 +173,7 @@ any other static host.
 - **From Spotify** (End card tab): paste a track or album link to fill in the title, cover art and a
   “Listen on Spotify” link for your bio. Spotify doesn't let other apps download songs, so the audio
   still comes from your own file.
-- **Suggested tab:** add a song and some clips (plus a Guitar Pro file or lyrics if you have them) and it
+- **Suggested edits (Start → Suggested for you):** add a song and some clips (plus a Guitar Pro file or lyrics if you have them) and it
   builds three different ready-to-post edits. Each one picks the hook, cuts your clips on the beat, applies
   a fitting template, lines tab and drum layers up with the song's first beat and tempo (layers you synced
   yourself are kept), and puts cut-outs in front of a matching background. Every card has a preview that
@@ -139,8 +191,8 @@ any other static host.
     grid, lasers, starfield, bokeh), a gradient from your cover art's colours, the blurred original, your
     other clips, or a solid colour. Ranked for your template and colours. One click puts the same
     background behind every cut-out, and stock searches ("concert lights", "smoke background"…) open the
-    Stock tab.
-- **Themes (top of the Templates tab):** six dark looks for heavy music that restyle everything at once:
+    Stock video section of the Video tab.
+- **Themes (Start → Templates and themes):** six dark looks for heavy music that restyle everything at once:
   lyrics and text, the picture's colour grade and film look, the end card, guitar/bass tab, drum chart and
   visualizer colours (including the drawn wood, frets, drum shells and highway roads), cut-out
   backgrounds and carousel filters.
@@ -152,7 +204,7 @@ any other static host.
   - A theme changes colours and fonts only. Tick "Also use the theme's cuts, clip effects and lyric
     motion" to take its transitions and animations too.
   - Templates keep your theme, and layers you add later are themed as well.
-- **Templates tab:** 16 one-click song templates with live previews of your own footage. Each sets the
+- **Templates (Start → Templates and themes):** 16 one-click song templates with live previews of your own footage. Each sets the
   lyric style, grade, effects, transitions, text and end card.
   - Song looks: Lyric spotlight, Hype teaser, Cinematic, Golden hour acoustic, Neon night, Retro VHS,
     Punk / rock, Minimal clean, Release countdown.
@@ -164,7 +216,7 @@ any other static host.
     words), **Neon tunnel** (3D word tunnel).
 - **App layouts:** TikTok, Instagram Reels, YouTube Shorts, "works on all three" and full frame. A layout
   moves lyrics, text, logo, progress bar and the end card into that app's clear area; templates keep it.
-- **Sounds tab:** 12 built-in effects generated in the browser (riser, impact, sub drop, whoosh, reverse
+- **Sound effects (Audio tab):** 12 built-in effects generated in the browser (riser, impact, sub drop, whoosh, reverse
   cymbal, clap, record scratch, record stop, glitch, heartbeat, camera shutter, vinyl crackle), a direct
   [Freesound](https://freesound.org) search (free API key; CC0 or CC0 + CC BY, never non-commercial; filter
   by length and sort), and a keyless search of CC sounds through [Openverse](https://openverse.org).
@@ -186,7 +238,9 @@ any other static host.
 
 ## Layers
 
-The **Layers** panel holds a stack of layers above the main video. Add as many as you like, reorder
+Layers stack above the main video. Each kind lives in its own tab (video layers in **Video**,
+visualizers in **Visualizer**, guitar tabs and drum charts in **Guitar Pro**), and every one of those
+tabs has *All layers and rows* for the whole stack. Add as many as you like, reorder
 them, rename them, and show or hide each one with its eye (in the panel or on the timeline). Hidden
 layers are left out of the preview and the export. The fixed rows (main video, text, lyrics, song,
 extra audio, end card) have eyes too; hiding an audio row mutes it.
@@ -218,13 +272,20 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
   Choosing a style also moves the chart to a spot that suits it.
 - **Visualizer:** reacts to any audio you give it: a stem (drums, bass, vocals…) or the song.
   Styles: water ripple (bends the picture on each hit), electricity, spectrum bars, circular spectrum,
-  waveform, particles, glow pulse and speaker rings, plus six that look like real things:
+  waveform, particles, glow pulse and speaker rings, plus ten that look like real things:
   - **VU meters:** a pair of analog needle meters with ballistics and a peak light.
   - **LED spectrum rack:** a rack-mounted analyzer with lit segments and peak-hold caps.
   - **CRT oscilloscope:** a phosphor trace with afterglow on a gridded tube.
   - **Speaker cone:** a woofer that pumps with the low end (best on a kick or bass stem).
   - **Fire:** flames that roar with the music, with rising embers.
   - **Spectrogram:** a scrolling heat map of the last few seconds.
+  - **Tape reels:** a reel-to-reel deck; the reels turn (the fuller one slower), the tape winds across
+    over the song and flutters with the level, and two meters swing.
+  - **Mixing desk:** a channel strip (kick, bass, snare, guitars, vocals, keys, cymbals, main) whose
+    faders ride each band, with fast LED meters beside them.
+  - **Lightning:** branching bolts strike on each hit, flicker like real lightning and light the sky.
+  - **Vibrating strings:** six strings over a guitar body that blur and ring like a plucked string, low
+    strings with the low end.
 
   They use real-world colours (amber meters, green phosphor, orange fire) unless you switch "Real-world
   colours" off to use the layer's colours; themes do that for you. Stems drive the visuals silently unless
@@ -303,6 +364,12 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/drums.js` | Drum chart: GP drum tracks, drum-stem hit detection, lanes / highway / circle drawing |
 | `js/viz.js` | Audio visualizers: FFT analysis and the styles |
 | `js/vizreal.js` | Realistic visualizers: VU meters, LED rack, oscilloscope, speaker, fire, spectrogram |
+| `js/vizgear.js` | More realistic visualizers: tape reels, mixing desk, lightning, vibrating strings |
+| `js/postcheck.js`, `js/panel-postcheck.js` | Post check score and pop-over |
+| `js/tips.js`, `js/panel-tips.js` | Pop-up editing tips |
+| `js/lyricideas.js` | Theme, visualizer, display and line-look ideas from the lyrics |
+| `js/mytemplates.js` | Save, apply, export and import your own templates |
+| `js/soundpack.js`, `sounds/pack/` | The bundled CC0 sound pack and its search |
 | `js/themes.js` | The six dark themes and how they restyle a project |
 | `js/linestyle.js` | Per-line lyric looks (presets and overrides) |
 | `js/panel-layers.js` | Layers panel |

@@ -21,6 +21,7 @@ const TYPES = {
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
   '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
   '.md': 'text/plain; charset=utf-8',
   '.wasm': 'application/wasm',
   '.tflite': 'application/octet-stream',

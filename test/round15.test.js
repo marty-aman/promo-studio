@@ -233,3 +233,58 @@ test('tips: a tab on top of the lyrics, too many layers, pasted lyrics, second c
   a.clips = [{ id: 'c1' }];
   assert.ok(tipsFor(a, g).some((x) => x.id === 'beats'));
 });
+
+// ---- round 3: new realistic visualizers, the free sound pack
+import { GEAR_STYLES, GEAR_PLACEMENT, GEAR_DRAW, boltPath, strikeFlicker, reelAngle, bandAvg } from '../js/vizgear.js';
+import { REAL_STYLES, REAL_PLACEMENT, REAL_DRAW } from '../js/vizreal.js';
+import { VIZ_STYLES } from '../js/viz.js';
+import { filterPack, packCategories } from '../js/soundpack.js';
+
+test('four new realistic visualizers are listed, placed and drawable', () => {
+  const ids = GEAR_STYLES.map(([id]) => id);
+  assert.deepEqual(ids, ['tape', 'faders', 'lightning', 'strings']);
+  for (const id of ids) {
+    assert.ok(REAL_STYLES.some(([x]) => x === id) && VIZ_STYLES.some(([x]) => x === id), id);
+    assert.ok(REAL_PLACEMENT[id] && GEAR_PLACEMENT[id], id);
+    assert.equal(typeof REAL_DRAW[id], 'function');
+    assert.equal(GEAR_DRAW[id], REAL_DRAW[id]);
+  }
+  assert.equal(VIZ_STYLES.length, 18);
+});
+
+test('lightning bolts are the same every frame and flicker then fade', () => {
+  const a = boltPath(0, 0, 0, 100, 7, 30);
+  const b = boltPath(0, 0, 0, 100, 7, 30);
+  assert.deepEqual(a, b);
+  assert.equal(a.length, 129); // 7 rounds of midpoint splits
+  assert.deepEqual(a[0], [0, 0]);
+  assert.deepEqual(a.at(-1), [0, 100]);
+  assert.notDeepEqual(boltPath(0, 0, 0, 100, 8, 30), a);
+  assert.equal(strikeFlicker(0.01), 1);
+  assert.ok(strikeFlicker(0.05) < 0.5 && strikeFlicker(0.09) > 0.8);
+  assert.ok(strikeFlicker(0.2) > 0 && strikeFlicker(0.2) < 1);
+  assert.equal(strikeFlicker(0.4), 0);
+});
+
+test('tape reels: a fuller reel turns slower; band averages weight recent frames', () => {
+  assert.ok(reelAngle(10, 3, 100, 90) < reelAngle(10, 3, 100, 40));
+  assert.equal(reelAngle(0, 3, 100, 50), 0);
+  const feat = { fps: 10, nbands: 2, level: new Float32Array([0, 0, 0, 1]), bands: new Float32Array([0, 0, 0, 0, 0, 0, 1, 0]) };
+  assert.ok(bandAvg(feat, 3, -1, 0.3) > 0.4);
+  assert.ok(bandAvg(feat, 3, 0, 0.3) > 0.4 && bandAvg(feat, 3, 1, 0.3) === 0);
+});
+
+test('sound pack search: words match names first, then categories and tags', () => {
+  const list = [
+    { id: '1', name: 'Airhorn blast', cat: 'Horns & alarms', q: 'airhorn', tags: ['dj'], dur: 1.6, file: 'a' },
+    { id: '2', name: 'Stadium crowd', cat: 'Crowd', q: 'crowd cheer', tags: ['cheer', 'sports'], dur: 4, file: 'b' },
+    { id: '3', name: 'Big boom', cat: 'Hits & impacts', q: 'boom', tags: ['explosion'], dur: 2, file: 'c' },
+    { id: '4', name: 'DJ horn', cat: 'Horns & alarms', q: 'air horn', tags: [], dur: 3, file: 'd' },
+  ];
+  assert.deepEqual(filterPack(list, 'air').map((s) => s.id), ['1', '4']);
+  assert.deepEqual(filterPack(list, 'cheer').map((s) => s.id), ['2']);
+  assert.deepEqual(filterPack(list, 'horn dj').map((s) => s.id), ['4', '1']);
+  assert.deepEqual(filterPack(list, '', 'Crowd').map((s) => s.id), ['2']);
+  assert.deepEqual(filterPack(list, 'zzz'), []);
+  assert.deepEqual(packCategories(list), [{ name: 'Horns & alarms', n: 2 }, { name: 'Crowd', n: 1 }, { name: 'Hits & impacts', n: 1 }]);
+});
