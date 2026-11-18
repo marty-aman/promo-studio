@@ -63,6 +63,23 @@ any other static host.
 - CTA tokens: `{date}` → "NOV 21", `{countdown}` → "OUT IN 3 DAYS" / "OUT TOMORROW" / "OUT NOW".
 
 **Extras**
+- **Tab Studio** (its own page, also opened from a tab layer's “Edit in Tab Studio”): open any Guitar Pro
+  file from your media, or start a new tab. All tracks (guitar, bass, 7-string, 5-string, drums) are
+  stacked and scroll together.
+  - Keyboard editing: arrows move, digits type frets (two quickly for 10–24), + / − change length,
+    `.` dots, R rests, I inserts a beat. Techniques: H hammer-on, S slide, B bend, V vibrato, P palm mute,
+    X dead note, G ghost.
+  - Drum rows you click or press Enter on, tunings (drop D, drop C, 7-string, 5-string bass…), tempo
+    changes, time signatures, add and delete bars, undo, and playback with a simple synth.
+  - Save writes a new Guitar Pro 7 file into your media. “Save & use in video” also points the video's
+    tab and drum layers at it.
+- **Tab from stems** (in Tab Studio): upload an isolated stem and pick the part.
+  - Bass lines and lead riffs are pitch-tracked note by note and placed on strings and frets that keep
+    the hand in one position.
+  - Rhythm guitar becomes power-chord shapes with the chord names (E5, G, Am…).
+  - Drums give kick, snare and hi-hat.
+  - Everything is lined up with the song's tempo, or the stem's own, with the stem's waveform under the
+    track so you can check it by eye and fix it by ear.
 - **Posting playbook buttons** (Inspiration page): every rule has an Apply button. Put the hook first,
   make it 12 seconds, add a “send this to…” share ask, add “use this sound”, and use a raw real-phone look
   change the edit directly. The rest open tools on the page:

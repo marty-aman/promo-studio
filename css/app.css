@@ -338,6 +338,32 @@ body.dropping::after { content: 'Drop to add to your library'; position: fixed; 
 .playbook { display: flex; flex-direction: column; gap: 8px; }
 .rule { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
 .rule > .btn { align-self: flex-start; margin-top: 6px; }
+/* Tab Studio */
+.tab-studio .ts-files, .tab-studio .ts-song { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.tab-studio .ts-files select { min-width: 220px; }
+.tab-studio .spacer { flex: 1; }
+.tab-studio .ts-title { min-width: 220px; }
+.tab-studio .ts-song > *, .tab-studio .ts-files > * { flex: 0 0 auto; width: auto; }
+.tab-studio .ts-song select, .tab-studio .ts-head select, .tab-studio .ts-files select { width: auto; max-width: 320px; }
+.tab-studio .ts-files > .spacer { flex: 1 1 auto; }
+.ts-tools { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 4px; position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 6px 0; }
+.ts-group { display: flex; flex-wrap: wrap; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.ts-group .btn.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.ts-status { margin: 2px 0 8px; font-size: 13px; color: var(--text); min-height: 1.4em; }
+.ts-tracks { display: flex; flex-direction: column; gap: 10px; }
+.ts-track { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); overflow: hidden; }
+.ts-track.on { border-color: var(--accent); }
+.ts-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; background: var(--panel-2); border-bottom: 1px solid var(--border); }
+.ts-head .ts-name { width: 180px; font-weight: 700; }
+.ts-head .ts-kind { color: var(--muted); display: inline-flex; }
+.ts-scroll { overflow-x: auto; overflow-y: hidden; position: relative; }
+.ts-spacer { position: relative; }
+.ts-canvas { display: block; position: sticky; left: 0; outline: none; cursor: cell; }
+.ts-canvas:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+.ts-issues { margin-top: 8px; color: var(--muted); }
+.ts-empty { padding: 30px; border: 1px dashed var(--border-strong); border-radius: 10px; text-align: center; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.ts-keys ul { margin: 6px 0; padding-left: 18px; color: var(--muted); }
+.ts-tx { margin: 10px 0; }
 .rule.on { border-color: var(--accent); }
 .tool-box { margin-top: 8px; padding: 10px; border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--panel-2); display: flex; flex-direction: column; gap: 8px; }
 .tool-box h4 { margin: 0; font-size: 14px; }

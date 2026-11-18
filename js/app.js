@@ -8,6 +8,7 @@ import { createPanels } from './panels.js';
 import { h, icon, iconButton, button, toast, Binder } from './dom.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { buildInspirationPage } from './page-inspiration.js';
+import { buildTabStudio } from './page-tabstudio.js';
 import { loadSettings } from './state.js';
 
 const store = createStore(loadProject() || newProject());
@@ -118,7 +119,7 @@ const ui = {
     this.selection = sel;
     // jump to the panel that edits what was just selected (only now, not on every refresh)
     const home = sel && { layer: 'layers', song: 'audio', endcard: 'endcard' }[sel.type];
-    if (home && this.tab !== home && this.tab !== 'inspiration') {
+    if (home && this.tab !== home && !PAGES[this.tab]) {
       this.tab = home;
       localStorage.setItem('pvm.tab', home);
       renderRail();
@@ -139,7 +140,7 @@ const ui = {
     localStorage.setItem('pvm.tab', id);
     renderRail();
     showPage();
-    if (id !== 'inspiration') rebuildLeft();
+    if (!PAGES[id]) rebuildLeft();
   },
   refreshPanels() {
     rebuildLeft();
@@ -216,7 +217,7 @@ function renderRail() {
     );
   };
   railSig = railSignature();
-  tabRail.replaceChildren(railBtn({ id: 'inspiration', label: 'Inspiration', icon: 'wand' }), h('hr', { class: 'rail-sep' }), ...panels.tabs.map(railBtn));
+  tabRail.replaceChildren(...Object.entries(PAGES).map(([id, pg]) => railBtn({ id, label: pg.label, icon: pg.icon })), h('hr', { class: 'rail-sep' }), ...panels.tabs.map(railBtn));
 }
 let railSig = '';
 function railSignature() {
@@ -224,11 +225,19 @@ function railSignature() {
 }
 
 let page = null;
+// full-screen pages that cover the editor (their rail buttons sit above the panel tabs)
+const PAGES = {
+  inspiration: { label: 'Inspiration', icon: 'wand', build: () => buildInspirationPage({ store, engine, ui, settings: loadSettings(), panels }) },
+  tabstudio: { label: 'Tab Studio', icon: 'guitar', build: () => buildTabStudio({ store, engine, ui, panels }) },
+};
 function showPage() {
-  const open = ui.tab === 'inspiration';
-  pageEl.hidden = !open;
-  if (open) {
-    page = buildInspirationPage({ store, engine, ui, settings: loadSettings(), panels });
+  const pg = PAGES[ui.tab];
+  pageEl.hidden = !pg;
+  if (page && page.leave) page.leave();
+  page = null;
+  if (pg) {
+    page = pg.build();
+    pageEl.setAttribute('aria-label', pg.label);
     pageEl.replaceChildren(page.el);
     pageEl.scrollTop = 0;
   }
