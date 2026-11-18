@@ -24,6 +24,7 @@ import {
 } from './core.js';
 import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSettings, saveSettings, loadTemplates, saveTemplates, findClip, findLayer, LAYER_TYPES } from './state.js';
 import { buildLayersPanel, makeLayer, TAB_ACCEPT } from './panel-layers.js';
+import { templateFromProject, applyMyTemplate, templateFile, parseTemplateFile, describeTemplate } from './mytemplates.js';
 import { bgRemoveSection } from './panel-bgremove.js';
 import { buildSuggestPanel, hasNewSuggestions } from './panel-suggest.js';
 import { captionPicker } from './panel-captions.js';
@@ -45,7 +46,7 @@ import { shareFile, canShareFiles, youtube } from './share.js';
 import { soundLib, importSounds, filterSounds, storageInfo, requestPersistence } from './soundlib.js';
 import { searchFreesound, FS_LICENSES, FS_DURATIONS, FS_SORTS, FREESOUND_KEY_URL } from './freesound.js';
 
-import { h, icon, button, iconButton, toast, download, pickFiles, field, section, Binder } from './dom.js';
+import { h, icon, button, iconButton, toast, download, pickFiles, field, section, fold, setFold, keyBox, Binder } from './dom.js';
 
 const fontOptions = () => [
   ...FONTS.map((f) => [f.id, f.label]),
@@ -181,7 +182,7 @@ export function createPanels({ store, engine, ui }) {
         if (d.layout && d.layout !== 'full') tabIntoLayout(d);
       });
       const extra = rec.tracks.length && rec.drumTracks.length ? ' It also has drums: add a Drum chart layer to show them.' : '';
-      toast(`“${rec.title || rec.name}” is on the video. Line it up with the song in the Layers panel.${extra}`, 'info', 6000);
+      toast(`“${rec.title || rec.name}” is on the video. Line it up with the song in the Guitar Pro tab.${extra}`, 'info', 6000);
       ui.select({ type: 'layer', id: selectId });
       ui.openTab('layers');
     },
@@ -209,20 +210,227 @@ export function createPanels({ store, engine, ui }) {
 
   // -------------------------------------------------------------- tabs
 
+  // The rail: one "Start" tab for ideas (stacked folds), then a tab per kind of thing you build.
   const tabs = [
-    { id: 'suggested', label: 'Suggested', icon: 'sparkle', build: () => buildSuggestPanel({ store, engine, ui }), dot: () => hasNewSuggestions(store.get()) },
-    { id: 'templates', label: 'Templates', icon: 'layout', build: buildTemplates },
-    { id: 'media', label: 'Media', icon: 'film', build: buildMedia },
-    { id: 'stock', label: 'Stock', icon: 'search', build: buildStock },
+    { id: 'start', label: 'Start', icon: 'sparkle', build: buildStart, dot: () => hasNewSuggestions(store.get()) },
+    { id: 'video', label: 'Video', icon: 'film', build: buildVideoTab },
+    { id: 'audio', label: 'Audio', icon: 'music', build: buildAudioTab },
     { id: 'lyrics', label: 'Lyrics', icon: 'mic', build: buildLyrics },
-    { id: 'audio', label: 'Audio', icon: 'music', build: buildAudio },
-    { id: 'sounds', label: 'Sounds', icon: 'volume', build: buildSounds },
-    { id: 'layers', label: 'Layers', icon: 'layers', build: buildLayers },
+    { id: 'visualizer', label: 'Visualizer', icon: 'volume', build: buildVizTab },
+    { id: 'guitarpro', label: 'Guitar Pro', icon: 'guitar', build: buildGuitarTab },
     { id: 'text', label: 'Text', icon: 'type', build: buildText },
     { id: 'endcard', label: 'End card', icon: 'disc', build: buildEndCard },
-    { id: 'style', label: 'Style', icon: 'palette', build: buildStyle },
+    { id: 'style', label: 'Look', icon: 'palette', build: buildStyle },
     { id: 'export', label: 'Export', icon: 'download', build: buildExport },
   ];
+  // Old tab ids (bookmarks, saved state, other panels) open the fold that now holds them.
+  const TAB_ALIASES = {
+    suggested: ['start', 'start-suggested'],
+    templates: ['start', 'start-templates'],
+    mytemplates: ['start', 'start-mine'],
+    media: ['video', 'video-clips'],
+    stock: ['video', 'video-stock'],
+    youtube: ['video', 'video-youtube'],
+    sounds: ['audio', 'audio-sounds'],
+  };
+  const LAYER_HOME = { video: ['video', 'video-layers'], viz: ['visualizer'], tab: ['guitarpro'], drums: ['guitarpro'] };
+  /** Which tab (and fold) an id opens. `layers` goes to the tab for the selected layer's kind. */
+  function resolveTab(id) {
+    if (id === 'layers') {
+      const L = ui.selection && ui.selection.type === 'layer' ? (store.get().layers || []).find((x) => x.id === ui.selection.id) : null;
+      return L ? LAYER_HOME[L.type] : ['video', 'video-layers'];
+    }
+    return TAB_ALIASES[id] || [id];
+  }
+  const layerCtx = () => ({ store, engine, ui, importFiles, fontOptions });
+
+  // ---------------------------------------------------------------- START (stacked ideas)
+  function buildStart(b) {
+    const p = store.get();
+    const page = (id, ic, title, blurb) =>
+      h('button', { type: 'button', class: 'page-link', onclick: () => ui.openTab(id) }, icon(ic, 20), h('span', {}, h('strong', {}, title), h('span', { class: 'muted tiny' }, blurb)), icon('chevron', 16));
+    return h(
+      'div',
+      { class: 'start-stack' },
+      fold('start-suggested', 'Suggested for you', { badge: hasNewSuggestions(p) ? 'New' : null, hint: 'From your song, clips and lyrics' }, () => buildSuggestPanel({ store, engine, ui })),
+      fold('start-templates', 'Templates and themes', { hint: 'One click restyles everything' }, () => buildTemplates()),
+      fold('start-mine', 'My templates', { open: false, hint: 'Save this edit to reuse' }, () => buildMyTemplates()),
+      fold(
+        'start-more',
+        'Inspiration, Tab Studio and Carousel',
+        { open: false },
+        h(
+          'div',
+          { class: 'page-links' },
+          page('inspiration', 'wand', 'Inspiration', 'Trends for your niche, the posting playbook, captions and hooks'),
+          page('tabstudio', 'guitar', 'Tab Studio', 'Write or fix Guitar Pro tabs, or make one from a stem'),
+          page('carousel', 'image', 'Carousel', 'Photo carousels for Instagram and TikTok'),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------- VIDEO / AUDIO / LAYER TABS
+  function buildVideoTab(b) {
+    const n = (store.get().layers || []).filter((l) => l.type === 'video').length;
+    return h(
+      'div',
+      {},
+      fold('video-clips', 'My clips', { hint: 'Upload and arrange your footage' }, buildMedia(b)),
+      fold('video-stock', 'Stock video', { open: false, hint: 'Pexels, Pixabay, Wikimedia' }, () => buildStock()),
+      fold('video-youtube', 'From your YouTube channel', { open: false, hint: 'Videos you posted' }, buildYouTubeImport()),
+      fold(
+        'video-layers',
+        'Video layers',
+        { open: n > 0, badge: n ? String(n) : null, hint: 'Clips on top of the main video' },
+        buildLayersPanel(b, layerCtx(), { types: ['video'], empty: 'No video layers. Use one for picture-in-picture, smoke or light-leak footage.' }),
+      ),
+    );
+  }
+  function buildAudioTab(b) {
+    return h(
+      'div',
+      {},
+      fold('audio-song', 'Song and your own audio', { hint: 'Song, beats, voice-over, clip sound' }, buildAudio(b)),
+      fold('audio-sounds', 'Sound effects', { hint: 'Built-in, free libraries and yours' }, () => buildSounds()),
+    );
+  }
+  function buildVizTab(b) {
+    return buildLayersPanel(b, layerCtx(), {
+      types: ['viz'],
+      intro: 'Visuals that react to your song or a stem: ripples, spectrums, VU meters, fire and more.',
+      empty: 'No visualizers yet.',
+    });
+  }
+  function buildGuitarTab(b) {
+    return buildLayersPanel(b, layerCtx(), {
+      types: ['tab', 'drums'],
+      intro: 'Guitar, bass and drum parts from Guitar Pro files (or a drum stem), in time with the song.',
+      empty: 'No tab or drum layers yet.',
+      after: section(
+        'Tab Studio',
+        h('p', { class: 'muted small' }, 'Write a tab, fix one, or make one from a guitar, bass or drum stem.'),
+        button('Open Tab Studio', () => ui.openTab('tabstudio'), { iconName: 'guitar', variant: 'sm' }),
+      ),
+    });
+  }
+
+  // ---------------------------------------------------------------- YOUTUBE (your own uploads)
+  function buildYouTubeImport() {
+    const step = (n, ...kids) => h('li', {}, h('span', { class: 'step-n' }, String(n)), h('span', {}, ...kids));
+    const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text);
+    return h(
+      'div',
+      { class: 'yt-import' },
+      h('p', { class: 'muted small' }, 'YouTube lets you download videos you uploaded yourself from YouTube Studio. Videos from other channels can’t be downloaded.'),
+      h(
+        'ol',
+        { class: 'steps' },
+        step(1, 'Open ', link('https://studio.youtube.com/', 'YouTube Studio'), ' and go to ', h('b', {}, 'Content'), '.'),
+        step(2, 'Hover your video, click ', h('b', {}, '⋮ Options'), ', then ', h('b', {}, 'Download'), '.'),
+        step(3, 'Drop the MP4 here, or anywhere on this page.'),
+      ),
+      h(
+        'div',
+        { class: 'row' },
+        button('Add the downloaded video', async () => importFiles(await pickFiles('video/*,.mp4,.mov,.webm', true)), { iconName: 'upload', variant: 'sm primary' }),
+        h('a', { class: 'btn sm ghost', href: 'https://support.google.com/youtube/answer/56100', target: '_blank', rel: 'noopener noreferrer' }, 'YouTube’s help page'),
+      ),
+      h('p', { class: 'muted tiny' }, 'Shorts are downloaded the same way. Studio gives you a 720p file; for full quality, use your original export.'),
+    );
+  }
+
+
+  // ---------------------------------------------------------------- MY TEMPLATES
+  const myTplState = { name: '', error: '' };
+  function buildMyTemplates() {
+    const list = loadTemplates();
+    const save = () => {
+      const name = nameIn.value.trim() || store.get().name || 'My template';
+      // a small picture of the frame at the first lyric (or 1.5 s) for the card
+      let thumb = null;
+      try {
+        const c = h('canvas', { width: 72, height: 128 });
+        const draft = structuredClone(store.get());
+        draft.look.overlay = 'off';
+        renderFrame(c.getContext('2d'), c.width, c.height, draft, Math.min(1.5, draft.duration / 3), engine.env(false));
+        thumb = c.toDataURL('image/jpeg', 0.7);
+      } catch {
+        thumb = null;
+      }
+      const at = list.findIndex((t) => t.name.toLowerCase() === name.toLowerCase());
+      if (at >= 0 && !confirm(`Replace your template “${list[at].name}”?`)) return;
+      const t = templateFromProject(store.get(), name, thumb);
+      if (at >= 0) list[at] = t;
+      else list.unshift(t);
+      try {
+        saveTemplates(list);
+      } catch {
+        return toast('Could not save: this browser’s storage is full.', 'error');
+      }
+      myTplState.name = '';
+      toast(`Saved “${name}” to My templates`);
+      ui.refreshPanels(true);
+    };
+    const use = (t) => {
+      let res = null;
+      store.update((d) => (res = applyMyTemplate(d, t)));
+      const miss = res && res.missing.length ? ` It also had ${[...new Set(res.missing)].map((k) => ({ tab: 'a guitar tab', drums: 'a drum chart', video: 'a video layer' })[k]).join(' and ')}; add the file in the ${res.missing.includes('video') ? 'Video' : 'Guitar Pro'} tab.` : '';
+      toast(`“${t.name}” applied. Undo (Ctrl+Z) to go back.${miss}`, 'info', miss ? 7000 : 3500);
+      ui.refreshPanels(true);
+    };
+    const remove = (i) => {
+      if (!confirm(`Delete your template “${list[i].name}”?`)) return;
+      list.splice(i, 1);
+      saveTemplates(list);
+      ui.refreshPanels(true);
+    };
+    const exportOne = (t) => download(new Blob([templateFile(t)], { type: 'application/json' }), `${t.name.replace(/[^\w\- ]+/g, '').trim() || 'template'}.promo-template.json`);
+    const importOne = async () => {
+      const [f] = await pickFiles('.json,application/json', false);
+      if (!f) return;
+      try {
+        const t = parseTemplateFile(await f.text());
+        list.unshift(t);
+        saveTemplates(list);
+        toast(`Added “${t.name}” to My templates`);
+        ui.refreshPanels(true);
+      } catch (e) {
+        toast(e.message, 'error', 5000);
+      }
+    };
+    const nameIn = h('input', { type: 'text', placeholder: store.get().name || 'e.g. Dark single, breakdown teaser', value: myTplState.name, maxlength: 80, 'aria-label': 'Template name' });
+    nameIn.addEventListener('input', () => (myTplState.name = nameIn.value));
+    nameIn.addEventListener('keydown', (e) => e.key === 'Enter' && save());
+    const cards = list.map((t, i) =>
+      h(
+        'div',
+        { class: 'my-tpl' },
+        t.thumb ? h('img', { src: t.thumb, alt: '', class: 'my-tpl-thumb' }) : h('div', { class: 'my-tpl-thumb empty' }, icon('star', 18)),
+        h(
+          'div',
+          { class: 'my-tpl-info' },
+          h('strong', {}, t.name),
+          h('span', { class: 'muted tiny' }, describeTemplate(t)),
+          h(
+            'div',
+            { class: 'row' },
+            button('Use', () => use(t), { variant: 'sm primary' }),
+            iconButton('download', `Download “${t.name}” as a file`, () => exportOne(t), 'ghost'),
+            iconButton('trash', `Delete template ${t.name}`, () => remove(i), 'ghost danger'),
+          ),
+        ),
+      ),
+    );
+    return h(
+      'div',
+      { class: 'my-tpls' },
+      h('p', { class: 'muted small' }, 'Saves the look of this edit (theme, fonts, lyric style, grades and effects, text, end card, visualizer and tab styles) without your clips, song or lyrics, so you can reuse it on the next release.'),
+      h('div', { class: 'search-row' }, nameIn, button('Save', save, { iconName: 'star', variant: 'primary' })),
+      cards.length ? h('div', { class: 'my-tpl-list' }, cards) : h('p', { class: 'muted tiny' }, 'No templates yet.'),
+      h('div', { class: 'row' }, button('Import a template file', importOne, { iconName: 'upload', variant: 'sm ghost' })),
+    );
+  }
 
   // ---------------------------------------------------------------- TEMPLATES
   function buildTemplates() {
@@ -275,7 +483,7 @@ export function createPanels({ store, engine, ui }) {
           { class: 'tpl-info' },
           h('strong', {}, tpl.name),
           h('span', { class: 'muted tiny' }, tpl.blurb),
-          needs ? h('span', { class: 'tpl-needs tiny' }, `Needs a Guitar Pro file with a ${needs} track. Add one in Media or the Layers tab.`) : null,
+          needs ? h('span', { class: 'tpl-needs tiny' }, `Needs a Guitar Pro file with a ${needs} track. Add one in the Guitar Pro tab.`) : null,
           button(p.template === tpl.id ? 'Applied · re-apply' : 'Use this template', () => {
             store.update((d) => applyTemplate(d, tpl.id, tabSources(media.all())));
             toast(`“${tpl.name}” applied. Undo (Ctrl+Z) to go back.`);
@@ -379,7 +587,7 @@ export function createPanels({ store, engine, ui }) {
   const soundState = { query: '', license: settings.sfxLicense || 'cc0', results: [], loading: false, error: '', page: 1 };
   const fsState = { query: '', results: [], loading: false, error: '', page: 1, hasMore: false, count: 0 };
   const libState = { query: '', favoritesOnly: false, limit: 60, importing: '' };
-  soundLib.onChange(() => ui.tab === 'sounds' && !libState.importing && ui.refreshPanels(true));
+  soundLib.onChange(() => ui.tab === 'audio' && !libState.importing && ui.refreshPanels(true));
 
   /** Files from a drop, walking into dropped folders. */
   async function filesFromDrop(dt) {
@@ -558,7 +766,12 @@ export function createPanels({ store, engine, ui }) {
 
     // ---- Freesound
     const fsKeyIn = h('input', { type: 'password', placeholder: 'Paste your free Freesound API key', value: settings.freesoundKey || '', autocomplete: 'off' });
-    fsKeyIn.addEventListener('change', () => ((settings.freesoundKey = fsKeyIn.value.trim()), saveSettings(settings), toast('Freesound key saved in this browser only')));
+    fsKeyIn.addEventListener('change', () => {
+      settings.freesoundKey = fsKeyIn.value.trim();
+      saveSettings(settings);
+      toast(settings.freesoundKey ? 'Freesound key saved in this browser only' : 'Freesound key removed');
+      ui.refreshPanels(true);
+    });
     const sel = (opts, key, def) => {
       const s = h('select', {}, opts.map(([v, l]) => h('option', { value: v, selected: v === (settings[key] || def) }, l)));
       s.addEventListener('change', () => ((settings[key] = s.value), saveSettings(settings)));
@@ -690,8 +903,7 @@ export function createPanels({ store, engine, ui }) {
       section(
         'Freesound',
         h('p', { class: 'muted small' }, 'Search 600,000+ Creative Commons sounds on ', h('a', { href: 'https://freesound.org', target: '_blank', rel: 'noopener noreferrer' }, 'Freesound'), '. Non-commercial licenses are left out, since a promo is commercial use.'),
-        settings.freesoundKey ? null : h('p', { class: 'small' }, 'Needs a free API key: sign in, then ', h('a', { href: FREESOUND_KEY_URL, target: '_blank', rel: 'noopener noreferrer' }, 'apply for an API key'), ' and paste the “Client secret/Api key” below.'),
-        field('Freesound API key', fsKeyIn, 'Stored in this browser only.'),
+        keyBox('Freesound API key', fsKeyIn, { saved: !!settings.freesoundKey, help: h('span', {}, 'Free: sign in, then ', h('a', { href: FREESOUND_KEY_URL, target: '_blank', rel: 'noopener noreferrer' }, 'apply for an API key'), ' and paste the “Client secret/Api key” here. Stored in this browser only.') }),
         h('div', { class: 'grid3' }, field('License', fsLic), field('Length', fsDur), field('Sort', fsSort)),
         fsForm,
         h('div', { class: 'chips' }, SFX_CATEGORIES.slice(0, 10).map((c) => button(c, () => ((fsQ.value = c), runFs(c)), { variant: 'chip' }))),
@@ -721,9 +933,6 @@ export function createPanels({ store, engine, ui }) {
   }
 
   // ---------------------------------------------------------------- LAYERS
-  function buildLayers(b) {
-    return buildLayersPanel(b, { store, engine, ui, importFiles, fontOptions });
-  }
 
   // ---------------------------------------------------------------- MEDIA
   function buildMedia(b) {
@@ -873,7 +1082,8 @@ export function createPanels({ store, engine, ui }) {
     keyInput.addEventListener('change', () => {
       settings[keyName] = keyInput.value.trim();
       saveSettings(settings);
-      toast(`${prov.label} key saved in this browser only`);
+      toast(settings[keyName] ? `${prov.label} key saved in this browser only` : `${prov.label} key removed`);
+      ui.refreshPanels(true);
     });
 
     const q = h('input', { type: 'search', placeholder: 'e.g. city night, crowd, rain, neon', value: stockState.query });
@@ -953,11 +1163,10 @@ export function createPanels({ store, engine, ui }) {
         'Free stock video',
         field('Source', providerSel),
         prov.needsKey
-          ? field(
-              `${prov.label} API key`,
-              keyInput,
-              h('span', {}, 'Free. Get one at ', h('a', { href: prov.keyUrl, target: '_blank', rel: 'noopener noreferrer' }, prov.keyUrl.replace('https://', '')), '. Stored only in this browser.'),
-            )
+          ? keyBox(`${prov.label} API key`, keyInput, {
+              saved: !!settings[keyName],
+              help: h('span', {}, 'Free. Get one at ', h('a', { href: prov.keyUrl, target: '_blank', rel: 'noopener noreferrer' }, prov.keyUrl.replace('https://', '')), '. Stored only in this browser.'),
+            })
           : h('p', { class: 'muted small' }, 'No key needed. Smaller library, and many files require crediting the author.'),
         form,
         h('p', { class: 'muted tiny' }, `Searching for ${ASPECTS[store.get().aspect].label.split(' · ')[0]} footage. Hover a result to preview it.`),
@@ -1304,7 +1513,7 @@ export function createPanels({ store, engine, ui }) {
     return h(
       'div',
       {},
-      section('Song', field('Track', songSel), audioMedia.length ? null : h('p', { class: 'muted small' }, 'Upload your song (MP3, WAV, M4A) in the Media tab or below.'), audioMedia.length ? null : button('Upload song', async () => importFiles(await pickFiles('audio/*', false)), { iconName: 'upload', variant: 'primary' }), songBlock),
+      section('Song', field('Track', songSel), audioMedia.length ? null : h('p', { class: 'muted small' }, 'Upload your song (MP3, WAV, M4A) here or anywhere on the page.'), audioMedia.length ? null : button('Upload song', async () => importFiles(await pickFiles('audio/*', false)), { iconName: 'upload', variant: 'primary' }), songBlock),
       section('Extra audio', h('p', { class: 'muted small' }, 'Voice-over, a riser or sound effects. Each gets its own track; it starts at the playhead.'), tracks, button('Add audio file', addAudio, { iconName: 'plus' })),
       section('Video clip sound', h('p', { class: 'muted small' }, 'Clips are muted by default so your song is clean. Select a clip on the timeline to turn its own sound up.')),
     );
@@ -1398,7 +1607,7 @@ export function createPanels({ store, engine, ui }) {
         'Call-to-action end card',
         b.toggle('Show end card', (p) => p.endCard.enabled, e((o, v) => (o.enabled = v))),
         b.range('Length', (p) => p.endCard.duration, e((o, v) => (o.duration = v)), { min: 1, max: 10, step: 0.1, fmt: (v) => `${v.toFixed(1)}s` }),
-        field('Cover art', coverSel, images.length ? null : 'Upload your cover image in the Media tab.'),
+        field('Cover art', coverSel, images.length ? null : 'Upload your cover image in the Video tab (My clips).'),
         images.length ? null : button('Upload cover art', async () => {
           const [f] = await pickFiles('image/*', false);
           if (!f) return;
@@ -1441,42 +1650,6 @@ export function createPanels({ store, engine, ui }) {
     wmSel.addEventListener('change', () => store.update((d) => (d.look.watermark.mediaId = wmSel.value || null)));
     b._reg((p) => (wmSel.value = p.look.watermark.mediaId || ''));
 
-    const templates = loadTemplates();
-    const tplList = h('div', { class: 'list' });
-    templates.forEach((t, i) =>
-      tplList.append(
-        h(
-          'div',
-          { class: 'list-row' },
-          h('button', { type: 'button', class: 'link', onclick: () => applyTemplate(t) }, t.name),
-          iconButton('trash', `Delete template ${t.name}`, () => {
-            templates.splice(i, 1);
-            saveTemplates(templates);
-            ui.refreshPanels(true);
-          }, 'ghost'),
-        ),
-      ),
-    );
-    const applyTemplate = (t) => {
-      store.update((d) => {
-        d.lyricStyle = { ...d.lyricStyle, ...t.lyricStyle };
-        d.endCard = { ...d.endCard, ...t.endCard, coverMediaId: d.endCard.coverMediaId, title: d.endCard.title, releaseDate: d.endCard.releaseDate };
-        d.look = { ...d.look, ...t.look, watermark: { ...d.look.watermark, ...t.look.watermark, mediaId: d.look.watermark.mediaId } };
-        d.background = t.background || d.background;
-      });
-      toast(`Applied “${t.name}”`);
-    };
-    const saveTpl = () => {
-      const name = prompt('Template name', 'My band style');
-      if (!name) return;
-      const p = store.get();
-      const { coverMediaId, title, releaseDate, ...endCard } = p.endCard;
-      templates.push({ name, lyricStyle: p.lyricStyle, endCard, look: p.look, background: p.background });
-      saveTemplates(templates);
-      toast('Template saved in this browser');
-      ui.refreshPanels(true);
-    };
-
     return h(
       'div',
       {},
@@ -1493,7 +1666,7 @@ export function createPanels({ store, engine, ui }) {
       ),
       section(
         'Logo watermark',
-        field('Image', wmSel, images.length ? 'A transparent PNG of your band logo works best.' : 'Upload your logo in the Media tab.'),
+        field('Image', wmSel, images.length ? 'A transparent PNG of your band logo works best.' : 'Upload your logo in the Video tab (My clips).'),
         b.select('Position', (p) => p.look.watermark.position, l((o, v) => (o.watermark.position = v)), [['top-left', 'Top left'], ['top-center', 'Top center'], ['top-right', 'Top right'], ['bottom-left', 'Bottom left'], ['bottom-center', 'Bottom center'], ['bottom-right', 'Bottom right'], ['custom', 'Custom (X / Y below)']]),
         h('div', { class: 'grid2' },
           b.range('Logo X', (p) => p.look.watermark.x ?? 50, l((o, v) => ((o.watermark.x = v), (o.watermark.position = 'custom'))), { min: 0, max: 100, step: 0.5, fmt: (v) => `${v}%` }),
@@ -1516,7 +1689,7 @@ export function createPanels({ store, engine, ui }) {
           ? h('p', { class: 'muted tiny' }, 'Ghost buttons show where each app puts its icons, caption and nav bar, so you can keep lyrics and text clear of them. Preview only, never exported. Shortcut: O cycles the apps.')
           : h('p', { class: 'warn-list' }, 'The phone preview is for 9:16 videos. Switch Format to 9:16 to see it.'),
       ),
-      section('Templates', h('p', { class: 'muted small' }, 'Save your lyric style, end-card look, watermark and effects to reuse on the next release.'), tplList, button('Save current style as template', saveTpl, { iconName: 'plus' })),
+      section('Templates', h('p', { class: 'muted small' }, 'To reuse this look on your next release, save it as one of your templates.'), button('Save this edit as a template…', () => (setFold('start-mine', true), ui.openTab('start')), { iconName: 'star', variant: 'sm' })),
     );
   }
 
@@ -2089,7 +2262,7 @@ export function createPanels({ store, engine, ui }) {
     }
     if (sel.type === 'layer') {
       const L = findLayer(store.get(), sel.id);
-      return h('div', {}, h('div', { class: 'insp-title' }, icon(L ? LAYER_TYPES[L.type].icon : 'layers', 16), h('span', {}, L ? L.name : 'Layer')), h('p', { class: 'small' }, 'This layer’s settings are in the Layers panel on the left. Drag its block on the timeline to line it up with the song, or use the eye to hide it.'));
+      return h('div', {}, h('div', { class: 'insp-title' }, icon(L ? LAYER_TYPES[L.type].icon : 'layers', 16), h('span', {}, L ? L.name : 'Layer')), h('p', { class: 'small' }, 'This layer’s settings are in the panel on the left. Drag its block on the timeline to line it up with the song, or use the eye to hide it.'));
     }
     if (sel.type === 'endcard') {
       return h('div', {}, h('div', { class: 'insp-title' }, icon('disc', 16), h('span', {}, 'End card')), h('p', { class: 'small' }, 'Drag its left edge on the timeline to change its length. Everything else is in the End card tab.'));
@@ -2130,7 +2303,8 @@ export function createPanels({ store, engine, ui }) {
         h(
           'ol',
           { class: 'steps' },
-          h('li', { class: p.clips.length ? 'done' : '' }, 'Add video: upload clips (Media) or search free footage (Stock).'),
+          h('li', { class: p.template || p.theme ? 'done' : '' }, 'Pick a template or theme, or a suggested edit (Start).'),
+          h('li', { class: p.clips.length ? 'done' : '' }, 'Add video: upload clips or search free stock footage (Video).'),
           h('li', { class: p.song ? 'done' : '' }, 'Add your song (Audio) and pick the hook.'),
           h('li', { class: p.lyrics.length ? 'done' : '' }, 'Paste lyrics and tap along to sync them (Lyrics).'),
           h('li', { class: p.endCard.coverMediaId ? 'done' : '' }, 'Add cover art and a call to action (End card).'),
@@ -2148,7 +2322,7 @@ export function createPanels({ store, engine, ui }) {
     );
   }
 
-  return { tabs, buildInspector, importFiles, sync, doTap, doEnd, stopSync, actions };
+  return { tabs, resolveTab, buildInspector, importFiles, sync, doTap, doEnd, stopSync, actions };
 }
 
 const MOTIONS = {

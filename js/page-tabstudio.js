@@ -630,7 +630,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       const rec = await addMedia(file, file.name);
       S.savedId = rec.id;
       S.dirty = false;
-      toast(`Saved “${file.name}” to your media.${use ? '' : ' Use it from the Layers tab, or press “Use in video”.'}`, 'info', 5000);
+      toast(`Saved “${file.name}” to your media.${use ? '' : ' Use it from the Guitar Pro tab, or press “Use in video”.'}`, 'info', 5000);
       if (use) useInVideo(rec);
       render();
       return rec;
@@ -728,7 +728,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
     tuning.disabled = false;
     const form = h('form', { class: 'tool-box ts-tx', onsubmit: (e) => (e.preventDefault(), transcribe(form)) },
       h('h4', {}, 'Make a tab from a stem'),
-      h('p', { class: 'small' }, 'Upload an isolated stem (bass, lead guitar, rhythm guitar or drums) in Media, then pick it here. Single-note parts come out best; chords become power-chord shapes with the chord names; drums give kick, snare and hi-hat. Then fix it by ear.'),
+      h('p', { class: 'small' }, 'Upload an isolated stem (bass, lead guitar, rhythm guitar or drums) in the Video or Audio tab, then pick it here. Single-note parts come out best; chords become power-chord shapes with the chord names; drums give kick, snare and hi-hat. Then fix it by ear.'),
       stems.length ? null : h('p', { class: 'warn-list small' }, 'No audio files yet.'),
       h('div', { class: 'row' }, button('Upload stems', async () => {
         const files = await pickFiles('audio/*', true);

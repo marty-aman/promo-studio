@@ -69,6 +69,11 @@ const ICONS = {
   stop: 'M6 6h12v12H6z',
   guitar: 'M19 2l3 3-4.5 4.5M17.5 6.5l-6 6M11 9c-2-1-4.5-.5-5.5 1.5-.7 1.4-.3 2.3-1.5 3.5-1.6 1.6-1.4 4.5.5 6.5s4.9 2.1 6.5.5c1.2-1.2 2.1-.8 3.5-1.5 2-1 2.5-3.5 1.5-5.5M8 16h.01',
   share: 'M4 12v8h16v-8M12 3v13M7 8l5-5 5 5',
+  key: 'M15 3a6 6 0 1 1-5.2 9L3 18.8V21h3v-2h2v-2h2l1.8-1.8A6 6 0 0 1 15 3zM16.5 7.5h.01',
+  chevron: 'M9 6l6 6-6 6',
+  gauge: 'M12 21a9 9 0 1 1 9-9M12 12l4-4M7 17h10',
+  star: 'M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z',
+  bolt: 'M13 2L4 14h7l-1 8 9-12h-7z',
   youtube: 'M2.5 7.5a3 3 0 0 1 2.1-2.1C6.5 5 12 5 12 5s5.5 0 7.4.4a3 3 0 0 1 2.1 2.1c.5 1.9.5 4.5.5 4.5s0 2.6-.5 4.5a3 3 0 0 1-2.1 2.1C17.5 19 12 19 12 19s-5.5 0-7.4-.4a3 3 0 0 1-2.1-2.1C2 14.6 2 12 2 12s0-2.6.5-4.5zM10 15l5-3-5-3z',
 };
 
@@ -278,6 +283,73 @@ export function field(label, control, hint) {
     control,
     hint ? h('div', { class: 'hint' }, hint) : null,
   );
+}
+
+// ---- collapsible sections that remember whether you left them open
+const FOLD_KEY = 'pvm.folds.v1';
+let foldState = {};
+try {
+  foldState = JSON.parse(localStorage.getItem(FOLD_KEY)) || {};
+} catch {
+  foldState = {};
+}
+const saveFolds = () => {
+  try {
+    localStorage.setItem(FOLD_KEY, JSON.stringify(foldState));
+  } catch {
+    /* storage full: folds just won't be remembered */
+  }
+};
+/** Open (or close) a fold by id; it applies the next time the panel is built. */
+export function setFold(id, open = true) {
+  foldState[id] = !!open;
+  saveFolds();
+}
+export const isFoldOpen = (id, dflt = true) => (id in foldState ? foldState[id] : dflt);
+/**
+ * A collapsible section: fold(id, title, { open, hint, badge }, ...children).
+ * `open` is the default the first time; after that the user's choice is remembered.
+ */
+export function fold(id, title, opts = {}, ...children) {
+  const el = h(
+    'details',
+    { class: `sect fold${opts.class ? ` ${opts.class}` : ''}`, 'data-fold': id },
+    h('summary', {}, icon('chevron', 14), h('span', { class: 'fold-text' }, h('span', { class: 'fold-title' }, title), opts.hint ? h('span', { class: 'fold-hint muted tiny' }, opts.hint) : null), opts.badge ? h('span', { class: `fold-badge ${opts.badgeKind || ''}` }, opts.badge) : null),
+    h('div', { class: 'fold-body' }),
+  );
+  const body = el.lastChild;
+  // a single function child is built only when the fold is open (closed folds cost nothing)
+  const lazy = children.length === 1 && typeof children[0] === 'function' ? children[0] : null;
+  let built = false;
+  const build = () => {
+    if (built) return;
+    built = true;
+    body.append(...[lazy ? lazy() : children].flat().filter((c) => c != null));
+  };
+  el.open = isFoldOpen(id, opts.open !== false);
+  if (el.open || !lazy) build();
+  el.addEventListener('toggle', () => {
+    foldState[id] = el.open;
+    saveFolds();
+    if (el.open) build();
+  });
+  return el;
+}
+
+/**
+ * An API key box that folds away once a key is saved: keyBox(label, input, { saved, help }).
+ * Open when no key is set, so first-time users see where to paste it.
+ */
+export function keyBox(label, input, { saved = false, help = null } = {}) {
+  const el = h(
+    'details',
+    { class: `keybox${saved ? ' saved' : ''}` },
+    h('summary', {}, icon('key', 14), h('span', {}, label), h('span', { class: `keybox-state ${saved ? 'ok' : 'need'}` }, saved ? 'Saved ✓' : 'Needed')),
+    h('div', { class: 'keybox-body' }, help ? h('div', { class: 'hint' }, help) : null, input),
+  );
+  el.open = !saved;
+  if (!input.getAttribute('aria-label')) input.setAttribute('aria-label', label);
+  return el;
 }
 
 export function section(title, ...children) {

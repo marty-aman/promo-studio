@@ -5,11 +5,12 @@ import { media, restoreMedia } from './media.js';
 import { Engine } from './engine.js';
 import { createTimeline } from './timeline.js';
 import { createPanels } from './panels.js';
-import { h, icon, iconButton, button, toast, Binder } from './dom.js';
+import { h, icon, iconButton, button, toast, setFold, Binder } from './dom.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { buildInspirationPage } from './page-inspiration.js';
 import { buildTabStudio } from './page-tabstudio.js';
 import { buildCarouselPage } from './page-carousel.js';
+import { createPostCheck } from './panel-postcheck.js';
 import { loadSettings } from './state.js';
 
 const store = createStore(loadProject() || newProject());
@@ -60,6 +61,7 @@ nameInput.addEventListener('input', () => store.update((d) => (d.name = nameInpu
 const aspectSel = h('select', { class: 'aspect', 'aria-label': 'Format' }, Object.entries(ASPECTS).map(([k, a]) => h('option', { value: k }, a.label)));
 aspectSel.addEventListener('change', () => store.update((d) => (d.aspect = aspectSel.value)));
 
+const postSlot = h('span');
 const header = h(
   'header',
   { class: 'topbar' },
@@ -70,6 +72,7 @@ const header = h(
   redoBtn,
   saveState,
   h('div', { class: 'spacer' }),
+  postSlot,
   button('New project', () => {
     if (!confirm('Start a new project? Your media library is kept; the current edit is replaced.')) return;
     store.replace(newProject());
@@ -115,11 +118,13 @@ const ui = {
   snap: true,
   follow: true,
   syncing: false,
-  tab: (localStorage.getItem('pvm.tab') || 'media').replace(/^guitar$/, 'layers'),
+  tab: (localStorage.getItem('pvm.tab') || 'start').replace(/^guitar$/, 'guitarpro'),
   select(sel) {
     this.selection = sel;
     // jump to the panel that edits what was just selected (only now, not on every refresh)
-    const home = sel && { layer: 'layers', song: 'audio', endcard: 'endcard' }[sel.type];
+    const homeId = sel && { layer: 'layers', song: 'audio', endcard: 'endcard' }[sel.type];
+    const [home, homeFold] = homeId ? panels.resolveTab(homeId) : [];
+    if (homeFold) setFold(homeFold, true);
     if (home && this.tab !== home && !PAGES[this.tab]) {
       this.tab = home;
       localStorage.setItem('pvm.tab', home);
@@ -135,13 +140,23 @@ const ui = {
     zoom.value = this.pxPerSec;
     timeline.render();
   },
-  openTab(id) {
-    if (this.tab === id) return;
+  openTab(req) {
+    // old ids (media, stock, sounds, layers, templates…) open the fold that now holds them
+    const [id, foldId] = PAGES[req] ? [req] : panels.resolveTab(req);
+    if (foldId) setFold(foldId, true);
+    if (this.tab === id) {
+      if (foldId) {
+        rebuildLeft();
+        revealFold(foldId);
+      }
+      return;
+    }
     this.tab = id;
     localStorage.setItem('pvm.tab', id);
     renderRail();
     showPage();
     if (!PAGES[id]) rebuildLeft();
+    if (foldId) revealFold(foldId);
   },
   refreshPanels() {
     rebuildLeft();
@@ -193,6 +208,8 @@ snapBtn.setAttribute('aria-pressed', 'true');
 
 const timeline = createTimeline({ root: timelineRoot, store, engine, ui });
 const panels = createPanels({ store, engine, ui });
+const postcheck = createPostCheck({ store, engine, ui });
+postSlot.replaceWith(postcheck.el);
 
 // ------------------------------------------------------------ panels
 let leftBinder = null;
@@ -202,13 +219,15 @@ let inspSig = '';
 
 function renderRail() {
   const railBtn = (t) => {
-    const dot = t.dot && ui.tab !== t.id && t.dot();
+    // the full-screen pages open from Start, so Start stays lit while one is up
+    const on = ui.tab === t.id || (t.id === 'start' && !!PAGES[ui.tab]);
+    const dot = t.dot && !on && t.dot();
     return h(
       'button',
       {
         type: 'button',
-        class: `rail-btn${ui.tab === t.id ? ' on' : ''}`,
-        'aria-current': ui.tab === t.id ? 'page' : null,
+        class: `rail-btn${on ? ' on' : ''}`,
+        'aria-current': on ? 'page' : null,
         'aria-label': dot ? `${t.label} (new suggestions)` : null,
         onclick: () => ui.openTab(t.id),
       },
@@ -218,7 +237,9 @@ function renderRail() {
     );
   };
   railSig = railSignature();
-  tabRail.replaceChildren(...Object.entries(PAGES).map(([id, pg]) => railBtn({ id, label: pg.label, icon: pg.icon })), h('hr', { class: 'rail-sep' }), ...panels.tabs.map(railBtn));
+  // Start (ideas, templates and the full-screen pages) on top, then the tabs you build with
+  const [start, ...rest] = panels.tabs;
+  tabRail.replaceChildren(railBtn(start), h('hr', { class: 'rail-sep' }), ...rest.map(railBtn));
 }
 let railSig = '';
 function railSignature() {
@@ -245,18 +266,20 @@ function showPage() {
   }
 }
 
+const loadTemplatesCount = () => (localStorage.getItem('pvm.templates.v1') || '').length;
 function leftSignature() {
   const p = store.get();
   const parts = [ui.tab, media.all().length, p.aspect];
   if (ui.tab === 'lyrics') parts.push(p.lyrics.map((l) => `${l.id}:${l.start}:${l.end}`).join('|'), panels.sync.active, panels.sync.cursor, ui.selection && ui.selection.id, p.lyricStyle.display);
-  if (ui.tab === 'audio') parts.push(p.song && p.song.mediaId, p.beats && p.beats.bpm, p.audioTracks.map((a) => `${a.id}:${a.start}:${a.duration}`).join('|'));
+  const has = (...ids) => ids.includes(ui.tab);
+  if (has('audio')) parts.push(p.song && p.song.mediaId, p.beats && p.beats.bpm, p.audioTracks.map((a) => `${a.id}:${a.start}:${a.duration}`).join('|'));
   if (ui.tab === 'text') parts.push(p.texts.map((t) => `${t.id}:${t.text}:${t.start}:${t.end}`).join('|'));
   if (ui.tab === 'export') parts.push(p.clips.length, !!p.song, p.endCard.coverMediaId, p.duration, p.endCard.enabled, p.name, p.endCard.title, p.endCard.artist, p.endCard.cta, p.endCard.subtext);
-  if (ui.tab === 'media') parts.push(p.clips.length);
-  if (ui.tab === 'templates') parts.push(p.clips.length, p.template, p.layout, p.lyrics.length, p.theme ? `${p.theme.id}:${p.theme.custom}` : '');
-  if (ui.tab === 'suggested') parts.push(media.all().map((m) => `${m.id}:${m.envelope ? 1 : 0}`).join(','), p.song && p.song.mediaId, p.lyrics.length, p.suggestion, p.endCard.coverMediaId, p.aspect);
-  if (ui.tab === 'sounds') parts.push(p.audioTracks.length);
-  if (ui.tab === 'layers') {
+  if (has('video')) parts.push(p.clips.length);
+  if (has('start')) parts.push(loadTemplatesCount(), p.clips.length, p.template, p.layout, p.lyrics.length, p.theme ? `${p.theme.id}:${p.theme.custom}` : '');
+  if (has('start')) parts.push(media.all().map((m) => `${m.id}:${m.envelope ? 1 : 0}`).join(','), p.song && p.song.mediaId, p.lyrics.length, p.suggestion, p.endCard.coverMediaId, p.aspect);
+  if (has('audio')) parts.push(p.audioTracks.length);
+  if (has('video', 'visualizer', 'guitarpro')) {
     const L = ui.selection && ui.selection.type === 'layer' ? (p.layers || []).find((l) => l.id === ui.selection.id) : null;
     parts.push(
       (p.layers || []).map((l) => `${l.id}:${l.type}:${l.visible !== false}:${l.name}`).join('|'),
@@ -296,6 +319,10 @@ function keepScroll(el, fn) {
   fn();
   el.scrollTop = top;
 }
+function revealFold(id) {
+  const el = leftPanel.querySelector(`[data-fold="${id}"]`);
+  if (el) requestAnimationFrame(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+}
 function rebuildLeft() {
   leftBinder = new Binder(store);
   const tab = panels.tabs.find((t) => t.id === ui.tab) || panels.tabs[0];
@@ -332,6 +359,7 @@ store.subscribe((p, meta) => {
   else inspBinder.refresh();
   if (railSignature() !== railSig) renderRail();
   syncHeader();
+  postcheck.refresh();
   saveState.textContent = 'Saving…';
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
@@ -352,6 +380,7 @@ function syncHeader() {
 }
 
 media.onChange(() => {
+  postcheck.refresh();
   if (!engine.playing) engine.render();
   timeline.render();
   if (railSignature() !== railSig) renderRail();
@@ -470,8 +499,15 @@ window.addEventListener('drop', (e) => {
 
 // ------------------------------------------------------------ boot
 async function boot() {
+  // a tab id saved by an older version (media, stock, layers…) opens its new home
+  {
+    const [t, f] = PAGES[ui.tab] ? [ui.tab] : panels.resolveTab(ui.tab);
+    ui.tab = PAGES[t] || panels.tabs.some((x) => x.id === t) ? t : 'start';
+    if (f) setFold(f, true);
+  }
   renderRail();
   syncHeader();
+  postcheck.refresh();
   rebuildLeft();
   rebuildInspector();
   timeline.render();

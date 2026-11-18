@@ -36,7 +36,7 @@ export function batchTool({ store, engine, render, mode = 'song' }) {
   const run = async () => {
     const L = Number(len.value);
     const mv = isMv ? media.get(mvSel.value) : null;
-    if (isMv && !mv) return toast('Add your music video in Media first.', 'error');
+    if (isMv && !mv) return toast('Add your music video in the Video tab first.', 'error');
     if (!isMv && !song) return toast('Choose your song in the Audio tab first.', 'error');
     const plan = planBatch({ mode, song, mv, len: L, count: total() });
     if (!plan.length) return toast('Could not read the song. Wait for its waveform to load and try again.', 'error');
@@ -81,7 +81,7 @@ export function batchTool({ store, engine, render, mode = 'song' }) {
     h('p', { class: 'small' }, isMv
       ? 'Picks the strongest moments of your music video (by its loudest sections) and exports each as its own short with your current look, end card and text. The song plays in sync with the picture.'
       : 'Exports several promos from the loudest, non-overlapping sections of your song, all with the current look, clips, text and end card. You get one .zip.'),
-    isMv ? (videos.length ? field('Music video', mvSel) : h('p', { class: 'warn-list small' }, 'Add your music video in the Media tab first.')) : !song ? h('p', { class: 'warn-list small' }, 'Choose your song in the Audio tab first.') : null,
+    isMv ? (videos.length ? field('Music video', mvSel) : h('p', { class: 'warn-list small' }, 'Add your music video in the Video tab first.')) : !song ? h('p', { class: 'warn-list small' }, 'Choose your song in the Audio tab first.') : null,
     h('div', { class: 'grid2' }, field('How many', count), field('Each clip', len)),
     estimate,
     batchState.running
