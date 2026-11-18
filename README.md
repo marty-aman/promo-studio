@@ -63,6 +63,25 @@ any other static host.
 - CTA tokens: `{date}` → "NOV 21", `{countdown}` → "OUT IN 3 DAYS" / "OUT TOMORROW" / "OUT NOW".
 
 **Extras**
+- **Suggested tab:** add a song and some clips (plus a Guitar Pro file or lyrics if you have them) and it
+  builds three different ready-to-post edits. Each one picks the hook, cuts your clips on the beat, applies
+  a fitting template, lines tab and drum layers up with the song's first beat and tempo (layers you synced
+  yourself are kept), and puts cut-outs in front of a matching background. Every card has a preview that
+  plays with the song and a short list of what it does. "Use this edit" applies it (undo works), and
+  "Show 3 different takes" gives new ideas. A dot on the rail means new suggestions are ready.
+- **Remove background** (clip inspector, video and image clips):
+  - **Person (AI):** finds people with Google's MediaPipe selfie segmenter, vendored in
+    `vendor/mediapipe` and running only in your browser (frames never leave the device; its usage metrics
+    are patched out, see `vendor/mediapipe/README.md`). Each clip is prepared once, then preview and export
+    use the stored cut-out. It needs WebGL, so it says so when a browser has it turned off. Edge
+    (shrink/grow) and softness controls.
+  - **Green screen:** chroma key for green or blue screens, including shadowed parts, with screen colour,
+    amount and softness.
+  - **Suggested backgrounds:** animated scenes drawn by the app (smoke, stage lights, concrete wall, neon
+    grid, lasers, starfield, bokeh), a gradient from your cover art's colours, the blurred original, your
+    other clips, or a solid colour. Ranked for your template and colours. One click puts the same
+    background behind every cut-out, and stock searches ("concert lights", "smoke background"…) open the
+    Stock tab.
 - **Templates tab:** 16 one-click song templates with live previews of your own footage. Each sets the
   lyric style, grade, effects, transitions, text and end card.
   - Song looks: Lyric spotlight, Hype teaser, Cinematic, Golden hour acoustic, Neon night, Retro VHS,

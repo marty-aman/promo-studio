@@ -199,19 +199,28 @@ let leftSig = '';
 let inspSig = '';
 
 function renderRail() {
-  const railBtn = (t) =>
-    h(
+  const railBtn = (t) => {
+    const dot = t.dot && ui.tab !== t.id && t.dot();
+    return h(
       'button',
       {
         type: 'button',
         class: `rail-btn${ui.tab === t.id ? ' on' : ''}`,
         'aria-current': ui.tab === t.id ? 'page' : null,
+        'aria-label': dot ? `${t.label} (new suggestions)` : null,
         onclick: () => ui.openTab(t.id),
       },
       icon(t.icon, 20),
       h('span', {}, t.label),
+      dot ? h('i', { class: 'rail-dot', 'aria-hidden': 'true' }) : null,
     );
+  };
+  railSig = railSignature();
   tabRail.replaceChildren(railBtn({ id: 'inspiration', label: 'Inspiration', icon: 'wand' }), h('hr', { class: 'rail-sep' }), ...panels.tabs.map(railBtn));
+}
+let railSig = '';
+function railSignature() {
+  return `${ui.tab}|${panels.tabs.map((t) => (t.dot && ui.tab !== t.id && t.dot() ? 1 : 0)).join('')}`;
 }
 
 let page = null;
@@ -234,6 +243,7 @@ function leftSignature() {
   if (ui.tab === 'export') parts.push(p.clips.length, !!p.song, p.endCard.coverMediaId, p.duration, p.endCard.enabled, p.name, p.endCard.title, p.endCard.artist, p.endCard.cta, p.endCard.subtext);
   if (ui.tab === 'media') parts.push(p.clips.length);
   if (ui.tab === 'templates') parts.push(p.clips.length, p.template, p.layout, p.lyrics.length);
+  if (ui.tab === 'suggested') parts.push(media.all().map((m) => `${m.id}:${m.envelope ? 1 : 0}`).join(','), p.song && p.song.mediaId, p.lyrics.length, p.suggestion, p.endCard.coverMediaId, p.aspect);
   if (ui.tab === 'sounds') parts.push(p.audioTracks.length);
   if (ui.tab === 'layers') {
     const L = ui.selection && ui.selection.type === 'layer' ? (p.layers || []).find((l) => l.id === ui.selection.id) : null;
@@ -255,8 +265,10 @@ function inspSignature() {
   const exists =
     (s.type === 'clip' &&
       (() => {
-        const c = p.clips.find((x) => x.id === s.id);
-        return c && [c.filter?.preset, !!c.kenBurns, c.mask?.shape, c.mask?.background, c.grade?.preset].join('|');
+        const c = findClip(p, s.id).clip;
+        const br = c && c.bgRemove;
+        const bg = br && br.background;
+        return c && [c.filter?.preset, !!c.kenBurns, c.mask?.shape, c.mask?.background, c.grade?.preset, br?.enabled, br?.mode, bg && [bg.kind, bg.scene, bg.mediaId, bg.color, bg.color2].join(',')].join('|');
       })()) ||
     (s.type === 'lyric' && p.lyrics.some((c) => c.id === s.id) && [...p.lyrics].sort((a, b) => a.start - b.start).findIndex((c) => c.id === s.id)) ||
     (s.type === 'text' && p.texts.some((c) => c.id === s.id)) ||
@@ -304,6 +316,7 @@ store.subscribe((p, meta) => {
   else leftBinder.refresh();
   if (inspSignature() !== inspSig || meta.type !== 'update') rebuildInspector();
   else inspBinder.refresh();
+  if (railSignature() !== railSig) renderRail();
   syncHeader();
   saveState.textContent = 'Saving…';
   clearTimeout(saveTimer);
@@ -327,6 +340,7 @@ function syncHeader() {
 media.onChange(() => {
   if (!engine.playing) engine.render();
   timeline.render();
+  if (railSignature() !== railSig) renderRail();
 });
 
 engine.on(() => {

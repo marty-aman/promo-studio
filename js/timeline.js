@@ -533,7 +533,10 @@ export function createTimeline({ root, store, engine, ui }) {
       const start = snapT(drag.orig.start + dt, drag.id);
       store.update((d) => {
         const L = d.layers.find((x) => x.id === drag.id);
-        if (L) L.offset = +timelineToSong(start, d.song).toFixed(3);
+        if (L) {
+          L.offset = +timelineToSong(start, d.song).toFixed(3);
+          L.userSync = true;
+        }
       }, key);
     } else if (drag.kind === 'vizrange') {
       const o = drag.orig;

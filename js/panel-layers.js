@@ -209,16 +209,21 @@ export function buildLayersPanel(b, ctx) {
             ),
       );
     const syncTools = (tlFn, isStem) => {
+      // timing you set yourself is kept when a suggested edit is applied
+      const S = (fn) => set((x, v, d) => {
+        fn(x, v, d);
+        x.userSync = true;
+      });
       const songNow = () => timelineToSong(engine.t, store.get().song);
       const barNum = h('input', { type: 'number', min: 1, value: 1, class: 'num', 'aria-label': 'Bar number' });
-      const nudge = (s) => store.update(set((x) => (x.offset = +((x.offset || 0) + s).toFixed(3))), `nudge:${L.id}`);
+      const nudge = (s) => store.update(S((x) => (x.offset = +((x.offset || 0) + s).toFixed(3))), `nudge:${L.id}`);
       const barAtPlayhead = () => {
         const tl = tlFn();
         if (!tl || !tl.bars) return;
         const n = parseInt(barNum.value, 10);
         const bar = tl.bars.find((x) => x.index === n - 1);
         if (!bar) return toast(`The file has ${new Set(tl.bars.map((x) => x.index)).size} bars.`, 'error');
-        store.update(set((x) => (x.offset = +(songNow() - bar.time / (x.tempoScale || 1)).toFixed(3))));
+        store.update(S((x) => (x.offset = +(songNow() - bar.time / (x.tempoScale || 1)).toFixed(3))));
         toast(`Bar ${n} now plays at the playhead`);
       };
       const matchBpm = () => {
@@ -228,7 +233,7 @@ export function buildLayersPanel(b, ctx) {
         const base = (tl && tl.tempo) || 120;
         const cands = [pp.beats.bpm, pp.beats.bpm * 2, pp.beats.bpm / 2].map((x) => x / base);
         const scale = cands.reduce((a, c) => (Math.abs(Math.log(c)) < Math.abs(Math.log(a)) ? c : a));
-        store.update(set((x) => (x.tempoScale = +scale.toFixed(4))));
+        store.update(S((x) => (x.tempoScale = +scale.toFixed(4))));
         toast(`Tempo set to ${Math.round(base * scale)} BPM to match the song`);
       };
       return section(
@@ -237,15 +242,15 @@ export function buildLayersPanel(b, ctx) {
           ? h('p', { class: 'muted tiny' }, 'Stems normally start with the song, so 0 is right. Nudge if the stem was exported with a different start.')
           : h('p', { class: 'muted tiny' }, 'Move the playhead to where this part starts in the song, then put a bar there. Drag the layer’s block on the timeline to fine-tune.'),
         isStem ? null : h('div', { class: 'row' }, h('span', { class: 'small' }, 'Put bar'), barNum, button('at the playhead', barAtPlayhead, { variant: 'sm primary' })),
-        b.number(isStem ? 'Stem starts at (song seconds)' : 'Starts at (song seconds)', get((x) => x.offset || 0), set((x, v) => (x.offset = v)), { step: 0.01 }),
+        b.number(isStem ? 'Stem starts at (song seconds)' : 'Starts at (song seconds)', get((x) => x.offset || 0), S((x, v) => (x.offset = v)), { step: 0.01 }),
         h('div', { class: 'row' }, h('span', { class: 'muted small' }, 'Nudge'), ...[-0.5, -0.05, 0.05, 0.5].map((s) => button(`${s > 0 ? '+' : '−'}${Math.abs(s)}s`, () => nudge(s), { variant: 'sm' }))),
         isStem
           ? null
           : h(
               'div',
               {},
-              b.range('Tempo', get((x) => x.tempoScale ?? 1), set((x, v) => (x.tempoScale = v)), { min: 0.5, max: 1.5, step: 0.001, fmt: (v) => `${Math.round(((tlFn() && tlFn().tempo) || 120) * v)} BPM` }),
-              h('div', { class: 'row' }, button('Match the song’s detected BPM', matchBpm, { iconName: 'activity', variant: 'sm' }), button('Use the file’s tempo', () => store.update(set((x) => (x.tempoScale = 1))), { variant: 'ghost sm' })),
+              b.range('Tempo', get((x) => x.tempoScale ?? 1), S((x, v) => (x.tempoScale = v)), { min: 0.5, max: 1.5, step: 0.001, fmt: (v) => `${Math.round(((tlFn() && tlFn().tempo) || 120) * v)} BPM` }),
+              h('div', { class: 'row' }, button('Match the song’s detected BPM', matchBpm, { iconName: 'activity', variant: 'sm' }), button('Use the file’s tempo', () => store.update(S((x) => (x.tempoScale = 1))), { variant: 'ghost sm' })),
             ),
       );
     };

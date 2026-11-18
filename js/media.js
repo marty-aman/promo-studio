@@ -4,6 +4,7 @@ import { mediaDB } from './state.js';
 import { TAB_EXTENSIONS, parseTabBytes, tabTracks, buildTabTimeline } from './tab.js';
 import { drumTracks, drumTimelineFromScore, drumHitsFromAudio } from './drums.js';
 import { analyseAudioBlob } from './viz.js';
+import { ensureMattes } from './bgremove.js';
 
 const library = new Map(); // id -> record
 const listeners = new Set();
@@ -168,9 +169,9 @@ export async function ensureLayerAnalyses(p) {
     }
   }
   await Promise.all(jobs.filter(Boolean));
+  // person cut-outs must be ready so the real-time export never shows an uncut frame
+  return ensureMattes(p, (id) => media.get(id));
 }
-
-/** Poster thumbnail as a data URL, for the media grid. */
 function makeThumb(rec) {
   return new Promise((resolve) => {
     if (rec.kind === 'image') return resolve(rec.url);
