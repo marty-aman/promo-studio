@@ -5,6 +5,7 @@ import { LAYER_TYPES, isVisible, findLayer } from './state.js';
 import { media, tabTimeline, drumTimeline, drumHitsFromStem, vizFeatures } from './media.js';
 import { defaultTabLayer } from './tab.js';
 import { defaultDrumLayer, LANES, DRUM_STYLES, STYLE_PLACEMENT } from './drums.js';
+import { TAB_STYLES, TAB_PLACEMENT, stringColor } from './tabviz.js';
 import { defaultVizLayer, VIZ_STYLES, BLENDS } from './viz.js';
 import { tabIntoLayout } from './templates.js';
 import { h, icon, button, iconButton, toast, field, section, pickFiles } from './dom.js';
@@ -301,6 +302,50 @@ export function buildLayersPanel(b, ctx) {
       if (!rec) return h('div', {}, common, field('Tab file', fileSel), upload, h('p', { class: 'muted small' }, 'Guitar Pro (.gp, .gp5, .gp4, .gp3, .gpx) or MusicXML.'));
       const T = set;
       const g = (k, def) => get((x) => x[k] ?? def);
+      const style = L.style || 'tab';
+      const trk = rec.tracks.find((tr) => tr.index === L.track) || rec.tracks[0];
+      const styleGrid = h(
+        'div',
+        { class: 'style-grid', role: 'radiogroup', 'aria-label': 'Tab style' },
+        TAB_STYLES.map(([id, label, hint]) =>
+          h('button', {
+            type: 'button',
+            role: 'radio',
+            'aria-checked': style === id ? 'true' : 'false',
+            class: `style-opt${style === id ? ' on' : ''}`,
+            onclick: () => store.update(set((x, _v, d) => {
+              x.style = id;
+              Object.assign(x, TAB_PLACEMENT[id]);
+              if (d.layout && d.layout !== 'full') tabIntoLayout(d);
+            })),
+          }, h('strong', {}, label), h('span', {}, hint)),
+        ),
+      );
+      // string colours, lowest string first (E A D G … for guitar and bass alike)
+      const stringColors = trk
+        ? h('div', { class: 'grid3' }, trk.tuning.slice().reverse().map((name, k) =>
+            b.color(`${name} string`, get((x) => stringColor(x, trk.strings, trk.strings - 1 - k)), T((o, v) => {
+              const arr = (o.stringColors || []).slice();
+              arr[k] = v;
+              o.stringColors = arr;
+            }))))
+        : null;
+      const fancyLook = () =>
+        section(
+          'Look',
+          style !== 'neck'
+            ? b.range('Seconds on screen', g('window', 2.5), T((o, v) => (o.window = v)), { min: 1.5, max: 8, step: 0.1, fmt: (v) => `${v.toFixed(1)}s` })
+            : null,
+          style === 'strings' ? b.range('Hit line', g('playhead', 22), T((o, v) => (o.playhead = v)), { min: 5, max: 70, step: 1, fmt: (v) => `${v}%` }) : null,
+          placement({ y: TAB_PLACEMENT[style].y }),
+          stringColors,
+          h('div', { class: 'grid2' }, b.color('Background', g('bg', '#000000'), T((o, v) => (o.bg = v))), b.range('Background opacity', g('bgOpacity', 0.55), T((o, v) => (o.bgOpacity = v)), { min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` })),
+          b.toggle('Show chord names', g('showChords', true), T((o, v) => (o.showChords = v))),
+          style === 'neck' ? b.toggle('Show a strip of the next notes', g('showStrip', true), T((o, v) => (o.showStrip = v))) : null,
+          b.toggle('Show tuning letters', g('showTuning', true), T((o, v) => (o.showTuning = v))),
+          style !== 'neck' ? b.toggle('Show techniques (PM, h, /, bends, ~)', g('showMarks', true), T((o, v) => (o.showMarks = v))) : null,
+          button('Reset string colours', () => store.update(T((o) => delete o.stringColors)), { variant: 'ghost sm' }),
+        );
       return h(
         'div',
         {},
@@ -308,10 +353,12 @@ export function buildLayersPanel(b, ctx) {
         field('Tab file', fileSel),
         upload,
         b.select('Track', () => String(findLayer(store.get(), L.id)?.track ?? 0), T((o, v) => (o.track = parseInt(v, 10))), rec.tracks.map((tr) => [String(tr.index), `${tr.name} · ${tr.strings} strings (${tr.tuning.slice().reverse().join(' ')})`])),
-        b.segmented('Style', g('mode', 'scroll'), T((o, v) => (o.mode = v)), [['scroll', 'Scrolling'], ['bars', 'Bar by bar']]),
+        h('div', { class: 'lbl' }, 'Style'),
+        styleGrid,
+        style === 'tab' ? b.segmented('Movement', g('mode', 'scroll'), T((o, v) => (o.mode = v)), [['scroll', 'Scrolling'], ['bars', 'Bar by bar']]) : null,
         syncTools(tl, false),
         visibleRange(),
-        section(
+        style !== 'tab' ? fancyLook() : section(
           'Look',
           L.mode === 'bars'
             ? b.range('Bars on screen', g('barsPerPage', 2), T((o, v) => (o.barsPerPage = v)), { min: 1, max: 4, step: 1, fmt: (v) => String(v) })

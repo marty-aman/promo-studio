@@ -43,6 +43,11 @@ any other static host.
   background box, ALL CAPS, per-line height override. 17 animations including pop, words rise,
   drop & bounce, zoom, blur, spin, flip, typewriter, karaoke, word by word, wave, neon flicker, glitch
   and pulse on the beat. One-click presets.
+- **How lyrics are shown:** one line at a time (with the animations above), or a whole-song display:
+  - **Scrolling lyric sheet:** the current line is big and fills in word by word, the lines around it are
+    dimmed, and the sheet glides to the next line.
+  - **Kinetic poster:** each word slams in on its beat at its own size and angle, building a poster.
+  - **3D word tunnel:** words fly at the camera out of a neon tunnel that pulses on the beat.
 
 **Audio**
 - Song with waveform. Drag it on the timeline or click the overview to choose the section.
@@ -58,9 +63,16 @@ any other static host.
 - CTA tokens: `{date}` → "NOV 21", `{countdown}` → "OUT IN 3 DAYS" / "OUT TOMORROW" / "OUT NOW".
 
 **Extras**
-- **Templates tab:** 9 one-click song templates (Lyric spotlight, Hype teaser, Cinematic, Golden hour
-  acoustic, Neon night, Retro VHS, Punk / rock, Minimal clean, Release countdown) with live previews of
-  your own footage. Each sets the lyric style, grade, effects, transitions, text and end card.
+- **Templates tab:** 16 one-click song templates with live previews of your own footage. Each sets the
+  lyric style, grade, effects, transitions, text and end card.
+  - Song looks: Lyric spotlight, Hype teaser, Cinematic, Golden hour acoustic, Neon night, Retro VHS,
+    Punk / rock, Minimal clean, Release countdown.
+  - Band templates, which add layers from your Guitar Pro files: **Riff breakdown** (light-up guitar
+    neck), **Bass cam** (bass neck plus an electric visualizer), **Full band** (guitar highway and the
+    light-up drum kit), **Can you play this?** (vibrating strings). Other tab, drum and visualizer layers
+    are hidden, not deleted. A card says when a template needs a Guitar Pro file with a guitar or bass track.
+  - Lyric templates: **Lyric video** (scrolling sheet over blurred video), **Lyric poster** (kinetic
+    words), **Neon tunnel** (3D word tunnel).
 - **App layouts:** TikTok, Instagram Reels, YouTube Shorts, "works on all three" and full frame. A layout
   moves lyrics, text, logo, progress bar and the end card into that app's clear area; templates keep it.
 - **Sounds tab:** 12 built-in effects generated in the browser (riser, impact, sub drop, whoosh, reverse
@@ -93,7 +105,18 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
 - **Video layers:** clips placed freely in time over the main video, with opacity and blend mode
   (screen for smoke or light-leak footage, multiply for textures). Quick framings: picture in picture,
   full frame, top or bottom half (split screen), circle. Each clip has the full clip inspector.
-- **Guitar tab:** as many tab layers as you need, e.g. lead and rhythm guitar or bass.
+- **Guitar tab:** as many tab layers as you need, e.g. lead and rhythm guitar or bass. All styles work for
+  4- and 5-string bass and 6- and 7-string guitar, and colour each string (bass E-A-D-G match guitar E-A-D-G).
+  Pick one of four styles:
+  - **Scrolling tab:** classic tab lines, scrolling or bar by bar.
+  - **Fretboard highway:** notes with fret numbers fly down a lane per string to a strike line, with
+    sustain tails, sparks, and the chord name (plus the next chord) on top.
+  - **Light-up neck:** a real neck with frets and inlays that slides to the frets in use. Fingered notes
+    glow, open strings ring, the next notes show as ghosts, with big chord names and a strip of what's next.
+  - **Vibrating strings:** a frosted glass panel where fret numbers slide in to a hit line and each string
+    shakes when it's played.
+
+  Chord names (Em, G, C/G, E5, Am7…) are worked out from the notes.
 - **Drum chart:** from a Guitar Pro drum track (kick, snare, hi-hat, toms, crash, ride) or detected
   from a drum stem audio file (kick, snare, hi-hat). Pick one of six styles from the style grid:
   - **Scrolling lanes**, a falling **highway**, or a **circle** that sweeps once per bar with hits on rings.

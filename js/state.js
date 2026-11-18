@@ -54,6 +54,7 @@ export function defaultLyricStyle() {
     uppercase: true,
     maxWidth: 86, // % of frame width
     animation: 'pop', // none | fade | pop | slide | typewriter | karaoke | words
+    display: 'line', // line | sheet | poster | tunnel (see LYRIC_DISPLAYS)
   };
 }
 

@@ -260,6 +260,7 @@ body.dropping::after { content: 'Drop to add to your library'; position: fixed; 
 .tpl-thumb { width: 76px; height: 135px; border-radius: 5px; background: #000; display: block; }
 .tpl-info { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 .tpl-info .btn { margin-top: auto; }
+.tpl-needs { color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 2px 6px; }
 
 /* sounds */
 .sfx-grid { display: grid; grid-template-columns: 1fr; gap: 4px; }
