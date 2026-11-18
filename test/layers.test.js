@@ -94,3 +94,13 @@ test('layer helpers: findClip, overlayClipAt, isVisible, stacked layouts', () =>
   assert.ok(drums.y - drums.height / 2 >= tab.y + tab.height / 2, 'drum lanes stacked under the tab');
   assert.ok(tab.y - tab.height / 2 >= 11, 'inside the TikTok clear area');
 });
+
+test('every drum style has a label and a placement', async () => {
+  const { DRUM_STYLES, STYLE_PLACEMENT } = await import('../js/drums.js');
+  const ids = DRUM_STYLES.map((s) => s[0]);
+  assert.deepEqual(ids, ['lanes', 'highway', 'circle', 'neon', 'kit', 'glass']);
+  for (const id of ids) {
+    const p = STYLE_PLACEMENT[id];
+    assert.ok(p && p.width > 0 && p.height > 0 && p.y > 0, id);
+  }
+});

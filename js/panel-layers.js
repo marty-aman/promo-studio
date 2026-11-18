@@ -4,7 +4,7 @@ import { uid, timelineToSong, songToTimeline, formatTime } from './core.js';
 import { LAYER_TYPES, isVisible, findLayer } from './state.js';
 import { media, tabTimeline, drumTimeline, drumHitsFromStem, vizFeatures } from './media.js';
 import { defaultTabLayer } from './tab.js';
-import { defaultDrumLayer, LANES } from './drums.js';
+import { defaultDrumLayer, LANES, DRUM_STYLES, STYLE_PLACEMENT } from './drums.js';
 import { defaultVizLayer, VIZ_STYLES, BLENDS } from './viz.js';
 import { tabIntoLayout } from './templates.js';
 import { h, icon, button, iconButton, toast, field, section, pickFiles } from './dom.js';
@@ -364,18 +364,33 @@ export function buildLayersPanel(b, ctx) {
         isStem ? b.range('Hit sensitivity', g('sensitivity', 0.5), set((x, v) => (x.sensitivity = Math.round(v * 20) / 20)), { min: 0.05, max: 0.95, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` }) : null,
         status,
         isStem ? h('p', { class: 'muted tiny' }, 'Works best with an isolated drum track. Detection finds kick, snare and hi-hat only; for toms and cymbals use a Guitar Pro drum track.') : null,
-        b.segmented('Style', g('style', 'lanes'), set((x, v) => {
-          x.style = v;
-          if (v === 'highway') Object.assign(x, { y: 62, width: 70, height: 46 });
-          if (v === 'circle') Object.assign(x, { y: 45, width: 70, height: 40 });
-          if (v === 'lanes') Object.assign(x, { y: 24, width: 92, height: 18 });
-        }), [['lanes', 'Scrolling lanes'], ['highway', 'Highway'], ['circle', 'Circle']]),
+        h('div', { class: 'lbl' }, 'Style'),
+        h(
+          'div',
+          { class: 'style-grid', role: 'radiogroup', 'aria-label': 'Drum chart style' },
+          DRUM_STYLES.map(([id, label, hint]) =>
+            h('button', {
+              type: 'button',
+              role: 'radio',
+              'aria-checked': L.style === id ? 'true' : 'false',
+              class: `style-opt${L.style === id ? ' on' : ''}`,
+              onclick: () => store.update(set((x, _v, d) => {
+                x.style = id;
+                Object.assign(x, STYLE_PLACEMENT[id]);
+                if (id === 'kit' && !x.kickText) x.kickText = d.endCard.artist && d.endCard.artist !== 'Artist Name' ? d.endCard.artist : '';
+                if (d.layout && d.layout !== 'full') tabIntoLayout(d);
+              })),
+            }, h('strong', {}, label), h('span', {}, hint)),
+          ),
+        ),
+        L.style === 'kit' ? b.text('Text on the kick drum', g('kickText', ''), set((x, v) => (x.kickText = v)), { placeholder: 'Your band name' }) : null,
+        L.style === 'neon' ? b.toggle('Show the combo counter', g('showCombo', true), set((x, v) => (x.showCombo = v))) : null,
         rec ? syncTools(tl, isStem) : null,
         visibleRange(),
         section(
           'Look',
-          L.style === 'circle' ? null : b.range('Seconds on screen', g('window', 2.2), set((x, v) => (x.window = v)), { min: 1, max: 6, step: 0.1, fmt: (v) => `${v.toFixed(1)}s` }),
-          L.style === 'lanes' ? b.range('Hit line', g('playhead', 22), set((x, v) => (x.playhead = v)), { min: 5, max: 70, step: 1, fmt: (v) => `${v}%` }) : null,
+          ['circle', 'kit'].includes(L.style) ? null : b.range('Seconds on screen', g('window', 2.2), set((x, v) => (x.window = v)), { min: 1, max: 6, step: 0.1, fmt: (v) => `${v.toFixed(1)}s` }),
+          ['lanes', 'glass'].includes(L.style) ? b.range('Hit line', g('playhead', 22), set((x, v) => (x.playhead = v)), { min: 5, max: 70, step: 1, fmt: (v) => `${v}%` }) : null,
           placement({ y: 24 }),
           h('div', { class: 'grid3' }, LANES.map((ln) => b.color(ln.label, get((x) => (x.colors || {})[ln.id] || ln.color), set((x, v) => (x.colors = { ...(x.colors || {}), [ln.id]: v }))))),
           h('div', { class: 'grid2' }, b.color('Background', g('bg'), set((x, v) => (x.bg = v))), b.range('Background opacity', g('bgOpacity', 0.55), set((x, v) => (x.bgOpacity = v)), { min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` })),

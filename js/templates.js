@@ -49,7 +49,7 @@ export function tabIntoLayout(d) {
   const [x0, y0, x1] = AREAS[d.layout] || AREAS.full;
   let y = y0 * 100 + 2;
   for (const L of d.layers || []) {
-    if (L.type !== 'tab' && !(L.type === 'drums' && L.style === 'lanes')) continue;
+    if (L.type !== 'tab' && !(L.type === 'drums' && (L.style === 'lanes' || L.style === 'glass'))) continue;
     L.x = +(((x0 + x1) / 2) * 100).toFixed(1);
     L.width = +((x1 - x0) * 100 * 0.98).toFixed(1);
     L.y = +(y + L.height / 2).toFixed(1);
