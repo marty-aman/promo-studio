@@ -9,6 +9,7 @@ import { h, icon, iconButton, button, toast, Binder } from './dom.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { buildInspirationPage } from './page-inspiration.js';
 import { buildTabStudio } from './page-tabstudio.js';
+import { buildCarouselPage } from './page-carousel.js';
 import { loadSettings } from './state.js';
 
 const store = createStore(loadProject() || newProject());
@@ -229,6 +230,7 @@ let page = null;
 const PAGES = {
   inspiration: { label: 'Inspiration', icon: 'wand', build: () => buildInspirationPage({ store, engine, ui, settings: loadSettings(), panels }) },
   tabstudio: { label: 'Tab Studio', icon: 'guitar', build: () => buildTabStudio({ store, engine, ui, panels }) },
+  carousel: { label: 'Carousel', icon: 'image', build: () => buildCarouselPage({ store, engine, ui, panels, settings: loadSettings() }) },
 };
 function showPage() {
   const pg = PAGES[ui.tab];

@@ -63,6 +63,17 @@ any other static host.
 - CTA tokens: `{date}` → "NOV 21", `{countdown}` → "OUT IN 3 DAYS" / "OUT TOMORROW" / "OUT NOW".
 
 **Extras**
+- **Carousel page:** Instagram carousel posts built from your cover art, photos, frames from your clips,
+  stills from the edit itself (with lyrics and tab) and your release info.
+  - Suggested carousels: release announcement, lyric reveal, behind the song, photo dump, rate the
+    frames, and learn the riff when the edit has a tab. Each follows the 2026 research: slide 1 earns the
+    swipe, each slide pays off one idea, the last asks for one thing, 5–10 slides.
+  - Edit any slide: its picture (with the exact moment for clip frames), layout, text, and 11 looks with
+    a preview of that slide in each: flash, film, grit, noir, neon, cinematic, VHS, dreamy, duotone in
+    your cover colours, and polaroid. Each look says what it does for a post.
+  - Reorder, duplicate or delete slides, with up to 20 per post.
+  - Suggested captions written for carousels.
+  - Downloads all 1080×1350 slides and the caption as one .zip, or shares them to the app from a phone.
 - **Tab Studio** (its own page, also opened from a tab layer's “Edit in Tab Studio”): open any Guitar Pro
   file from your media, or start a new tab. All tracks (guitar, bass, 7-string, 5-string, drums) are
   stacked and scroll together.

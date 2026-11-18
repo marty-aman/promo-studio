@@ -445,3 +445,31 @@ button.tl-head-name:hover { color: var(--accent); }
 .bg-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .style-opt span { font-size: 11px; color: var(--muted); }
 .layer-settings { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+
+/* Carousel page */
+.car-sect-head { align-items: center; justify-content: space-between; }
+.car-recipes { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.car-recipe { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+.car-recipe.on { border-color: var(--accent); }
+.car-minis { display: flex; gap: 3px; }
+.car-mini { width: 40px; height: 50px; border-radius: 4px; background: #111; }
+.car-recipe-body { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 0; overflow-wrap: anywhere; }
+.car-recipe-body .btn { max-width: 100%; }
+.car-recipe-body .btn { margin-top: auto; }
+.car-strip { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 10px; }
+.car-thumb { position: relative; flex: 0 0 auto; padding: 0; border: 2px solid transparent; border-radius: 8px; background: var(--panel-2); cursor: pointer; }
+.car-thumb canvas { display: block; width: 72px; height: 90px; border-radius: 6px; }
+.car-thumb span { position: absolute; left: 4px; top: 3px; font-size: 11px; font-weight: 800; color: #fff; text-shadow: 0 1px 2px #000; }
+.car-thumb.on { border-color: var(--accent); }
+.car-thumb.add { width: 76px; height: 94px; font-size: 28px; color: var(--muted); border: 2px dashed var(--border-strong); }
+.car-editor { display: grid; grid-template-columns: minmax(260px, 432px) 1fr; gap: 18px; align-items: start; }
+.car-preview { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.car-big { width: 100%; max-width: 432px; height: auto; aspect-ratio: 4 / 5; border-radius: 10px; background: #000; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4); }
+.car-nav { justify-content: center; align-items: center; }
+.car-fields { display: flex; flex-direction: column; gap: 8px; }
+.car-fields textarea { width: 100%; font: inherit; }
+.car-looks { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; }
+.car-look { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); cursor: pointer; font-size: 11px; }
+.car-look canvas { width: 100%; height: auto; aspect-ratio: 4 / 5; border-radius: 4px; display: block; }
+.car-look.on { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 760px) { .car-editor { grid-template-columns: 1fr; } }
