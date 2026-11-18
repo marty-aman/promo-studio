@@ -63,6 +63,28 @@ any other static host.
 - CTA tokens: `{date}` → "NOV 21", `{countdown}` → "OUT IN 3 DAYS" / "OUT TOMORROW" / "OUT NOW".
 
 **Extras**
+- **Posting playbook buttons** (Inspiration page): every rule has an Apply button. Put the hook first,
+  make it 12 seconds, add a “send this to…” share ask, add “use this sound”, and use a raw real-phone look
+  change the edit directly. The rest open tools on the page:
+  - **Batch export:** several promos from the loudest non-overlapping sections of the song, downloaded as
+    one .zip.
+  - **Split a music video:** its strongest moments, each as its own short, with the song in sync.
+  - **Posting calendar:** 3–5 posts a week for 4–6 weeks, downloaded as an .ics file for Google, Apple or
+    Outlook calendar.
+  - **Caption writer:** opens the caption suggestions.
+- **Hook openers:** ideas for the first second, grouped as things you film yourselves (staged fall onto a
+  mat, the outrageous one-liner, the soft fake-out, the wrong-instrument breakdown…), licensed stock
+  searches, and TikTok's own Stitch and reply tools. “Add as intro” sets the on-screen line, a sound effect
+  and a punchy first cut, optionally with one of your clips first. Reposting other people's clips isn't
+  offered, because it gets reels muted or taken down.
+- **Suggested captions** (Export tab, Inspiration page and carousel tool): written from the edit (song,
+  look, hook lyric, release date, tab layers, your city and similar bands) in the formats the 2026 research
+  found work: a 3–7 word hook first, searchable plain words, one specific ask (sends to a friend count most
+  on Instagram) and at most 5 hashtags, with TikTok versions under 150 characters. Sources are linked in
+  the app.
+- **From Spotify** (End card tab): paste a track or album link to fill in the title, cover art and a
+  “Listen on Spotify” link for your bio. Spotify doesn't let other apps download songs, so the audio
+  still comes from your own file.
 - **Suggested tab:** add a song and some clips (plus a Guitar Pro file or lyrics if you have them) and it
   builds three different ready-to-post edits. Each one picks the hook, cuts your clips on the beat, applies
   a fitting template, lines tab and drum layers up with the song's first beat and tempo (layers you synced

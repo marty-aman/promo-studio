@@ -337,6 +337,30 @@ body.dropping::after { content: 'Drop to add to your library'; position: fixed; 
 .page-cols { display: grid; grid-template-columns: 1.1fr 1fr; gap: 24px; }
 .playbook { display: flex; flex-direction: column; gap: 8px; }
 .rule { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+.rule > .btn { align-self: flex-start; margin-top: 6px; }
+.rule.on { border-color: var(--accent); }
+.tool-box { margin-top: 8px; padding: 10px; border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--panel-2); display: flex; flex-direction: column; gap: 8px; }
+.tool-box h4 { margin: 0; font-size: 14px; }
+.cal-list { margin: 0; padding-left: 20px; max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+.similar.city input { width: 140px; }
+.hook-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.hook-card { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+.hook-card h4 { margin: 0; font-size: 14px; }
+.hook-card .row { margin-top: auto; flex-wrap: wrap; }
+.hook-card select { max-width: 160px; }
+.hook-kind { margin: 14px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.warn-note { color: var(--accent); }
+.plat.kind-film { background: rgba(224, 24, 45, 0.18); }
+.plat.kind-stock { background: rgba(79, 140, 255, 0.18); }
+.plat.kind-app { background: rgba(74, 222, 128, 0.18); }
+.plat.kind-edit { background: rgba(255, 212, 0, 0.16); }
+.cap-picker { display: flex; flex-direction: column; gap: 8px; }
+.cap-ideas { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow: auto; }
+.cap-idea { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); text-align: left; cursor: pointer; font-size: 12px; }
+.cap-idea span { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.cap-idea.on { border-color: var(--accent); }
+.cap-idea.on strong { color: var(--accent); }
+.cap-picker textarea { width: 100%; font: inherit; font-size: 13px; }
 .calendar { display: flex; flex-direction: column; gap: 4px; }
 .cal-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 8px; align-items: center; padding: 5px 8px; background: var(--panel); border-radius: 6px; border: 1px solid var(--border); }
 .cal-row.release { border-color: var(--accent); }

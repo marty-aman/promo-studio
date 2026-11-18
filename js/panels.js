@@ -26,6 +26,8 @@ import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSetti
 import { buildLayersPanel, makeLayer, TAB_ACCEPT } from './panel-layers.js';
 import { bgRemoveSection } from './panel-bgremove.js';
 import { buildSuggestPanel, hasNewSuggestions } from './panel-suggest.js';
+import { captionPicker } from './panel-captions.js';
+import { fetchSpotifyInfo } from './spotify.js';
 import { ensureLayerAnalyses } from './media.js';
 import { media, addMedia, removeMedia, tabTimeline } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
@@ -70,6 +72,16 @@ export function createPanels({ store, engine, ui }) {
 
   // -------------------------------------------------------------- media actions
   const actions = {
+    /** Add a built-in sound effect at time `at` on the timeline (used by hook openers). */
+    async addBuiltinSfx(id, at = 0) {
+      const s = BUILTIN_SFX.find((x) => x.id === id);
+      if (!s) return;
+      const rec = await addMedia(await synthSfx(id), `${s.label}.wav`, { source: 'builtin' });
+      const keep = engine.t;
+      engine.t = at;
+      actions.addAudioTrack(rec);
+      engine.t = keep;
+    },
     /** Open the Stock tab and search for `query` (used by the suggested-background chips). */
     stockSearch(query) {
       stockState.query = query;
@@ -1276,9 +1288,38 @@ export function createPanels({ store, engine, ui }) {
       }),
     );
     const ctaPresets = ['OUT NOW', 'NEW SINGLE', 'PRE-SAVE NOW', 'OUT {date}', '{countdown}', 'STREAM IT NOW'];
+    const spIn = h('input', { type: 'url', placeholder: 'https://open.spotify.com/track/…', value: store.get().endCard.spotifyUrl || '', 'aria-label': 'Spotify link' });
+    const spStatus = h('p', { class: 'muted tiny', role: 'status' });
+    const spImport = async () => {
+      spStatus.textContent = 'Looking it up on Spotify…';
+      try {
+        const info = await fetchSpotifyInfo(spIn.value);
+        let coverRec = null;
+        if (info.coverBlob) coverRec = await addMedia(new File([info.coverBlob], `${slug(info.title || 'spotify')}-cover.jpg`, { type: info.coverBlob.type || 'image/jpeg' }), `${info.title || 'Spotify'} cover.jpg`);
+        store.update((d) => {
+          if (info.title) d.endCard.title = info.title;
+          d.endCard.spotifyUrl = info.url;
+          if (coverRec) d.endCard.coverMediaId = coverRec.id;
+          if (!d.endCard.platforms.includes('spotify')) d.endCard.platforms = ['spotify', ...d.endCard.platforms];
+        });
+        toast(`Got “${info.title}” from Spotify${coverRec ? ' with its cover art' : ''}. Add the artist name and your song file (Spotify doesn’t share audio).`, 'info', 6000);
+        ui.refreshPanels(true);
+      } catch (err) {
+        spStatus.textContent = err.message;
+      }
+    };
+    const spotify = section(
+      'From Spotify',
+      h('p', { class: 'muted small' }, 'Paste your track or album link (Share → Copy link) to fill in the title and cover art. The link goes in your Export notes for your bio.'),
+      h('form', { class: 'search-row', onsubmit: (ev) => (ev.preventDefault(), spImport()) }, spIn, button('Get info', null, { iconName: 'download', variant: 'primary' })),
+      spStatus,
+      h('p', { class: 'muted tiny' }, 'Spotify doesn’t allow other apps to download songs, so add the audio from your own file (your master or the WAV you sent your distributor) in the Audio tab.'),
+    );
+    spotify.querySelector('form button').type = 'submit';
     return h(
       'div',
       {},
+      spotify,
       section(
         'Call-to-action end card',
         b.toggle('Show end card', (p) => p.endCard.enabled, e((o, v) => (o.enabled = v))),
@@ -1460,17 +1501,7 @@ export function createPanels({ store, engine, ui }) {
       .all()
       .filter((m) => m.attribution && (p.clips.some((c) => c.mediaId === m.id) || p.audioTracks.some((a) => a.mediaId === m.id)))
       .map((m) => `${m.attribution.providerLabel || PROVIDERS[m.attribution.provider]?.label || `${m.attribution.source || 'Openverse'} via Openverse`}: ${m.attribution.author} (${m.attribution.license}) ${m.attribution.pageUrl}`);
-    const caption = [
-      `${p.endCard.title} by ${p.endCard.artist}: ${p.endCard.cta ? p.endCard.cta.replace(/\{date\}|\{countdown\}/gi, '').trim().toLowerCase() || 'out now' : 'out now'} 🎶`,
-      p.endCard.subtext || 'Link in bio',
-      '',
-      `#newmusic #${(p.endCard.artist || 'artist').replace(/[^a-z0-9]/gi, '').toLowerCase()} #${(p.endCard.title || 'song').replace(/[^a-z0-9]/gi, '').toLowerCase()} #newsingle`,
-      credits.length ? `\nFootage: ${credits.join('; ')}` : '',
-    ]
-      .join('\n')
-      .trim();
-    const capBox = h('textarea', { rows: 6, readOnly: true }, caption);
-    capBox.value = caption;
+    const capPicker = captionPicker({ project: p, settings, kind: 'video', credits });
 
     return h(
       'div',
@@ -1496,16 +1527,17 @@ export function createPanels({ store, engine, ui }) {
             )
           : null,
       ),
-      buildShare(p, caption),
+      buildShare(p, () => capPicker.currentText()),
       section(
         'Stills',
         h('p', { class: 'muted small' }, 'Save the current frame at full resolution, e.g. for a thumbnail or story teaser.'),
         button('Save frame as PNG', async () => download(await engine.snapshot(), `${slug(p.name)}-frame-${engine.t.toFixed(1)}s.png`), { iconName: 'image' }),
       ),
       section(
-        'Post caption',
-        capBox,
-        button('Copy caption', () => navigator.clipboard.writeText(capBox.value).then(() => toast('Caption copied')), { iconName: 'copy' }),
+        'Suggested captions',
+        h('p', { class: 'muted small' }, 'Written from this edit: song, look, hook lyric and release date. Pick one, tweak it, copy it.'),
+        capPicker,
+        p.endCard.spotifyUrl ? h('div', { class: 'list-row' }, h('span', { class: 'small' }, 'Link for your bio: ', h('a', { href: p.endCard.spotifyUrl, target: '_blank', rel: 'noopener noreferrer' }, p.endCard.spotifyUrl)), button('Copy', () => navigator.clipboard.writeText(p.endCard.spotifyUrl).then(() => toast('Link copied')), { iconName: 'copy', variant: 'sm' })) : null,
         credits.length ? h('p', { class: 'muted tiny' }, 'Stock footage credits are included. CC BY / BY-SA files from Wikimedia must keep them.') : null,
       ),
     );
@@ -1513,7 +1545,8 @@ export function createPanels({ store, engine, ui }) {
 
   // ---------------------------------------------------------------- SHARE
   const ytState = { uploading: false, progress: 0, videoId: null, error: '' };
-  function buildShare(p, caption) {
+  function buildShare(p, getCaption) {
+    const caption = getCaption();
     const res = exportState.result;
     const file = res ? new File([res.blob], res.name, { type: res.blob.type }) : null;
     const shareOk = file && canShareFiles(file);
@@ -1525,8 +1558,9 @@ export function createPanels({ store, engine, ui }) {
       h('p', { class: 'muted small' }, 'On a phone this opens the share sheet, so you can pick Instagram, TikTok or YouTube and post from the app. The caption is copied too.'),
       button('Share to an app…', async () => {
         try {
-          await navigator.clipboard.writeText(caption).catch(() => {});
-          await shareFile(file, { title: p.endCard.title, text: caption });
+          const text = getCaption();
+          await navigator.clipboard.writeText(text).catch(() => {});
+          await shareFile(file, { title: p.endCard.title, text });
         } catch (e) {
           if (e.name !== 'AbortError') toast(`Sharing failed: ${e.message}`, 'error');
         }

@@ -228,7 +228,7 @@ function showPage() {
   const open = ui.tab === 'inspiration';
   pageEl.hidden = !open;
   if (open) {
-    page = buildInspirationPage({ store, engine, ui, settings: loadSettings() });
+    page = buildInspirationPage({ store, engine, ui, settings: loadSettings(), panels });
     pageEl.replaceChildren(page.el);
     pageEl.scrollTop = 0;
   }
