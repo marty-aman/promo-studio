@@ -16,6 +16,7 @@ import { drawPlatformOverlay, overlaySupported } from './overlays.js';
 import { drawTab } from './tab.js';
 import { drawDrums } from './drums.js';
 import { drawViz } from './viz.js';
+import { drawLyricDisplay } from './lyricviz.js';
 
 // ------------------------------------------------------------ helpers
 
@@ -997,6 +998,7 @@ function drawTexts(ctx, W, H, texts, t, beat = 0, releaseDate = '') {
 
 function drawLyrics(ctx, W, H, project, t, beat = 0) {
   const ts = timelineToSong(t, project.song);
+  if (drawLyricDisplay(ctx, W, H, project.lyrics, project.lyricStyle, ts, beat)) return;
   const line = activeLyric(project.lyrics, ts);
   if (!line) return;
   const s = project.lyricStyle;

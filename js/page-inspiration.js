@@ -6,6 +6,7 @@ import { renderFrame } from './renderer.js';
 import { saveSettings } from './state.js';
 import { h, icon, button, toast } from './dom.js';
 import { RESEARCHED_ON, NICHE, SOURCES, TRENDS, PLAYBOOK, HASHTAG_SETS, CAPTION_HOOKS, CALENDAR, applyRecipe, fillTokens } from './inspiration.js';
+import { tabSources } from './templates.js';
 
 const PLATFORM_FILTERS = ['All', 'TikTok', 'Reels', 'Shorts'];
 
@@ -21,6 +22,7 @@ export function buildInspirationPage({ store, engine, ui, settings }) {
   });
 
   const ctx = () => ({
+    sources: tabSources(media.all()),
     similar: (settings.similarBands || similarIn.value).replace(/\s*,\s*([^,]*)$/, ' & $1'),
     hookStart: (len) => {
       const p = store.get();

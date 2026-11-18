@@ -2,6 +2,7 @@
 // timeline (repeats and alternate endings expanded), and draw a scrolling tab staff on the canvas.
 
 const TICKS_PER_QUARTER = 960;
+import { TAB_FANCY } from './tabviz.js';
 export const TAB_EXTENSIONS = /\.(gp|gp3|gp4|gp5|gpx|gp7|gp8|musicxml|mxl|xml)$/i;
 
 let alphaTabPromise = null;
@@ -28,6 +29,54 @@ export function tabTracks(score) {
 }
 
 const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const CHORD_ROOTS = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+// interval sets (semitones above the root) -> suffix; checked in this order
+const CHORD_SHAPES = [
+  [[0, 4, 7], ''],
+  [[0, 3, 7], 'm'],
+  [[0, 7], '5'],
+  [[0, 4, 7, 10], '7'],
+  [[0, 3, 7, 10], 'm7'],
+  [[0, 4, 7, 11], 'maj7'],
+  [[0, 2, 7], 'sus2'],
+  [[0, 5, 7], 'sus4'],
+  [[0, 5, 7, 10], '7sus4'],
+  [[0, 2, 4, 7], 'add9'],
+  [[0, 2, 3, 7], 'm(add9)'],
+  [[0, 4, 7, 9], '6'],
+  [[0, 3, 7, 9], 'm6'],
+  [[0, 3, 6], 'dim'],
+  [[0, 3, 6, 9], 'dim7'],
+  [[0, 3, 6, 10], 'm7b5'],
+  [[0, 4, 8], 'aug'],
+  [[0, 4, 7, 10, 2], '9'],
+  [[0, 3, 7, 10, 2], 'm9'],
+];
+
+/**
+ * Name the chord formed by MIDI pitches, e.g. [40, 47, 52, 55, 59, 64] -> "Em".
+ * Tries the lowest note as the root first, then the others (giving slash chords like "C/G").
+ * Returns null for single notes and shapes it doesn't know.
+ */
+export function chordName(pitches) {
+  const ps = (pitches || []).filter((m) => Number.isFinite(m));
+  if (ps.length < 2) return null;
+  const pcs = [...new Set(ps.map((m) => ((m % 12) + 12) % 12))];
+  if (pcs.length < 2) return null;
+  const bass = ((Math.min(...ps) % 12) + 12) % 12;
+  const roots = [bass, ...pcs.filter((p) => p !== bass)];
+  for (const root of roots) {
+    const iv = pcs.map((p) => (p - root + 12) % 12).sort((a, b) => a - b);
+    const hit = CHORD_SHAPES.find(([set]) => set.length === iv.length && [...set].sort((a, b) => a - b).every((x, i) => x === iv[i]));
+    if (hit) return CHORD_ROOTS[root] + hit[1] + (root === bass ? '' : `/${CHORD_ROOTS[bass]}`);
+  }
+  return null;
+}
+
+/** A track that looks like a bass: named "bass", or 4-5 strings. */
+export function isBassTrack(track) {
+  return !!track && (/bass/i.test(track.name || '') || (track.strings >= 4 && track.strings <= 5));
+}
 /** MIDI tuning (highest string first) -> labels like ["e","B","G","D","A","E"]. */
 export function tuningNames(tuning) {
   const names = tuning.map((m) => NAMES[((m % 12) + 12) % 12]);
@@ -143,11 +192,14 @@ export function buildTabTimeline(score, trackIndex = 0) {
   const staff = track.staves.find((s) => !s.isPercussion && s.tuning && s.tuning.length) || track.staves[0];
   const strings = staff.tuning.length || 6;
   const { bars, beats, duration } = timedBeats(score, staff);
+  const tuningMidi = [...staff.tuning];
+  const capo = staff.capo || 0;
   const events = beats.map(({ time, dur, bar, beat }) => ({
     time,
     dur,
     bar,
     palmMute: !!beat.isPalmMute,
+    chord: (beat.chord && beat.chord.name) || chordName(beat.notes.filter((n) => !n.isDead).map((n) => (tuningMidi[strings - n.string] ?? NaN) + capo + n.fret)),
     notes: beat.notes.map((n) => ({
       line: Math.max(0, Math.min(strings - 1, strings - n.string)),
       fret: n.fret,
@@ -162,7 +214,7 @@ export function buildTabTimeline(score, trackIndex = 0) {
       palmMute: !!n.isPalmMute || !!beat.isPalmMute,
     })),
   }));
-  return { name: track.name, strings, tuning: tuningNames(staff.tuning), bars, events, duration, tempo: score.tempo };
+  return { name: track.name, strings, tuning: tuningNames(staff.tuning), tuningMidi, bars, events, duration, tempo: score.tempo };
 }
 
 // ------------------------------------------------------------ drawing
@@ -191,6 +243,9 @@ export function defaultTabLayer() {
     showTuning: true,
     showMarks: true,
     font: 'Inter',
+    style: 'tab', // tab | highway | neck | strings (see TAB_STYLES)
+    showChords: true,
+    showStrip: true, // light-up neck: strip of upcoming notes
   };
 }
 
@@ -232,7 +287,13 @@ export function drawTab(ctx, W, H, layer, tl, t, songTime, visibleEnd) {
   if (t < (layer.start || 0) || t >= end) return;
   const fade = Math.min(1, (t - (layer.start || 0)) / 0.3, (end - t) / 0.3);
   const tabT = (songTime - layer.offset) * (layer.tempoScale || 1);
-
+  if (TAB_FANCY[layer.style]) {
+    ctx.save();
+    ctx.globalAlpha *= Math.max(0, fade);
+    TAB_FANCY[layer.style](ctx, W, H, layer, tl, tabT);
+    ctx.restore();
+    return;
+  }
   const bw = (W * layer.width) / 100;
   const bh = (H * layer.height) / 100;
   const bx = (W * layer.x) / 100 - bw / 2;

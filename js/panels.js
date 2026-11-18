@@ -30,7 +30,8 @@ import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
 import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS, MASK_SHAPES, GRADE_PRESETS, renderFrame } from './renderer.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
-import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate, tabIntoLayout } from './templates.js';
+import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate, tabIntoLayout, lyricsIntoLayout, tabSources, templateNeeds } from './templates.js';
+import { LYRIC_DISPLAYS, DISPLAY_DEFAULTS } from './lyricviz.js';
 import { BUILTIN_SFX, synthSfx, searchSfx, SFX_CATEGORIES, SFX_LICENSES } from './sfx.js';
 import { shareFile, canShareFiles, youtube } from './share.js';
 import { soundLib, importSounds, filterSounds, storageInfo, requestPersistence } from './soundlib.js';
@@ -224,11 +225,12 @@ export function createPanels({ store, engine, ui }) {
     const firstLyric = sortLyrics(p.lyrics)[0];
     const lyricT = firstLyric ? songToTimeline(firstLyric.start, p.song) + 0.7 : null;
     const previewT = lyricT != null && lyricT > 0 && lyricT < p.duration - (p.endCard.enabled ? p.endCard.duration : 0) ? lyricT : Math.min(1.5, p.duration / 3);
+    const sources = tabSources(media.all());
     const cards = TEMPLATES.map((tpl) => {
       const c = h('canvas', { width: 108, height: 192, class: 'tpl-thumb', 'aria-hidden': 'true' });
       requestAnimationFrame(() => {
         const draft = structuredClone(store.get());
-        applyTemplate(draft, tpl.id);
+        applyTemplate(draft, tpl.id, sources);
         draft.look.overlay = 'off';
         try {
           renderFrame(c.getContext('2d'), c.width, c.height, draft, previewT, engine.env(false));
@@ -236,6 +238,7 @@ export function createPanels({ store, engine, ui }) {
           console.warn('template preview failed', e);
         }
       });
+      const needs = templateNeeds(tpl.id, sources);
       return h(
         'div',
         { class: `tpl-card${p.template === tpl.id ? ' on' : ''}` },
@@ -245,8 +248,9 @@ export function createPanels({ store, engine, ui }) {
           { class: 'tpl-info' },
           h('strong', {}, tpl.name),
           h('span', { class: 'muted tiny' }, tpl.blurb),
+          needs ? h('span', { class: 'tpl-needs tiny' }, `Needs a Guitar Pro file with a ${needs} track. Add one in Media or the Layers tab.`) : null,
           button(p.template === tpl.id ? 'Applied · re-apply' : 'Use this template', () => {
-            store.update((d) => applyTemplate(d, tpl.id));
+            store.update((d) => applyTemplate(d, tpl.id, tabSources(media.all())));
             toast(`“${tpl.name}” applied. Undo (Ctrl+Z) to go back.`);
             ui.refreshPanels(true);
           }, { variant: `sm${p.template === tpl.id ? '' : ' primary'}` }),
@@ -951,7 +955,25 @@ export function createPanels({ store, engine, ui }) {
     const presetRow = h(
       'div',
       { class: 'chips' },
-      Object.entries(LYRIC_PRESETS).map(([name, preset]) => button(name, () => store.update((d) => (d.lyricStyle = { ...defaultLyricStyle(), y: d.lyricStyle.y, ...preset })), { variant: 'chip' })),
+      Object.entries(LYRIC_PRESETS).map(([name, preset]) => button(name, () => store.update((d) => (d.lyricStyle = { ...defaultLyricStyle(), y: d.lyricStyle.y, display: d.lyricStyle.display || 'line', ...preset })), { variant: 'chip' })),
+    );
+    const display = p.lyricStyle.display || 'line';
+    const displayGrid = h(
+      'div',
+      { class: 'style-grid', role: 'radiogroup', 'aria-label': 'How lyrics are shown' },
+      LYRIC_DISPLAYS.map(([id, label, hint]) =>
+        h('button', {
+          type: 'button',
+          role: 'radio',
+          'aria-checked': display === id ? 'true' : 'false',
+          class: `style-opt${display === id ? ' on' : ''}`,
+          onclick: () => store.update((d) => {
+            d.lyricStyle.display = id;
+            Object.assign(d.lyricStyle, DISPLAY_DEFAULTS[id] || {});
+            if (id !== 'line' && d.layout && d.layout !== 'full') lyricsIntoLayout(d);
+          }),
+        }, h('strong', {}, label), h('span', {}, hint)),
+      ),
     );
 
     return h(
@@ -974,9 +996,11 @@ export function createPanels({ store, engine, ui }) {
         : null,
       section(
         'Lyric style',
+        h('div', { class: 'lbl' }, 'How lyrics are shown'),
+        displayGrid,
         presetRow,
         b.select('Font', (p) => p.lyricStyle.font, s((o, v) => (o.font = v)), fontOptions()),
-        b.select('Animation', (p) => p.lyricStyle.animation, s((o, v) => (o.animation = v)), ANIMATIONS),
+        display === 'line' ? b.select('Animation', (p) => p.lyricStyle.animation, s((o, v) => (o.animation = v)), ANIMATIONS) : null,
         b.range('Size', (p) => p.lyricStyle.size, s((o, v) => (o.size = v)), { min: 2.5, max: 14, step: 0.1, fmt: (v) => v.toFixed(1) }),
         b.range('Vertical position', (p) => p.lyricStyle.y, s((o, v) => (o.y = v)), { min: 5, max: 95, step: 1, fmt: (v) => `${v}%` }),
         b.range('Horizontal position', (p) => p.lyricStyle.x ?? 50, s((o, v) => (o.x = v)), { min: 10, max: 90, step: 0.5, fmt: (v) => `${v}%` }),
@@ -986,8 +1010,8 @@ export function createPanels({ store, engine, ui }) {
         h('div', { class: 'grid2' }, b.color('Outline', (p) => p.lyricStyle.outline, s((o, v) => (o.outline = v))), b.range('Outline width', (p) => p.lyricStyle.outlineWidth, s((o, v) => (o.outlineWidth = v)), { min: 0, max: 2, step: 0.05, fmt: (v) => v.toFixed(2) })),
         b.toggle('Drop shadow', (p) => p.lyricStyle.shadow, s((o, v) => (o.shadow = v))),
         b.toggle('ALL CAPS', (p) => p.lyricStyle.uppercase, s((o, v) => (o.uppercase = v))),
-        b.toggle('Background box', (p) => p.lyricStyle.box, s((o, v) => (o.box = v))),
-        h('div', { class: 'grid2' }, b.color('Box color', (p) => p.lyricStyle.boxColor, s((o, v) => (o.boxColor = v))), b.range('Box opacity', (p) => p.lyricStyle.boxOpacity, s((o, v) => (o.boxOpacity = v)), { min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` })),
+        display === 'line' ? b.toggle('Background box', (p) => p.lyricStyle.box, s((o, v) => (o.box = v))) : null,
+        display === 'line' ? h('div', { class: 'grid2' }, b.color('Box color', (p) => p.lyricStyle.boxColor, s((o, v) => (o.boxColor = v))), b.range('Box opacity', (p) => p.lyricStyle.boxOpacity, s((o, v) => (o.boxOpacity = v)), { min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` })) : null,
       ),
     );
   }

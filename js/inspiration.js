@@ -213,7 +213,7 @@ export const fillTokens = fill;
  */
 export function applyRecipe(d, trend, ctx = {}) {
   const r = trend.recipe;
-  applyTemplate(d, r.template);
+  applyTemplate(d, r.template, ctx.sources || []);
   const ecLen = d.endCard.enabled ? d.endCard.duration : 0;
   d.duration = +(r.duration + ecLen).toFixed(2);
   if (r.hook && d.song && ctx.hookStart) {
