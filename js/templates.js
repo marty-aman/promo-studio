@@ -6,6 +6,7 @@ import { defaultTabLayer, isBassTrack } from './tab.js';
 import { defaultDrumLayer } from './drums.js';
 import { defaultVizLayer } from './viz.js';
 import { DISPLAY_DEFAULTS } from './lyricviz.js';
+import { applyTheme } from './themes.js';
 
 // Clear areas match js/overlays.js: [x0, y0, x1, y1] as fractions of the 9:16 frame.
 const AREAS = {
@@ -532,6 +533,8 @@ export function applyTemplate(d, id, sources = []) {
   // band templates show only their own tab / drum / visualizer layers (the rest are hidden, not deleted)
   if (t.needs) for (const l of d.layers || []) if (['tab', 'drums', 'viz'].includes(l.type) && !l.role) l.visible = false;
   (d.layers || []).forEach((l) => delete l.role);
+  // a chosen theme keeps its colours and fonts on top of the template's layout and motion
+  if (d.theme && d.theme.id) applyTheme(d, d.theme.id, { colors: d.theme.colors });
 }
 
 /** What a band template still needs from you ('guitar' or 'bass' Guitar Pro track), or null. */

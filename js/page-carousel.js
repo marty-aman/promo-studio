@@ -117,7 +117,8 @@ export function buildCarouselPage({ store, engine, ui, settings }) {
   const style = () => {
     const p = store.get();
     const cov = p.endCard.coverMediaId && media.get(p.endCard.coverMediaId);
-    return { palette: cov && cov.el ? coverPalette(cov.el) : null, accent: p.endCard.accent || '#ffd400' };
+    const pal = p.theme && p.theme.colors ? [p.theme.colors.accent, p.theme.colors.deep] : cov && cov.el ? coverPalette(cov.el) : null;
+    return { palette: pal, accent: p.endCard.accent || '#ffd400' };
   };
   const slides = () => (store.get().carousel && store.get().carousel.slides) || [];
   const setSlides = (fn, key) => store.update((d) => {

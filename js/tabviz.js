@@ -27,6 +27,10 @@ export function stringColor(layer, strings, line) {
   return (layer.stringColors && layer.stringColors[k]) || STRING_COLORS[k % STRING_COLORS.length];
 }
 
+// Colours of the chart itself. Themes set layer.chrome; defaults are the original look.
+export const TAB_CHROME = { bg0: '#07040f', bg1: '#1a0d2e', road: '#0c081c', grid: '#aa8cff', edge: '#c8a0ff', rail: '#c8aaff', wood0: '#2a1a10', wood1: '#3d2616', wood2: '#24160d', fret: '#c9c4ba', nut: '#ece2cf', inlay: '#e9dcc4' };
+const chromeOf = (layer) => ({ ...TAB_CHROME, ...(layer.chrome || {}) });
+
 function rgba(hex, a) {
   const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || '');
   return m ? `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${a})` : `rgba(0,0,0,${a})`;
@@ -129,13 +133,14 @@ function drawHighway(ctx, W, H, layer, tl, tabT) {
   const pOf = (time) => 1 - (time - tabT) / win;
   const colOf = (line) => n - 1 - line; // low string on the left
   const bgA = layer.bgOpacity ?? 0.6;
+  const C = chromeOf(layer);
 
   ctx.save();
   rrect(ctx, bx, by, bw, bh, unit * 0.06);
   ctx.clip();
   const bg = ctx.createLinearGradient(0, by, 0, by + bh);
-  bg.addColorStop(0, rgba('#07040f', bgA));
-  bg.addColorStop(1, rgba('#1a0d2e', bgA));
+  bg.addColorStop(0, rgba(C.bg0, bgA));
+  bg.addColorStop(1, rgba(C.bg1, bgA));
   ctx.fillStyle = bg;
   ctx.fillRect(bx, by, bw, bh);
 
@@ -146,7 +151,7 @@ function drawHighway(ctx, W, H, layer, tl, tabT) {
   ctx.lineTo(xAt(1, strike), strike);
   ctx.lineTo(xAt(0, strike), strike);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(12,8,28,0.6)';
+  ctx.fillStyle = rgba(C.road, 0.6);
   ctx.fill();
 
   // bar lines and beats move with the music
@@ -157,7 +162,7 @@ function drawHighway(ctx, W, H, layer, tl, tabT) {
       const time = b.time + (b.duration * q) / 4;
       const y = yAt(pOf(time));
       if (y < horizon || y > strike) continue;
-      ctx.strokeStyle = q === 0 ? 'rgba(255,255,255,0.35)' : 'rgba(170,140,255,0.14)';
+      ctx.strokeStyle = q === 0 ? 'rgba(255,255,255,0.35)' : rgba(C.grid, 0.14);
       ctx.beginPath();
       ctx.moveTo(xAt(0, y), y);
       ctx.lineTo(xAt(1, y), y);
@@ -180,7 +185,7 @@ function drawHighway(ctx, W, H, layer, tl, tabT) {
     ctx.lineTo(xAt(f, strike), strike);
     ctx.stroke();
   }
-  ctx.strokeStyle = 'rgba(200,170,255,0.45)';
+  ctx.strokeStyle = rgba(C.rail, 0.45);
   ctx.lineWidth = Math.max(1.5, unit * 0.006);
   for (const f of [0, 1]) {
     ctx.beginPath();
@@ -337,8 +342,8 @@ function drawHighway(ctx, W, H, layer, tl, tabT) {
 
   // horizon haze
   const fg = ctx.createLinearGradient(0, horizon, 0, horizon + (strike - horizon) * 0.22);
-  fg.addColorStop(0, rgba('#07040f', Math.min(1, bgA + 0.3)));
-  fg.addColorStop(1, rgba('#07040f', 0));
+  fg.addColorStop(0, rgba(C.bg0, Math.min(1, bgA + 0.3)));
+  fg.addColorStop(1, rgba(C.bg0, 0));
   ctx.fillStyle = fg;
   ctx.fillRect(bx, horizon - 2, bw, (strike - horizon) * 0.22 + 2);
 
@@ -365,7 +370,7 @@ function drawHighway(ctx, W, H, layer, tl, tabT) {
     }
   }
   ctx.restore();
-  ctx.strokeStyle = 'rgba(200,160,255,0.35)';
+  ctx.strokeStyle = rgba(C.edge, 0.35);
   ctx.lineWidth = Math.max(1, unit * 0.004);
   rrect(ctx, bx, by, bw, bh, unit * 0.06);
   ctx.stroke();
@@ -446,9 +451,10 @@ function drawNeck(ctx, W, H, layer, tl, tabT) {
 
   // wood
   const wood = ctx.createLinearGradient(0, ny0, 0, ny1);
-  wood.addColorStop(0, '#2a1a10');
-  wood.addColorStop(0.5, '#3d2616');
-  wood.addColorStop(1, '#24160d');
+  const C = chromeOf(layer);
+  wood.addColorStop(0, C.wood0);
+  wood.addColorStop(0.5, C.wood1);
+  wood.addColorStop(1, C.wood2);
   ctx.fillStyle = wood;
   rrect(ctx, nx0, ny0 - gap * 0.15, nx1 - nx0, ny1 - ny0 + gap * 0.3, gap * 0.2);
   ctx.fill();
@@ -459,7 +465,7 @@ function drawNeck(ctx, W, H, layer, tl, tabT) {
   ctx.clip();
   // inlays
   const inlay = [3, 5, 7, 9, 15, 17, 19, 21];
-  ctx.fillStyle = 'rgba(233,220,196,0.4)';
+  ctx.fillStyle = rgba(C.inlay, 0.4);
   for (let f = Math.ceil(lo + 0.01); f <= Math.floor(hi); f++) {
     const x = (xF(f - 1) + xF(f)) / 2;
     const r = Math.min(gap * 0.28, (xF(f) - xF(f - 1)) * 0.18);
@@ -476,11 +482,11 @@ function drawNeck(ctx, W, H, layer, tl, tabT) {
     }
   }
   // frets
-  ctx.strokeStyle = '#c9c4ba';
+  ctx.strokeStyle = C.fret;
   for (let f = Math.ceil(lo); f <= Math.floor(hi); f++) {
     const x = xF(f);
     ctx.lineWidth = f === 0 ? Math.max(3, gap * 0.35) : Math.max(1.5, gap * 0.09);
-    ctx.strokeStyle = f === 0 ? '#ece2cf' : '#c9c4ba';
+    ctx.strokeStyle = f === 0 ? C.nut : C.fret;
     ctx.beginPath();
     ctx.moveTo(x, ny0 - gap * 0.15);
     ctx.lineTo(x, ny1 + gap * 0.15);

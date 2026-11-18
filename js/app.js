@@ -253,7 +253,7 @@ function leftSignature() {
   if (ui.tab === 'text') parts.push(p.texts.map((t) => `${t.id}:${t.text}:${t.start}:${t.end}`).join('|'));
   if (ui.tab === 'export') parts.push(p.clips.length, !!p.song, p.endCard.coverMediaId, p.duration, p.endCard.enabled, p.name, p.endCard.title, p.endCard.artist, p.endCard.cta, p.endCard.subtext);
   if (ui.tab === 'media') parts.push(p.clips.length);
-  if (ui.tab === 'templates') parts.push(p.clips.length, p.template, p.layout, p.lyrics.length);
+  if (ui.tab === 'templates') parts.push(p.clips.length, p.template, p.layout, p.lyrics.length, p.theme ? `${p.theme.id}:${p.theme.custom}` : '');
   if (ui.tab === 'suggested') parts.push(media.all().map((m) => `${m.id}:${m.envelope ? 1 : 0}`).join(','), p.song && p.song.mediaId, p.lyrics.length, p.suggestion, p.endCard.coverMediaId, p.aspect);
   if (ui.tab === 'sounds') parts.push(p.audioTracks.length);
   if (ui.tab === 'layers') {
@@ -281,7 +281,10 @@ function inspSignature() {
         const bg = br && br.background;
         return c && [c.filter?.preset, !!c.kenBurns, c.mask?.shape, c.mask?.background, c.grade?.preset, br?.enabled, br?.mode, bg && [bg.kind, bg.scene, bg.mediaId, bg.color, bg.color2].join(',')].join('|');
       })()) ||
-    (s.type === 'lyric' && p.lyrics.some((c) => c.id === s.id) && [...p.lyrics].sort((a, b) => a.start - b.start).findIndex((c) => c.id === s.id)) ||
+    (s.type === 'lyric' && p.lyrics.some((c) => c.id === s.id) && (() => {
+      const l = p.lyrics.find((c) => c.id === s.id);
+      return `${[...p.lyrics].sort((a, b) => a.start - b.start).findIndex((c) => c.id === s.id)}|${l.style ? `${l.style.preset || 'own'}:${!!l.style.box}` : '-'}|${p.lyrics.filter((c) => c.text.trim().toLowerCase() === l.text.trim().toLowerCase()).length}`;
+    })()) ||
     (s.type === 'text' && p.texts.some((c) => c.id === s.id)) ||
     (s.type === 'audio' && p.audioTracks.some((c) => c.id === s.id)) ||
     s.type;

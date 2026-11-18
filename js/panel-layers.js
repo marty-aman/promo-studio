@@ -6,6 +6,8 @@ import { media, tabTimeline, drumTimeline, drumHitsFromStem, vizFeatures } from 
 import { defaultTabLayer } from './tab.js';
 import { defaultDrumLayer, LANES, DRUM_STYLES, STYLE_PLACEMENT } from './drums.js';
 import { TAB_STYLES, TAB_PLACEMENT, stringColor } from './tabviz.js';
+import { REAL_PLACEMENT } from './vizreal.js';
+import { themeById, themeLayer } from './themes.js';
 import { defaultVizLayer, VIZ_STYLES, BLENDS } from './viz.js';
 import { tabIntoLayout } from './templates.js';
 import { h, icon, button, iconButton, toast, field, section, pickFiles } from './dom.js';
@@ -22,6 +24,12 @@ const FIXED_ROWS = [
 
 /** Create a layer of `type` with sensible defaults, using media already in the library. */
 export function makeLayer(p, type, t = 0) {
+  const L = makeLayerRaw(p, type, t);
+  const th = p.theme && themeById(p.theme.id);
+  return th ? themeLayer(L, th, p.theme.colors) : L;
+}
+
+function makeLayerRaw(p, type, t = 0) {
   const n = (p.layers || []).filter((l) => l.type === type).length + 1;
   const base = { id: uid('lyr'), type, name: `${LAYER_TYPES[type].label}${n > 1 ? ` ${n}` : ''}`, visible: true };
   const all = media.all();
@@ -469,6 +477,8 @@ export function buildLayersPanel(b, ctx) {
           if (id === 'bars' || id === 'wave') Object.assign(x, { y: 80, size: 80 });
           if (id === 'circle' || id === 'rings' || id === 'electric') Object.assign(x, { y: 45, size: 70 });
           if (id === 'glow') x.blend = 'screen';
+          if (REAL_PLACEMENT[id]) Object.assign(x, REAL_PLACEMENT[id], { x: 50 });
+          else if (x.blend === 'source-over') x.blend = 'screen';
         })) }, h('strong', {}, label), h('span', {}, hint)),
       ),
     );
@@ -484,6 +494,7 @@ export function buildLayersPanel(b, ctx) {
         'Look',
         h('div', { class: 'grid2' }, b.color('Color', g('color'), set((x, v) => (x.color = v))), b.color('Second color', g('color2'), set((x, v) => (x.color2 = v)))),
         b.range('Intensity', g('intensity', 0.7), set((x, v) => (x.intensity = v)), { min: 0, max: 1.5, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
+        REAL_PLACEMENT[L.style] ? b.toggle('Real-world colours (off = use the colours above)', g('classic', true), set((x, v) => (x.classic = v))) : null,
         ['ripple', 'particles'].includes(L.style) ? b.range('Hit sensitivity', g('sensitivity', 0.5), set((x, v) => (x.sensitivity = v)), { min: 0.05, max: 0.95, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` }) : null,
         ['ripple', 'particles'].includes(L.style) ? b.toggle('Scatter across the frame', g('scatter', false), set((x, v) => (x.scatter = v))) : null,
         placement({ y: 50, size: 70 }),

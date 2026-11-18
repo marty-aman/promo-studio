@@ -281,10 +281,10 @@ export function createTimeline({ root, store, engine, ui }) {
         if (b < 0 || a > total + 4) continue;
         row.append(
           block({
-            cls: 'lyr',
+            cls: `lyr${l.style ? ' styled' : ''}`,
             left: a * s,
             width: (b - a) * s,
-            label: l.text,
+            label: l.style ? `✦ ${l.text}` : l.text,
             selected: sel && sel.type === 'lyric' && sel.id === l.id,
             data: { kind: 'lyric', id: l.id },
           }),
