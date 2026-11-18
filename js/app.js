@@ -11,6 +11,7 @@ import { buildInspirationPage } from './page-inspiration.js';
 import { buildTabStudio } from './page-tabstudio.js';
 import { buildCarouselPage } from './page-carousel.js';
 import { createPostCheck } from './panel-postcheck.js';
+import { createTips } from './panel-tips.js';
 import { loadSettings } from './state.js';
 
 const store = createStore(loadProject() || newProject());
@@ -210,6 +211,7 @@ const timeline = createTimeline({ root: timelineRoot, store, engine, ui });
 const panels = createPanels({ store, engine, ui });
 const postcheck = createPostCheck({ store, engine, ui });
 postSlot.replaceWith(postcheck.el);
+createTips({ store, ui, host: stage, postcheck });
 
 // ------------------------------------------------------------ panels
 let leftBinder = null;

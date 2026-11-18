@@ -8,7 +8,7 @@ import { defaultDrumLayer, LANES, DRUM_STYLES, STYLE_PLACEMENT } from './drums.j
 import { TAB_STYLES, TAB_PLACEMENT, stringColor } from './tabviz.js';
 import { REAL_PLACEMENT } from './vizreal.js';
 import { themeById, themeLayer } from './themes.js';
-import { defaultVizLayer, VIZ_STYLES, BLENDS } from './viz.js';
+import { defaultVizLayer, VIZ_STYLES, BLENDS, setVizStyle } from './viz.js';
 import { tabIntoLayout } from './templates.js';
 import { h, icon, button, iconButton, toast, field, section, fold, pickFiles } from './dom.js';
 
@@ -503,14 +503,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       'div',
       { class: 'style-grid', role: 'radiogroup', 'aria-label': 'Visualizer style' },
       VIZ_STYLES.map(([id, label, hint]) =>
-        h('button', { type: 'button', role: 'radio', 'aria-checked': L.style === id ? 'true' : 'false', class: `style-opt${L.style === id ? ' on' : ''}`, onclick: () => store.update(set((x) => {
-          x.style = id;
-          if (id === 'bars' || id === 'wave') Object.assign(x, { y: 80, size: 80 });
-          if (id === 'circle' || id === 'rings' || id === 'electric') Object.assign(x, { y: 45, size: 70 });
-          if (id === 'glow') x.blend = 'screen';
-          if (REAL_PLACEMENT[id]) Object.assign(x, REAL_PLACEMENT[id], { x: 50 });
-          else if (x.blend === 'source-over') x.blend = 'screen';
-        })) }, h('strong', {}, label), h('span', {}, hint)),
+        h('button', { type: 'button', role: 'radio', 'aria-checked': L.style === id ? 'true' : 'false', class: `style-opt${L.style === id ? ' on' : ''}`, onclick: () => store.update(set((x) => setVizStyle(x, id))) }, h('strong', {}, label), h('span', {}, hint)),
       ),
     );
     return h(

@@ -146,3 +146,90 @@ test('post check: text under the app buttons and busy layers', () => {
   p.layout = 'all';
   assert.ok(!postCheck(p).items.some((i) => i.id === 'safe'));
 });
+
+// ---- round 2: ideas from lyrics, editing tips
+import { lyricIdeas, lineIdeas, applyLyricIdea } from '../js/lyricideas.js';
+import { tipsFor, lyricsOverlap, clearLyricY } from '../js/tips.js';
+
+const LYR = (texts) => texts.map((text, i) => ({ id: `l${i}`, text, start: 20 + i * 2, end: 21.8 + i * 2 }));
+
+test('lyric ideas: fire words pick Hellfire and the fire visualizer, with the words as the reason', () => {
+  const p = newProject();
+  p.lyrics = LYR(['Watch the city burn tonight', 'We light it up', 'Into the flames we go', 'Burn it down']);
+  const r = lyricIdeas(p);
+  assert.equal(r.ok, true);
+  assert.equal(r.theme.id, 'hellfire');
+  assert.ok(r.theme.words.includes('burn') && r.theme.words.includes('flame'));
+  assert.equal(r.viz.style, 'fire');
+  assert.equal(r.display.id, 'poster'); // short lines
+});
+
+test('lyric ideas: cold words pick Frostbite, long lines pick the sheet, the title counts', () => {
+  const p = newProject();
+  p.lyrics = LYR(['I have been walking through the winter for so many years now', 'and the snow keeps falling on everything I ever said to you']);
+  assert.equal(lyricIdeas(p).theme.id, 'frost');
+  assert.equal(lyricIdeas(p).display.id, 'sheet');
+  p.endCard.title = 'Static';
+  p.lyrics = LYR(['Nothing here at all', 'Nothing here again']);
+  assert.equal(lyricIdeas(p).theme.id, 'ruststeel');
+  assert.equal(lyricIdeas({ ...p, lyrics: LYR(['one']) }).ok, false);
+});
+
+test('line ideas: shouted lines scream, repeats become gang vocals, soft and spoken lines', () => {
+  const ideas = lineIdeas(LYR(['BURN IT DOWN', 'We are the ones', 'We are the ones', 'whisper my name', '(spoken) this is it', 'just a normal line here']));
+  const by = Object.fromEntries(ideas.map((x) => [x.text, x.preset]));
+  assert.equal(by['BURN IT DOWN'], 'scream');
+  assert.equal(by['We are the ones'], 'chant');
+  assert.equal(by['whisper my name'], 'whisper');
+  assert.equal(by['(spoken) this is it'], 'spoken');
+  assert.equal(by['just a normal line here'], undefined);
+});
+
+test('applying all lyric ideas sets theme, a themed visualizer, display and line looks (once)', () => {
+  const p = newProject();
+  p.lyrics = LYR(['Into the fire!', 'Burn burn burn', 'Into the fire!']);
+  const ideas = lyricIdeas(p);
+  applyLyricIdea(p, ideas, 'all');
+  applyLyricIdea(p, ideas, 'viz'); // reuses its own visualizer
+  assert.equal(p.theme.id, 'hellfire');
+  const viz = p.layers.filter((L) => L.type === 'viz');
+  assert.equal(viz.length, 1);
+  assert.equal(viz[0].style, 'fire');
+  assert.equal(viz[0].classic, false); // themed colours
+  assert.equal(p.lyricStyle.display, ideas.display.id);
+  assert.equal(p.lyrics[0].style.preset, 'scream');
+});
+
+test('tips: a new song-driven visualizer is pointed at the drum stem', () => {
+  const a = newProject();
+  const b = structuredClone(a);
+  b.layers = [{ ...defaultVizLayer(), id: 'v1', type: 'viz', name: 'V', style: 'ripple' }];
+  const t = tipsFor(a, b, { stems: [{ id: 's1', name: 'drums-stem.wav' }] });
+  assert.equal(t[0].id, 'viz-stem');
+  assert.deepEqual(t[0].fix, { kind: 'vizSource', layerId: 'v1', source: 's1' });
+  assert.deepEqual(tipsFor(a, b, { stems: [] }), []);
+});
+
+test('tips: a tab on top of the lyrics, too many layers, pasted lyrics, second clip', () => {
+  const a = newProject();
+  a.lyrics = LYR(['one line', 'two line']);
+  a.song = { mediaId: 's', offset: 0 };
+  const b = structuredClone(a);
+  b.layers = [{ ...defaultTabLayer(), id: 't', type: 'tab', name: 'T', y: 72, height: 16 }];
+  assert.ok(lyricsOverlap(b, b.layers[0]));
+  const t = tipsFor(a, b);
+  assert.equal(t.find((x) => x.id === 'overlap').fix.kind, 'lyricsClear');
+  const y = clearLyricY(b, b.layers[0]);
+  assert.ok(!lyricsOverlap({ ...b, lyricStyle: { ...b.lyricStyle, y } }, b.layers[0]), `y=${y}`);
+  const c = structuredClone(b);
+  c.layers.push({ ...defaultVizLayer(), id: 'v1', type: 'viz', name: 'V' }, { ...defaultVizLayer(), id: 'v2', type: 'viz', name: 'V2' });
+  assert.ok(tipsFor(b, c).some((x) => x.id === 'busy'));
+  const e = newProject();
+  const f = structuredClone(e);
+  f.lyrics = LYR(['a', 'b']);
+  assert.equal(tipsFor(e, f)[0].fix.kind, 'lyricIdeas');
+  const g = structuredClone(a);
+  g.clips = [{ id: 'c1' }, { id: 'c2' }];
+  a.clips = [{ id: 'c1' }];
+  assert.ok(tipsFor(a, g).some((x) => x.id === 'beats'));
+});

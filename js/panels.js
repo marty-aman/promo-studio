@@ -24,6 +24,8 @@ import {
 } from './core.js';
 import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSettings, saveSettings, loadTemplates, saveTemplates, findClip, findLayer, LAYER_TYPES } from './state.js';
 import { buildLayersPanel, makeLayer, TAB_ACCEPT } from './panel-layers.js';
+import { lyricIdeas, applyLyricIdea } from './lyricideas.js';
+import { tipSettings, saveTipSettings } from './panel-tips.js';
 import { templateFromProject, applyMyTemplate, templateFile, parseTemplateFile, describeTemplate } from './mytemplates.js';
 import { bgRemoveSection } from './panel-bgremove.js';
 import { buildSuggestPanel, hasNewSuggestions } from './panel-suggest.js';
@@ -252,7 +254,7 @@ export function createPanels({ store, engine, ui }) {
     return h(
       'div',
       { class: 'start-stack' },
-      fold('start-suggested', 'Suggested for you', { badge: hasNewSuggestions(p) ? 'New' : null, hint: 'From your song, clips and lyrics' }, () => buildSuggestPanel({ store, engine, ui })),
+      fold('start-suggested', 'Suggested for you', { badge: hasNewSuggestions(p) ? 'New' : null, hint: 'From your song, clips and lyrics' }, () => [buildLyricIdeas(), buildSuggestPanel({ store, engine, ui })]),
       fold('start-templates', 'Templates and themes', { hint: 'One click restyles everything' }, () => buildTemplates()),
       fold('start-mine', 'My templates', { open: false, hint: 'Save this edit to reuse' }, () => buildMyTemplates()),
       fold(
@@ -266,6 +268,47 @@ export function createPanels({ store, engine, ui }) {
           page('tabstudio', 'guitar', 'Tab Studio', 'Write or fix Guitar Pro tabs, or make one from a stem'),
           page('carousel', 'image', 'Carousel', 'Photo carousels for Instagram and TikTok'),
         ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------- IDEAS FROM YOUR LYRICS
+  function buildLyricIdeas() {
+    const p = store.get();
+    const ideas = lyricIdeas(p);
+    if (!ideas.ok) return section('From your lyrics', h('p', { class: 'muted small' }, 'Paste your lyrics (Lyrics tab) and you’ll get a theme, visualizer and line looks that fit the words.'));
+    const apply = (kind, msg) => {
+      store.update((d) => applyLyricIdea(d, lyricIdeas(d), kind));
+      toast(`${msg} Undo (Ctrl+Z) to go back.`);
+      ui.refreshPanels(true);
+    };
+    const quote = (words) => words.slice(0, 4).map((w, i) => [i ? ', ' : '', h('b', {}, `“${w}”`)]).flat();
+    const th = THEMES.find((t) => t.id === ideas.theme.id);
+    const on = (k) => (k === 'theme' ? p.theme && p.theme.id === ideas.theme.id : k === 'viz' ? (p.layers || []).some((L) => L.type === 'viz' && L.style === ideas.viz.style && L.visible !== false) : k === 'display' ? (p.lyricStyle.display || 'line') === ideas.display.id : ideas.lines.every((li) => (p.lyrics.find((l) => l.id === li.id) || {}).style));
+    const idea = (k, ic, title, why, label, msg, extra = null) =>
+      h('div', { class: 'idea' }, icon(ic, 18), h('div', { class: 'idea-body' }, h('strong', {}, title), h('span', { class: 'why' }, ...why), extra), on(k) ? h('span', { class: 'chip-static ok' }, 'In use') : button(label, () => apply(k, msg), { variant: 'sm' }));
+    const PRESET_NAMES = Object.fromEntries(LINE_PRESETS.map(([id, label]) => [id, label]));
+    const display = LYRIC_DISPLAYS.find(([id]) => id === ideas.display.id);
+    return section(
+      'From your lyrics',
+      h(
+        'div',
+        { class: 'lyric-ideas' },
+        idea('theme', 'palette', h('span', {}, `Theme: ${ideas.theme.name}`, th ? h('span', { class: 'idea-swatch', 'aria-hidden': 'true' }, ['bg', 'deep', 'accent', 'light'].map((c) => h('i', { style: `background:${th.colors[c]}` }))) : null), ideas.theme.words.length ? ['Your words: ', ...quote(ideas.theme.words)] : ['A dark, all-round look when the words don’t point anywhere.'], 'Use', `${ideas.theme.name} applied.`),
+        idea('viz', 'volume', `Visualizer: ${ideas.viz.label}`, ideas.viz.words.length ? ['Fits ', ...quote(ideas.viz.words)] : ['Reacts to the song without getting in the way.'], 'Add', `${ideas.viz.label} visualizer added.`),
+        idea('display', 'mic', `Lyrics: ${display ? display[1] : ideas.display.id}`, [ideas.display.why[0].toUpperCase() + ideas.display.why.slice(1), '.'], 'Use', 'Lyric display changed.'),
+        ideas.lines.length
+          ? idea(
+              'lines',
+              'type',
+              `Line looks for ${ideas.lines.length} line${ideas.lines.length > 1 ? 's' : ''}`,
+              ['Shouted lines scream, the chorus becomes gang vocals.'],
+              'Style them',
+              'Line looks applied.',
+              h('ul', { class: 'idea-lines' }, ideas.lines.slice(0, 5).map((li) => h('li', {}, h('span', { class: 'tag' }, PRESET_NAMES[li.preset] || li.preset), h('span', { class: 'muted' }, li.text.length > 34 ? `${li.text.slice(0, 33)}…` : li.text)))),
+            )
+          : null,
+        button('Use all of these', () => apply('all', 'Theme, visualizer, lyric display and line looks applied.'), { iconName: 'wand', variant: 'sm primary' }),
       ),
     );
   }
@@ -1689,6 +1732,18 @@ export function createPanels({ store, engine, ui }) {
           ? h('p', { class: 'muted tiny' }, 'Ghost buttons show where each app puts its icons, caption and nav bar, so you can keep lyrics and text clear of them. Preview only, never exported. Shortcut: O cycles the apps.')
           : h('p', { class: 'warn-list' }, 'The phone preview is for 9:16 videos. Switch Format to 9:16 to see it.'),
       ),
+      (() => {
+        const ts = tipSettings();
+        const cb = h('input', { type: 'checkbox', checked: !ts.off });
+        cb.addEventListener('change', () => saveTipSettings({ ...tipSettings(), off: !cb.checked }));
+        const reset = button('Show the hidden tips again', () => (saveTipSettings({ ...tipSettings(), never: [] }), toast('Hidden tips will show again'), ui.refreshPanels(true)), { variant: 'sm ghost' });
+        return section(
+          'Editing tips',
+          h('label', { class: 'toggle' }, cb, h('span', {}, 'Pop up tips as I edit')),
+          h('p', { class: 'muted tiny' }, 'Small cards at the bottom right of the preview suggest the next improvement when you add layers, clips, the song or lyrics.'),
+          ts.never.length ? reset : null,
+        );
+      })(),
       section('Templates', h('p', { class: 'muted small' }, 'To reuse this look on your next release, save it as one of your templates.'), button('Save this edit as a template…', () => (setFold('start-mine', true), ui.openTab('start')), { iconName: 'star', variant: 'sm' })),
     );
   }

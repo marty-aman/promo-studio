@@ -565,3 +565,29 @@ h4.sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; col
 .pc-item.tip .pc-ic { background: var(--raised); color: var(--text); }
 .pc-item.good .pc-ic { background: var(--ok); }
 @media (max-width: 1100px) { .postcheck-pill .pc-label { display: none; } }
+
+/* ---- pop-up editing tips (bottom right of the preview) */
+.stage { position: relative; }
+.tips { position: absolute; right: 12px; bottom: 12px; display: grid; gap: 8px; width: min(320px, calc(100% - 24px)); z-index: 30; pointer-events: none; }
+.tip-card { pointer-events: auto; background: var(--panel); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); animation: tip-in 0.18s ease-out; transition: opacity 0.18s, transform 0.18s; }
+.tip-card.out { opacity: 0; transform: translateY(6px); }
+.tip-text { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; line-height: 1.45; }
+.tip-text .icon { color: var(--accent); flex: none; margin-top: 1px; }
+.tip-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.tip-acts .link { margin-left: auto; color: var(--muted); }
+@keyframes tip-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tip-card { animation: none; transition: none; } }
+
+/* ---- ideas from your lyrics */
+.lyric-ideas { display: grid; gap: 6px; margin-bottom: 12px; }
+.idea { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
+.idea > .icon { color: var(--accent); flex: none; margin-top: 2px; }
+.idea-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.idea-body .why { color: var(--muted); font-size: 11.5px; }
+.idea-body .why b { color: var(--text); font-weight: 600; }
+.idea .btn { flex: none; align-self: center; }
+.idea-swatch { display: inline-flex; gap: 2px; vertical-align: middle; margin-left: 6px; }
+.idea-swatch i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.idea-lines { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 11.5px; }
+.idea-lines li { display: flex; gap: 6px; }
+.idea-lines .tag { flex: none; font-size: 10px; padding: 0 6px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--muted); }
