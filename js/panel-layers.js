@@ -8,9 +8,9 @@ import { defaultDrumLayer, LANES, DRUM_STYLES, STYLE_PLACEMENT } from './drums.j
 import { TAB_STYLES, TAB_PLACEMENT, stringColor } from './tabviz.js';
 import { REAL_PLACEMENT } from './vizreal.js';
 import { themeById, themeLayer } from './themes.js';
-import { defaultVizLayer, VIZ_STYLES, BLENDS } from './viz.js';
+import { defaultVizLayer, VIZ_STYLES, BLENDS, setVizStyle } from './viz.js';
 import { tabIntoLayout } from './templates.js';
-import { h, icon, button, iconButton, toast, field, section, pickFiles } from './dom.js';
+import { h, icon, button, iconButton, toast, field, section, fold, pickFiles } from './dom.js';
 
 export const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.gp7,.gp8,.musicxml,.mxl,.xml';
 
@@ -82,10 +82,17 @@ const FRAMINGS = {
   circle: { label: 'Circle', apply: (c) => Object.assign(c, { zoom: 0.55, posX: 0, posY: 0, mask: { shape: 'circle', size: 0.5, x: 0, y: 0, feather: 0.1, border: 0.3, borderColor: '#ffffff', background: 'none' } }) },
 };
 
-export function buildLayersPanel(b, ctx) {
+/**
+ * opts.types: only show and add these layer types (the Video, Visualizer and Guitar Pro tabs each show
+ * their own kind). Without it, the whole stack is shown, as in the "All layers" fold.
+ */
+export function buildLayersPanel(b, ctx, opts = {}) {
   const { store, engine, ui, importFiles, fontOptions } = ctx;
   const p = store.get();
-  const sel = ui.selection && ui.selection.type === 'layer' ? findLayer(p, ui.selection.id) : null;
+  const types = opts.types || null;
+  const mine = (L) => !types || types.includes(L.type);
+  const selAny = ui.selection && ui.selection.type === 'layer' ? findLayer(p, ui.selection.id) : null;
+  const sel = selAny && mine(selAny) ? selAny : null;
 
   const add = (type) => {
     const layer = makeLayer(store.get(), type, engine.t);
@@ -120,10 +127,11 @@ export function buildLayersPanel(b, ctx) {
       else d.layerVis[key] = false;
     });
 
+  const makeList = (filter) => {
   const list = h('div', { class: 'layer-list' });
-  const stack = [...(p.layers || [])].reverse(); // top of the stack first
+  const stack = [...(p.layers || [])].reverse().filter(filter); // top of the stack first
   stack.forEach((L, k) => {
-    const idx = p.layers.length - 1 - k;
+    const idx = p.layers.indexOf(L);
     list.append(
       h(
         'div',
@@ -143,9 +151,12 @@ export function buildLayersPanel(b, ctx) {
         ),
       ),
     );
-    if (idx === 0) list.append(h('div', { class: 'muted tiny' }, 'Video layers always sit under tab, drum and visualizer layers.'));
+    if (idx === 0 && !types) list.append(h('div', { class: 'muted tiny' }, 'Video layers always sit under tab, drum and visualizer layers.'));
   });
-  if (!stack.length) list.append(h('p', { class: 'muted small' }, 'No layers yet. Add one above.'));
+  if (!stack.length) list.append(h('p', { class: 'muted small' }, types ? opts.empty || 'None yet. Add one above.' : 'No layers yet.'));
+  return list;
+  };
+  const list = makeList(mine);
   const fixed = h(
     'div',
     { class: 'layer-list' },
@@ -153,22 +164,42 @@ export function buildLayersPanel(b, ctx) {
     p.audioTracks.map((a, i) => h('div', { class: 'layer-row fixed' }, eye(!isVisible(p, `audio:${a.id}`), `Audio ${i + 1}`, () => toggleFixed(`audio:${a.id}`), true), icon('music', 16), h('span', { class: 'name' }, `Audio ${i + 1}: ${media.get(a.mediaId)?.name || ''}`), h('span', {}))),
   );
 
+  const ADD = {
+    video: () => button(types ? 'Add a video layer' : 'Video layer', () => add('video'), { iconName: 'film', variant: types ? 'sm primary' : 'sm' }),
+    tab: () => button(types ? 'Add a guitar or bass tab' : 'Guitar tab', () => add('tab'), { iconName: 'guitar', variant: types ? 'sm primary' : 'sm' }),
+    drums: () => button(types ? 'Add a drum chart' : 'Drum chart', () => add('drums'), { iconName: 'activity', variant: types ? 'sm primary' : 'sm' }),
+    viz: () => button(types ? 'Add a visualizer' : 'Visualizer', () => add('viz'), { iconName: 'volume', variant: types ? 'sm primary' : 'sm' }),
+  };
+  const allRows = () =>
+    fold(
+      'all-layers',
+      'All layers and rows',
+      { open: false, hint: 'Order, show or hide everything' },
+      h('p', { class: 'muted tiny' }, 'Top of the list draws on top. Video layers always sit under tab, drum and visualizer layers.'),
+      makeList(() => true),
+      h('h4', { class: 'sub' }, 'Always-there rows'),
+      h('p', { class: 'muted tiny' }, 'Hide a row to leave it out of the preview and the export. Hiding audio mutes it.'),
+      fixed,
+    );
+
+  if (types) {
+    return h(
+      'div',
+      { class: 'layer-tab' },
+      opts.intro ? h('p', { class: 'muted small' }, opts.intro) : null,
+      h('div', { class: 'add-layer' }, types.map((t) => ADD[t]())),
+      list,
+      sel ? h('div', { class: 'layer-settings' }, settingsFor(sel)) : (p.layers || []).some(mine) ? h('p', { class: 'muted tiny' }, 'Select one to edit it. You can also click its name on the timeline.') : null,
+      opts.after || null,
+      opts.noAll ? null : allRows(),
+    );
+  }
   return h(
     'div',
     {},
-    section(
-      'Add a layer',
-      h(
-        'div',
-        { class: 'add-layer' },
-        button('Video layer', () => add('video'), { iconName: 'film', variant: 'sm' }),
-        button('Guitar tab', () => add('tab'), { iconName: 'guitar', variant: 'sm' }),
-        button('Drum chart', () => add('drums'), { iconName: 'activity', variant: 'sm' }),
-        button('Visualizer', () => add('viz'), { iconName: 'volume', variant: 'sm' }),
-      ),
-    ),
+    section('Add a layer', h('div', { class: 'add-layer' }, ADD.video(), ADD.tab(), ADD.drums(), ADD.viz())),
     section('Layer stack (top first)', list),
-    sel ? h('div', { class: 'layer-settings' }, settingsFor(sel)) : h('p', { class: 'muted tiny' }, 'Select a layer to edit it. You can also click a layer name on the timeline.'),
+    selAny ? h('div', { class: 'layer-settings' }, settingsFor(selAny)) : h('p', { class: 'muted tiny' }, 'Select a layer to edit it. You can also click a layer name on the timeline.'),
     section('Always-there rows', h('p', { class: 'muted tiny' }, 'Hide a row to leave it out of the preview and the export. Hiding audio mutes it.'), fixed),
   );
 
@@ -269,7 +300,7 @@ export function buildLayersPanel(b, ctx) {
       const pick = h('select', { 'aria-label': 'Clip to add' }, visual.map((m) => h('option', { value: m.id }, m.name)));
       const addClip = () => {
         const rec = media.get(pick.value);
-        if (!rec) return toast('Upload or find a clip in Media or Stock first.', 'error');
+        if (!rec) return toast('Upload a clip or find one in Stock video (Video tab) first.', 'error');
         const clip = makeOverlayClip(rec, engine.t);
         store.update(set((x) => x.clips.push(clip)));
         ui.select({ type: 'clip', id: clip.id });
@@ -472,21 +503,14 @@ export function buildLayersPanel(b, ctx) {
       'div',
       { class: 'style-grid', role: 'radiogroup', 'aria-label': 'Visualizer style' },
       VIZ_STYLES.map(([id, label, hint]) =>
-        h('button', { type: 'button', role: 'radio', 'aria-checked': L.style === id ? 'true' : 'false', class: `style-opt${L.style === id ? ' on' : ''}`, onclick: () => store.update(set((x) => {
-          x.style = id;
-          if (id === 'bars' || id === 'wave') Object.assign(x, { y: 80, size: 80 });
-          if (id === 'circle' || id === 'rings' || id === 'electric') Object.assign(x, { y: 45, size: 70 });
-          if (id === 'glow') x.blend = 'screen';
-          if (REAL_PLACEMENT[id]) Object.assign(x, REAL_PLACEMENT[id], { x: 50 });
-          else if (x.blend === 'source-over') x.blend = 'screen';
-        })) }, h('strong', {}, label), h('span', {}, hint)),
+        h('button', { type: 'button', role: 'radio', 'aria-checked': L.style === id ? 'true' : 'false', class: `style-opt${L.style === id ? ' on' : ''}`, onclick: () => store.update(set((x) => setVizStyle(x, id))) }, h('strong', {}, label), h('span', {}, hint)),
       ),
     );
     return h(
       'div',
       {},
       common,
-      field('Reacts to', srcSel, 'Pick a stem (drums, bass, vocals…) or the whole song. Upload stems in Media.'),
+      field('Reacts to', srcSel, 'Pick a stem (drums, bass, vocals…) or the whole song. Upload stems in the Audio tab.'),
       button('Upload stems', async () => importFiles(await pickFiles('audio/*', true)), { iconName: 'upload', variant: 'ghost sm' }),
       h('p', { class: 'muted tiny' }, !recV ? 'No audio chosen yet.' : feat === undefined ? 'Analysing the audio…' : feat ? `Ready: ${feat.duration.toFixed(1)}s analysed.` : 'Could not read this audio file.'),
       section('Style', styleGrid),

@@ -10,6 +10,7 @@
 // layer.classic (default true) keeps real-world colours (cream VU face, green-yellow-red LEDs,
 // green phosphor, orange fire); false uses the layer's colours (themes turn it off).
 import { glowPass } from './canvasfx.js';
+import { GEAR_STYLES, GEAR_PLACEMENT, GEAR_DRAW } from './vizgear.js';
 
 export const REAL_STYLES = [
   ['vu', 'VU meters', 'Two analog meters with swinging needles'],
@@ -18,6 +19,7 @@ export const REAL_STYLES = [
   ['speaker', 'Speaker cone', 'A woofer that pumps with the low end'],
   ['fire', 'Fire', 'Flames that roar with the music'],
   ['spectrogram', 'Spectrogram', 'Studio-style scrolling frequency picture'],
+  ...GEAR_STYLES, // tape reels, mixing desk, lightning, vibrating strings (vizgear.js)
 ];
 
 /** Placement and blend that suit each style when you switch to it. */
@@ -28,6 +30,7 @@ export const REAL_PLACEMENT = {
   speaker: { y: 52, size: 72, blend: 'source-over' },
   fire: { y: 100, size: 100, blend: 'source-over' },
   spectrogram: { y: 82, size: 92, blend: 'source-over' },
+  ...GEAR_PLACEMENT,
 };
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -713,4 +716,4 @@ function drawSpectrogram(ctx, W, H, layer, feat, ts, h) {
   ctx.fillText('now', ix + iw, iy + ih + hh * 0.07);
 }
 
-export const REAL_DRAW = { vu: drawVU, eq: drawEQ, scope: drawScope, speaker: drawSpeaker, fire: drawFire, spectrogram: drawSpectrogram };
+export const REAL_DRAW = { vu: drawVU, eq: drawEQ, scope: drawScope, speaker: drawSpeaker, fire: drawFire, spectrogram: drawSpectrogram, ...GEAR_DRAW };

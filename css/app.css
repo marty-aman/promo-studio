@@ -488,3 +488,109 @@ button.tl-head-name:hover { color: var(--accent); }
 .theme-own { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px dashed var(--border-strong); border-radius: 8px; margin-top: 8px; }
 .theme-pick { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .theme-pick input[type='color'] { width: 40px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: transparent; }
+
+/* ---- collapsible sections (folds) */
+.fold { padding-top: 0; }
+.fold > summary { list-style: none; display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 11px 2px; margin: 0; user-select: none; border-radius: 6px; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary:hover { background: var(--panel-2); }
+.fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.fold > summary .icon { color: var(--muted); transition: transform 0.15s; flex: none; }
+.fold[open] > summary .icon { transform: rotate(90deg); color: var(--text); }
+.fold-title { font-weight: 650; font-size: 13px; }
+.fold-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.fold-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fold-badge { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
+.fold-body { padding: 2px 0 8px; }
+.fold-body > div > .sect:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.fold .fold > summary { padding: 8px 2px; }
+@media (prefers-reduced-motion: reduce) { .fold > summary .icon { transition: none; } }
+h4.sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 14px 0 6px; }
+
+/* ---- API keys that fold away once saved */
+.keybox { border: 1px solid var(--border); border-radius: 6px; margin: 6px 0 10px; background: var(--panel-2); }
+.keybox > summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 7px 9px; cursor: pointer; font-size: 12px; }
+.keybox > summary::-webkit-details-marker { display: none; }
+.keybox > summary:focus-visible { outline: 2px solid var(--accent); }
+.keybox-state { margin-left: auto; font-size: 11px; font-weight: 600; }
+.keybox-state.ok { color: var(--ok); }
+.keybox-state.need { color: var(--accent); }
+.keybox-body { padding: 0 9px 9px; display: grid; gap: 6px; }
+.keybox-body input { width: 100%; }
+
+/* ---- Start: links to the full-screen pages, my templates */
+.page-links { display: grid; gap: 6px; }
+.page-link { display: flex; align-items: center; gap: 10px; padding: 10px; text-align: left; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); color: var(--text); cursor: pointer; }
+.page-link:hover { border-color: var(--border-strong); background: var(--raised); }
+.page-link > span { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.page-link > .icon:first-child { color: var(--accent); }
+.my-tpl-list { display: grid; gap: 6px; margin: 8px 0; }
+.my-tpl { display: flex; gap: 10px; padding: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
+.my-tpl-thumb { width: 45px; height: 80px; border-radius: 4px; object-fit: cover; flex: none; background: var(--bg); }
+.my-tpl-thumb.empty { display: grid; place-items: center; color: var(--muted); }
+.my-tpl-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.my-tpl-info .row { margin: 4px 0 0; }
+
+/* ---- YouTube Studio steps */
+.steps { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }
+.steps li { display: flex; gap: 8px; align-items: baseline; font-size: 12px; }
+.step-n { flex: none; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: var(--raised); font-size: 11px; font-weight: 700; }
+
+/* ---- layer tabs */
+.layer-tab .add-layer { margin: 4px 0 10px; }
+
+/* ---- Post check */
+.postcheck { position: relative; }
+.postcheck-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 6px 5px 10px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--panel-2); color: var(--text); cursor: pointer; font-size: 12px; }
+.postcheck-pill .pc-score { min-width: 26px; padding: 1px 6px; border-radius: 999px; font-size: 11px; color: #111; background: var(--muted); }
+.postcheck-pill.strong .pc-score { background: var(--ok); }
+.postcheck-pill.ok .pc-score { background: var(--accent); }
+.postcheck-pill.risky .pc-score { background: var(--danger); }
+.postcheck-pill.risky { border-color: rgba(255, 92, 108, 0.6); }
+.postcheck-pop { position: absolute; right: 0; top: calc(100% + 8px); width: 360px; max-height: min(70vh, 560px); overflow-y: auto; z-index: 70; background: var(--panel); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55); padding: 12px; }
+.pc-head { display: flex; gap: 12px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.pc-head p { margin: 2px 0 0; }
+.pc-big { flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-size: 17px; font-weight: 800; color: #111; background: var(--muted); }
+.pc-big.strong { background: var(--ok); }
+.pc-big.ok { background: var(--accent); }
+.pc-big.risky { background: var(--danger); }
+.pc-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.pc-item { display: flex; gap: 8px; padding: 8px 6px; border-radius: 6px; }
+.pc-item p { margin: 2px 0 6px; }
+.pc-item .btn { margin-top: 2px; }
+.pc-ic { flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; color: #111; }
+.pc-item.bad { background: rgba(255, 92, 108, 0.08); }
+.pc-item.bad .pc-ic { background: var(--danger); }
+.pc-item.warn .pc-ic { background: #fb923c; }
+.pc-item.tip .pc-ic { background: var(--raised); color: var(--text); }
+.pc-item.good .pc-ic { background: var(--ok); }
+@media (max-width: 1100px) { .postcheck-pill .pc-label { display: none; } }
+
+/* ---- pop-up editing tips (bottom right of the preview) */
+.stage { position: relative; }
+.tips { position: absolute; right: 12px; bottom: 12px; display: grid; gap: 8px; width: min(320px, calc(100% - 24px)); z-index: 30; pointer-events: none; }
+.tip-card { pointer-events: auto; background: var(--panel); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); animation: tip-in 0.18s ease-out; transition: opacity 0.18s, transform 0.18s; }
+.tip-card.out { opacity: 0; transform: translateY(6px); }
+.tip-text { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; line-height: 1.45; }
+.tip-text .icon { color: var(--accent); flex: none; margin-top: 1px; }
+.tip-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.tip-acts .link { margin-left: auto; color: var(--muted); }
+@keyframes tip-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tip-card { animation: none; transition: none; } }
+
+/* ---- ideas from your lyrics */
+.lyric-ideas { display: grid; gap: 6px; margin-bottom: 12px; }
+.idea { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
+.idea > .icon { color: var(--accent); flex: none; margin-top: 2px; }
+.idea-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.idea-body .why { color: var(--muted); font-size: 11.5px; }
+.idea-body .why b { color: var(--text); font-weight: 600; }
+.idea .btn { flex: none; align-self: center; }
+.idea-swatch { display: inline-flex; gap: 2px; vertical-align: middle; margin-left: 6px; }
+.idea-swatch i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.idea-lines { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 11.5px; }
+.idea-lines li { display: flex; gap: 6px; }
+.idea-lines .tag { flex: none; font-size: 10px; padding: 0 6px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--muted); }
+
+/* ---- free sound pack */
+.pack-list { max-height: 440px; overflow-y: auto; padding-right: 2px; }

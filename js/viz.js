@@ -2,7 +2,7 @@
 // or bass, or the song itself). Analysis is done once up front, so preview and export match.
 import { clamp, noise, energyEnvelope } from './core.js';
 import { detectOnsets } from './drums.js';
-import { REAL_STYLES, REAL_DRAW } from './vizreal.js';
+import { REAL_PLACEMENT, REAL_STYLES, REAL_DRAW } from './vizreal.js';
 
 export const VIZ_STYLES = [
   ['ripple', 'Water ripple', 'Rings that bend the picture on every hit (great for drums)'],
@@ -15,6 +15,17 @@ export const VIZ_STYLES = [
   ['rings', 'Speaker rings', 'Concentric rings pump with the level'],
   ...REAL_STYLES,
 ];
+
+/** Set a visualizer layer's style, moving it to the spot that suits that style. */
+export function setVizStyle(x, id) {
+  x.style = id;
+  if (id === 'bars' || id === 'wave') Object.assign(x, { y: 80, size: 80 });
+  if (id === 'circle' || id === 'rings' || id === 'electric') Object.assign(x, { y: 45, size: 70 });
+  if (id === 'glow') x.blend = 'screen';
+  if (REAL_PLACEMENT[id]) Object.assign(x, REAL_PLACEMENT[id], { x: 50 });
+  else if (x.blend === 'source-over') x.blend = 'screen';
+  return x;
+}
 
 export const BLENDS = [
   ['screen', 'Screen (light only)'],

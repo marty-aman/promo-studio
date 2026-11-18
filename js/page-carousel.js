@@ -182,7 +182,7 @@ export function buildCarouselPage({ store, engine, ui, settings }) {
       h('section', {},
         h('div', { class: 'row car-sect-head' }, h('h3', { class: 'page-sect' }, 'Suggested carousels'), button('Other photos', () => ((ui$.seed += 1), render()), { iconName: 'repeat', variant: 'ghost sm' })),
         !inp.cover ? h('p', { class: 'muted tiny' }, 'Tip: set your cover art in the End card tab (or import it from Spotify) for the cover slides.') : null,
-        !inp.images.length && !inp.clips.length ? h('p', { class: 'warn-list small' }, 'Add photos or clips in Media to fill the slides.') : null,
+        !inp.images.length && !inp.clips.length ? h('p', { class: 'warn-list small' }, 'Add photos or clips in the Video tab to fill the slides.') : null,
         h('div', { class: 'car-recipes' }, sugg.map(recipeCard))),
     ];
 

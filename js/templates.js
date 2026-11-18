@@ -83,7 +83,7 @@ const songStart = (d) => +timelineToSong(0, d.song).toFixed(3);
 
 /**
  * Reuse a guitar (or bass) tab layer, or add one from the first Guitar Pro file with a matching track.
- * With no matching file it adds an empty layer so the Layers panel asks for one.
+ * With no matching file it adds an empty layer so the Guitar Pro tab asks for one.
  */
 function ensureTab(d, sources, used, { bass }) {
   d.layers ||= [];

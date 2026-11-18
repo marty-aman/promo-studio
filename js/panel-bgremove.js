@@ -198,6 +198,6 @@ export function bgRemoveSection({ store, media, actions, b, c, G, rec }) {
     h('div', { class: 'row' }, button('Use this background for every cut-out', applyAll, { variant: 'ghost sm' })),
     h('div', { class: 'lbl' }, 'Find background footage'),
     searches,
-    h('p', { class: 'muted tiny' }, 'Downloads from Stock appear in Media. Then pick them above as “another clip of yours”.'),
+    h('p', { class: 'muted tiny' }, 'Stock downloads appear in My clips (Video tab). Then pick them above as “another clip of yours”.'),
   );
 }
