@@ -200,6 +200,17 @@ export function drawDrums(ctx, W, H, layer, data, t, songTime, visibleEnd, beatP
   if (!data || !data.hits.length) return;
   const end = layer.end ?? visibleEnd;
   if (t < (layer.start || 0) || t >= end) return;
+  if (FANCY[layer.style]) {
+    const fade = Math.min(1, (t - (layer.start || 0)) / 0.3, (end - t) / 0.3);
+    const dt = (songTime - layer.offset) * (layer.tempoScale || 1);
+    // tab time at which this layer appeared, for the combo counter
+    const shownFrom = (songTime - (t - (layer.start || 0)) - layer.offset) * (layer.tempoScale || 1);
+    ctx.save();
+    ctx.globalAlpha *= Math.max(0, fade);
+    FANCY[layer.style](ctx, W, H, layer, data, dt, { beatPeriod, shownFrom });
+    ctx.restore();
+    return;
+  }
   const fade = Math.min(1, (t - (layer.start || 0)) / 0.3, (end - t) / 0.3);
   const dt = (songTime - layer.offset) * (layer.tempoScale || 1);
   const lanes = data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat'];
@@ -447,3 +458,805 @@ export function drawDrums(ctx, W, H, layer, data, t, songTime, visibleEnd, beatP
   ctx.stroke();
   ctx.restore();
 }
+
+// ------------------------------------------------------------ fancy styles
+
+export const DRUM_STYLES = [
+  ['lanes', 'Scrolling lanes', 'Simple rows that scroll to a hit line'],
+  ['highway', 'Highway', 'Notes fall down a road to a strike line'],
+  ['circle', 'Circle', 'A hand sweeps once per bar'],
+  ['neon', 'Neon highway', '3D glowing road, shockwaves, sparks and a combo counter'],
+  ['kit', 'Light-up drum kit', 'A drum kit whose pieces glow, bounce and ripple when hit'],
+  ['glass', 'Glass lanes', 'Frosted panel, gradient capsules, trails and hit bursts'],
+];
+
+/** Placement that suits each style when you switch to it. */
+export const STYLE_PLACEMENT = {
+  lanes: { y: 24, width: 92, height: 18 },
+  highway: { y: 62, width: 70, height: 46 },
+  circle: { y: 45, width: 70, height: 40 },
+  neon: { y: 60, width: 84, height: 54 },
+  kit: { y: 62, width: 88, height: 40 },
+  glass: { y: 24, width: 92, height: 20 },
+};
+
+const laneColor = (layer, id) => (layer.colors && layer.colors[id]) || (LANES.find((l) => l.id === id) || {}).color || '#ffffff';
+const laneLabel = (id) => (LANES.find((l) => l.id === id) || {}).label || id;
+const fract = (x) => x - Math.floor(x);
+const rnd = (n) => fract(Math.sin(n * 12.9898 + 78.233) * 43758.5453);
+
+/** Most recent hit per lane at or before dt (within `window` s): Map lane -> {time, index, vel}. */
+function lastHits(data, dt, window = 0.8) {
+  const out = new Map();
+  for (let i = first(data.hits, dt + 1e-6) - 1; i >= 0; i--) {
+    const h = data.hits[i];
+    if (dt - h.time > window) break;
+    if (!out.has(h.lane)) out.set(h.lane, { time: h.time, index: i, vel: h.vel ?? 1 });
+  }
+  return out;
+}
+
+function box(W, H, layer) {
+  const bw = (W * layer.width) / 100;
+  const bh = (H * layer.height) / 100;
+  return { bw, bh, bx: (W * layer.x) / 100 - bw / 2, by: (H * layer.y) / 100 - bh / 2 };
+}
+
+// Scratch canvases, reused between frames.
+const bufs = {};
+function buf(name, w, h) {
+  const c = (bufs[name] ||= document.createElement('canvas'));
+  if (c.width !== w || c.height !== h) {
+    c.width = w;
+    c.height = h;
+  }
+  const g = c.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  if (typeof g.filter === 'string') g.filter = 'none';
+  g.clearRect(0, 0, w, h);
+  return [c, g];
+}
+
+/** Blur `src` into a same-size buffer. Uses ctx.filter where the browser has it, else a downscale round trip. */
+function blurred(name, src, px, extra = '') {
+  const [t, tg] = buf(name, src.width, src.height);
+  tg.drawImage(src, 0, 0); // base copy keeps the edges filled
+  if (typeof tg.filter === 'string') {
+    tg.filter = `blur(${Math.max(0.5, px).toFixed(1)}px) ${extra}`;
+    tg.drawImage(src, 0, 0);
+    tg.filter = 'none';
+  } else {
+    const f = Math.max(1, Math.round(px));
+    const [s, sg] = buf(name + '-s', Math.max(1, Math.ceil(src.width / f)), Math.max(1, Math.ceil(src.height / f)));
+    sg.drawImage(src, 0, 0, s.width, s.height);
+    tg.clearRect(0, 0, t.width, t.height);
+    tg.drawImage(s, 0, 0, t.width, t.height);
+  }
+  return t;
+}
+
+const GLOW_SCALE = 4;
+/**
+ * Glow without shadowBlur, which costs 5-10x more on a 1080x1920 canvas. Callers draw glow shapes
+ * into a quarter-size buffer with add(); flush() blurs it and adds it onto ctx.
+ */
+function glowPass(ctx, bx, by, bw, bh, radius) {
+  const pad = Math.ceil(radius * 2);
+  const ox = bx - pad;
+  const oy = by - pad;
+  const w = Math.max(1, Math.ceil((bw + pad * 2) / GLOW_SCALE));
+  const h = Math.max(1, Math.ceil((bh + pad * 2) / GLOW_SCALE));
+  const [c, g] = buf('glow', w, h);
+  g.setTransform(1 / GLOW_SCALE, 0, 0, 1 / GLOW_SCALE, -ox / GLOW_SCALE, -oy / GLOW_SCALE);
+  let used = false;
+  return {
+    add(fn) {
+      used = true;
+      g.save();
+      fn(g);
+      g.restore();
+    },
+    flush(strength = 1) {
+      if (!used) return;
+      const t = blurred('glow-b', c, radius / GLOW_SCALE);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha *= strength;
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(t, ox, oy, w * GLOW_SCALE, h * GLOW_SCALE);
+      ctx.restore();
+    },
+  };
+}
+
+/** Frosted glass: a blurred, quarter-size copy of the canvas area under the box. */
+function frost(ctx, bx, by, bw, bh, blur) {
+  const cv = ctx.canvas;
+  const m = ctx.getTransform();
+  const pad = blur * 2;
+  const x0 = Math.max(0, Math.floor(m.a * (bx - pad) + m.e));
+  const y0 = Math.max(0, Math.floor(m.d * (by - pad) + m.f));
+  const x1 = Math.min(cv.width, Math.ceil(m.a * (bx + bw + pad) + m.e));
+  const y1 = Math.min(cv.height, Math.ceil(m.d * (by + bh + pad) + m.f));
+  if (x1 <= x0 || y1 <= y0) return;
+  const S = 4;
+  const [c, g] = buf('frost', Math.max(1, Math.ceil((x1 - x0) / S)), Math.max(1, Math.ceil((y1 - y0) / S)));
+  g.drawImage(cv, x0, y0, x1 - x0, y1 - y0, 0, 0, c.width, c.height);
+  const t = blurred('frost-b', c, (blur * m.a) / S, 'saturate(1.3)');
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(t, 0, 0, c.width, c.height, x0, y0, x1 - x0, y1 - y0);
+  ctx.restore();
+}
+
+// ---- A: neon highway
+function drawNeon(ctx, W, H, layer, data, dt, { shownFrom }) {
+  const { bw, bh, bx, by } = box(W, H, layer);
+  const lanes = (data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat']).filter((l) => l !== 'kick');
+  const hasKick = data.lanes.includes('kick');
+  const cols = Math.max(1, lanes.length);
+  const horizon = by + bh * 0.06;
+  const strike = by + bh * 0.82;
+  const cx = bx + bw / 2;
+  const topW = bw * 0.16;
+  const botW = bw * 0.96;
+  const win = layer.window || 2.2;
+  const persp = (p) => Math.pow(Math.max(0, Math.min(1, p)), 1.9); // 0 horizon -> 1 strike
+  const yAt = (p) => horizon + (strike - horizon) * persp(p);
+  const wAt = (y) => topW + (botW - topW) * ((y - horizon) / (strike - horizon));
+  const xAt = (frac, y) => cx - wAt(y) / 2 + wAt(y) * frac;
+  const pOf = (time) => 1 - (time - dt) / win;
+  const unit = Math.min(bw, bh);
+  const G = glowPass(ctx, bx, by, bw, bh, unit * 0.03);
+
+  // backdrop: deep gradient, stars, horizon glow
+  ctx.save();
+  rrect(ctx, bx, by, bw, bh, unit * 0.06);
+  ctx.clip();
+  const bg = ctx.createLinearGradient(0, by, 0, by + bh);
+  bg.addColorStop(0, rgba('#05030f', layer.bgOpacity ?? 0.7));
+  bg.addColorStop(0.6, rgba('#140a2e', layer.bgOpacity ?? 0.7));
+  bg.addColorStop(1, rgba('#230b3d', layer.bgOpacity ?? 0.7));
+  ctx.fillStyle = bg;
+  ctx.fillRect(bx, by, bw, bh);
+  for (let s = 0; s < 40; s++) {
+    const sx = bx + rnd(s) * bw;
+    const sy = by + rnd(s + 99) * bh * 0.35;
+    ctx.fillStyle = `rgba(255,255,255,${0.25 + 0.5 * Math.abs(Math.sin(dt * 2 + s))})`;
+    ctx.fillRect(sx, sy, Math.max(1, unit * 0.004), Math.max(1, unit * 0.004));
+  }
+  const hg = ctx.createRadialGradient(cx, horizon, 0, cx, horizon, bw * 0.5);
+  hg.addColorStop(0, 'rgba(255,90,200,0.45)');
+  hg.addColorStop(1, 'rgba(255,90,200,0)');
+  ctx.fillStyle = hg;
+  ctx.fillRect(bx, by, bw, bh * 0.5);
+
+  // road surface + moving speed lines
+  ctx.beginPath();
+  ctx.moveTo(xAt(0, horizon), horizon);
+  ctx.lineTo(xAt(1, horizon), horizon);
+  ctx.lineTo(xAt(1, strike), strike);
+  ctx.lineTo(xAt(0, strike), strike);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(10,6,30,0.55)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(160,120,255,0.18)';
+  ctx.lineWidth = Math.max(1, unit * 0.003);
+  const spacing = 0.25;
+  for (let k = Math.ceil((dt - 0.2) / spacing); k * spacing < dt + win; k++) {
+    const y = yAt(pOf(k * spacing));
+    if (y < horizon || y > strike) continue;
+    ctx.beginPath();
+    ctx.moveTo(xAt(0, y), y);
+    ctx.lineTo(xAt(1, y), y);
+    ctx.stroke();
+  }
+
+  // glowing rails
+  ctx.lineCap = 'round';
+  for (let c = 0; c <= cols; c++) {
+    const col = laneColor(layer, lanes[Math.min(cols - 1, c)] || 'snare');
+    const g = ctx.createLinearGradient(0, horizon, 0, strike);
+    g.addColorStop(0, rgba(col, 0));
+    g.addColorStop(1, rgba(col, 0.9));
+    ctx.strokeStyle = g;
+    const lw = Math.max(1.5, unit * (c === 0 || c === cols ? 0.008 : 0.005));
+    ctx.lineWidth = lw;
+    ctx.beginPath();
+    ctx.moveTo(xAt(c / cols, horizon), horizon);
+    ctx.lineTo(xAt(c / cols, strike), strike);
+    ctx.stroke();
+    G.add((gl) => {
+      gl.strokeStyle = g;
+      gl.lineWidth = lw * 3;
+      gl.lineCap = 'round';
+      gl.beginPath();
+      gl.moveTo(xAt(c / cols, horizon), horizon);
+      gl.lineTo(xAt(c / cols, strike), strike);
+      gl.stroke();
+    });
+  }
+
+  const recent = lastHits(data, dt, 0.5);
+  // lane beams for fresh hits
+  for (const [lane, hit] of recent) {
+    const c = lanes.indexOf(lane);
+    if (c < 0) continue;
+    const e = Math.max(0, 1 - (dt - hit.time) / 0.35);
+    const g = ctx.createLinearGradient(0, horizon, 0, strike);
+    g.addColorStop(0, rgba(laneColor(layer, lane), 0));
+    g.addColorStop(1, rgba(laneColor(layer, lane), 0.35 * e));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(xAt(c / cols, horizon), horizon);
+    ctx.lineTo(xAt((c + 1) / cols, horizon), horizon);
+    ctx.lineTo(xAt((c + 1) / cols, strike), strike);
+    ctx.lineTo(xAt(c / cols, strike), strike);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // notes, far to near, with comet tails
+  const visible = [];
+  for (let i = first(data.hits, dt - 0.05); i < data.hits.length; i++) {
+    const h = data.hits[i];
+    if (h.time > dt + win) break;
+    visible.push(h);
+  }
+  for (let k = visible.length - 1; k >= 0; k--) {
+    const h = visible[k];
+    const y = yAt(pOf(h.time));
+    const sc = 0.25 + 0.75 * ((y - horizon) / (strike - horizon));
+    const col = laneColor(layer, h.lane);
+    if (h.lane === 'kick') {
+      ctx.fillStyle = rgba(col, 0.9);
+      const th = Math.max(2, unit * 0.022 * sc);
+      const kx0 = xAt(0.02, y);
+      const kw = xAt(0.98, y) - kx0;
+      ctx.fillRect(kx0, y - th / 2, kw, th);
+      G.add((g) => {
+        g.fillStyle = col;
+        g.globalAlpha = 0.5 + 0.5 * sc;
+        g.fillRect(kx0, y - th * 1.5, kw, th * 3);
+      });
+      continue;
+    }
+    const c = lanes.indexOf(h.lane);
+    if (c < 0) continue;
+    const x = xAt((c + 0.5) / cols, y);
+    const rx = (wAt(y) / cols) * 0.34;
+    const ry = rx * 0.42;
+    // tail toward the horizon
+    const tailY = yAt(pOf(h.time) - 0.12);
+    const tg = ctx.createLinearGradient(0, tailY, 0, y);
+    tg.addColorStop(0, rgba(col, 0));
+    tg.addColorStop(1, rgba(col, 0.55));
+    ctx.fillStyle = tg;
+    ctx.beginPath();
+    ctx.moveTo(x - rx * 0.55, y);
+    ctx.lineTo(xAt((c + 0.5) / cols, tailY) - rx * 0.2, tailY);
+    ctx.lineTo(xAt((c + 0.5) / cols, tailY) + rx * 0.2, tailY);
+    ctx.lineTo(x + rx * 0.55, y);
+    ctx.closePath();
+    ctx.fill();
+    // glassy gem
+    const gg = ctx.createRadialGradient(x - rx * 0.25, y - ry * 0.4, 0, x, y, rx);
+    gg.addColorStop(0, '#ffffff');
+    gg.addColorStop(0.35, col);
+    gg.addColorStop(1, rgba(col, 0.6));
+    ctx.fillStyle = gg;
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    G.add((g) => {
+      g.fillStyle = col;
+      g.globalAlpha = 0.4 + 0.6 * sc;
+      g.beginPath();
+      g.ellipse(x, y, rx * 1.35, ry * 1.6, 0, 0, Math.PI * 2);
+      g.fill();
+    });
+  }
+
+  // strike bar, targets, shockwaves and sparks
+  const kickHit = recent.get('kick');
+  const kickE = kickHit ? Math.max(0, 1 - (dt - kickHit.time) / 0.3) : 0;
+  if (hasKick) {
+    const kc = laneColor(layer, 'kick');
+    const sh = unit * (0.016 + 0.02 * kickE);
+    ctx.fillStyle = rgba(kc, 0.55 + 0.45 * kickE);
+    ctx.fillRect(xAt(0, strike), strike - unit * 0.008, botW, sh);
+    G.add((g) => {
+      g.fillStyle = kc;
+      g.globalAlpha = 0.5 + 0.5 * kickE;
+      const grow = unit * (0.02 + 0.06 * kickE);
+      g.fillRect(xAt(0, strike), strike - unit * 0.008 - grow, botW, sh + grow * 2);
+    });
+  }
+  lanes.forEach((lane, c) => {
+    const x = xAt((c + 0.5) / cols, strike);
+    const r = (botW / cols) * 0.34;
+    const col = laneColor(layer, lane);
+    const hit = recent.get(lane);
+    const age = hit ? dt - hit.time : 9;
+    const e = Math.max(0, 1 - age / 0.25);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = Math.max(2, r * 0.14);
+    const sr = 1 + 0.15 * e;
+    ctx.beginPath();
+    ctx.ellipse(x, strike, r * sr, r * 0.42 * sr, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    if (e > 0) {
+      ctx.fillStyle = rgba(col, 0.6 * e);
+      ctx.fill();
+    }
+    G.add((g) => {
+      g.strokeStyle = col;
+      g.fillStyle = col;
+      g.globalAlpha = 0.45 + 0.55 * e;
+      g.lineWidth = r * (0.3 + 0.3 * e);
+      g.beginPath();
+      g.ellipse(x, strike, r * sr, r * 0.42 * sr, 0, 0, Math.PI * 2);
+      g.stroke();
+      if (e > 0) {
+        g.globalAlpha = e;
+        g.fill();
+      }
+    });
+    if (age < 0.45) {
+      // shockwave
+      const k = age / 0.45;
+      ctx.strokeStyle = rgba(col, 0.8 * (1 - k));
+      ctx.lineWidth = Math.max(1, r * 0.08 * (1 - k));
+      ctx.beginPath();
+      ctx.ellipse(x, strike, r * (1 + k * 1.8), r * 0.42 * (1 + k * 1.8), 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // sparks
+      for (let s = 0; s < 10; s++) {
+        const a = -Math.PI * (0.1 + 0.8 * rnd(hit.index * 13 + s));
+        const sp = r * (1.2 + 2.2 * rnd(hit.index * 7 + s));
+        const sx = x + Math.cos(a) * sp * k;
+        const sy = strike + Math.sin(a) * sp * k + r * 1.4 * k * k;
+        ctx.fillStyle = rgba(s % 3 ? col : '#ffffff', 1 - k);
+        ctx.beginPath();
+        ctx.arc(sx, sy, Math.max(1, r * 0.07 * (1 - k * 0.5)), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (layer.showLabels) {
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      let fs = Math.min(unit * 0.045, r * 0.6);
+      ctx.font = `800 ${Math.round(fs)}px Inter, system-ui, sans-serif`;
+      while (fs > 6 && ctx.measureText(laneLabel(lane).toUpperCase()).width > r * 2) {
+        fs *= 0.9;
+        ctx.font = `800 ${Math.round(fs)}px Inter, system-ui, sans-serif`;
+      }
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(laneLabel(lane).toUpperCase(), x, strike + r * 0.6);
+    }
+  });
+
+  G.flush(0.85);
+
+  // horizon fade so notes emerge from the haze
+  const fg = ctx.createLinearGradient(0, horizon, 0, horizon + (strike - horizon) * 0.25);
+  fg.addColorStop(0, 'rgba(5,3,15,0.9)');
+  fg.addColorStop(1, 'rgba(5,3,15,0)');
+  ctx.fillStyle = fg;
+  ctx.fillRect(bx, horizon - 2, bw, (strike - horizon) * 0.25 + 2);
+
+  // combo counter
+  if (layer.showCombo !== false) {
+    const combo = first(data.hits, dt + 1e-6) - first(data.hits, shownFrom);
+    if (combo > 1) {
+      const last = data.hits[first(data.hits, dt + 1e-6) - 1];
+      const pulse = last ? Math.max(0, 1 - (dt - last.time) / 0.2) : 0;
+      const fs = unit * 0.07 * (1 + 0.15 * pulse);
+      ctx.font = `900 ${Math.round(fs)}px "Bebas Neue", Inter, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      const label = `×${combo} COMBO`;
+      const ty = by + bh * 0.975;
+      ctx.lineJoin = 'round';
+      for (const [lw, a] of [[fs * 0.3, 0.18], [fs * 0.14, 0.35]]) {
+        ctx.strokeStyle = rgba('#ff5ac8', a);
+        ctx.lineWidth = lw;
+        ctx.strokeText(label, cx, ty);
+      }
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(label, cx, ty);
+    }
+  }
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(200,160,255,0.35)';
+  ctx.lineWidth = Math.max(1, unit * 0.004);
+  rrect(ctx, bx, by, bw, bh, unit * 0.06);
+  ctx.stroke();
+}
+
+// ---- B: light-up drum kit
+function drawKit(ctx, W, H, layer, data, dt) {
+  const { bw, bh, bx, by } = box(W, H, layer);
+  // the hi-hat and ride reach ~0.66 U from the centre, so U <= 0.75 bw keeps the kit inside the box
+  const U = Math.min(bw * 0.75, bh * 1.6);
+  const cx = bx + bw / 2;
+  const P = (fx, fy) => [cx + (fx - 0.5) * U * 1.25, by + bh * fy];
+  ctx.save();
+  if ((layer.bgOpacity ?? 0) > 0) {
+    ctx.fillStyle = rgba(layer.bg, layer.bgOpacity);
+    rrect(ctx, bx, by, bw, bh, Math.min(bw, bh) * 0.06);
+    ctx.fill();
+  }
+  const recent = lastHits(data, dt, 0.8);
+  const energy = (lane) => {
+    const h = recent.get(lane);
+    return h ? { e: Math.max(0, Math.exp(-(dt - h.time) * 7)), age: dt - h.time, hit: h } : { e: 0, age: 9, hit: null };
+  };
+  // toms share one lane; spread consecutive tom hits over the three toms for fills
+  const tomHit = recent.get('tom');
+  const tomPiece = tomHit ? tomHit.index % 3 : -1;
+
+  // stands
+  ctx.strokeStyle = 'rgba(200,200,220,0.35)';
+  ctx.lineWidth = Math.max(1, U * 0.006);
+  const stand = (x, y1, y2) => {
+    ctx.beginPath();
+    ctx.moveTo(x, y1);
+    ctx.lineTo(x, y2);
+    ctx.stroke();
+  };
+  const [crx, cry] = P(0.14, 0.2);
+  const [rdx, rdy] = P(0.88, 0.22);
+  const [hhx, hhy] = P(0.05, 0.42);
+  stand(crx, cry, by + bh * 0.95);
+  stand(rdx, rdy, by + bh * 0.95);
+  stand(hhx, hhy, by + bh * 0.95);
+
+  const G = glowPass(ctx, bx, by, bw, bh, U * 0.04);
+  const glowEllipse = (x, y, rx, ry, rot, col, e) =>
+    G.add((g) => {
+      g.fillStyle = col;
+      g.globalAlpha = 0.12 + 0.88 * e;
+      g.beginPath();
+      g.ellipse(x, y, rx * (1.1 + 0.25 * e), ry * (1.3 + 0.5 * e), rot, 0, Math.PI * 2);
+      g.fill();
+    });
+  const ripple = (x, y, rx, ry, col, age) => {
+    if (age > 0.5) return;
+    const k = age / 0.5;
+    ctx.strokeStyle = rgba(col, 0.8 * (1 - k));
+    ctx.lineWidth = Math.max(1, U * 0.006 * (1 - k));
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx * (1 + k * 0.9), ry * (1 + k * 0.9), 0, 0, Math.PI * 2);
+    ctx.stroke();
+  };
+  const cymbal = (lane, x, y, rx, tilt) => {
+    const { e, age } = energy(lane);
+    const col = laneColor(layer, lane);
+    const swing = e * 10 * Math.sin(age * 22);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(((tilt + swing) * Math.PI) / 180);
+    glowEllipse(x, y, rx, rx * 0.16, ((tilt + swing) * Math.PI) / 180, col, e);
+    const g = ctx.createLinearGradient(-rx, 0, rx, 0);
+    g.addColorStop(0, rgba(col, 0.35 + 0.5 * e));
+    g.addColorStop(0.5, rgba('#ffffff', 0.25 + 0.6 * e));
+    g.addColorStop(1, rgba(col, 0.35 + 0.5 * e));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, rx * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = rgba('#ffffff', 0.5);
+    ctx.beginPath();
+    ctx.ellipse(0, -rx * 0.03, rx * 0.12, rx * 0.05, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ripple(x, y, rx, rx * 0.16, col, age);
+  };
+  const drum = (lane, x, y, rx, ry, depth, e, age, label) => {
+    const col = laneColor(layer, lane);
+    const s = 1 + 0.08 * e;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    // shell
+    ctx.fillStyle = 'rgba(30,24,48,0.95)';
+    ctx.fillRect(-rx, 0, rx * 2, depth);
+    ctx.beginPath();
+    ctx.ellipse(0, depth, rx, ry, 0, 0, Math.PI);
+    ctx.fill();
+    ctx.strokeStyle = rgba(col, 0.6 + 0.4 * e);
+    ctx.lineWidth = Math.max(1.5, U * 0.007);
+    ctx.strokeRect(-rx, 0, 0, depth);
+    // head
+    glowEllipse(x, y, rx * s, ry * s, 0, col, e);
+    const hg = ctx.createRadialGradient(-rx * 0.3, -ry * 0.3, 0, 0, 0, rx);
+    hg.addColorStop(0, rgba('#ffffff', 0.25 + 0.6 * e));
+    hg.addColorStop(1, rgba(col, 0.25 + 0.6 * e));
+    ctx.fillStyle = hg;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    if (label) {
+      ctx.fillStyle = rgba('#ffffff', 0.7);
+      ctx.font = `700 ${Math.round(U * 0.03)}px Inter, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(label, 0, depth + ry + U * 0.035);
+    }
+    ctx.restore();
+    ripple(x, y, rx, ry, col, age);
+  };
+
+  // hi-hat: two plates that clap shut on a hit
+  {
+    const { e, age } = energy('hihat');
+    const col = laneColor(layer, 'hihat');
+    const gap = U * (0.03 - 0.022 * e);
+    for (const dy of [-gap / 2, gap / 2]) {
+      ctx.save();
+      ctx.translate(hhx, hhy + dy);
+      glowEllipse(hhx, hhy + dy, U * 0.1, U * 0.016, 0, col, e);
+      ctx.fillStyle = rgba(col, 0.35 + 0.55 * e);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, U * 0.1, U * 0.016, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ripple(hhx, hhy, U * 0.1, U * 0.016, col, age);
+  }
+  cymbal('crash', crx, cry, U * 0.15, -12);
+  cymbal('ride', rdx, rdy, U * 0.16, 10);
+
+  const tom = energy('tom');
+  const tomE = (i) => (i === tomPiece ? tom.e : 0);
+  const tomAge = (i) => (i === tomPiece ? tom.age : 9);
+  const [t1x, t1y] = P(0.38, 0.36);
+  const [t2x, t2y] = P(0.62, 0.36);
+  drum('tom', t1x, t1y, U * 0.075, U * 0.032, U * 0.06, tomE(0), tomAge(0));
+  drum('tom', t2x, t2y, U * 0.075, U * 0.032, U * 0.06, tomE(1), tomAge(1));
+  const [ftx, fty] = P(0.8, 0.6);
+  drum('tom', ftx, fty, U * 0.1, U * 0.04, U * 0.14, tomE(2), tomAge(2), layer.showLabels ? 'TOMS' : '');
+  const sn = energy('snare');
+  const [snx, sny] = P(0.22, 0.6);
+  drum('snare', snx, sny, U * 0.095, U * 0.036, U * 0.05, sn.e, sn.age, layer.showLabels ? 'SNARE' : '');
+
+  // kick: front-facing bass drum with the band name
+  {
+    const { e, age } = energy('kick');
+    const col = laneColor(layer, 'kick');
+    const [kx, ky] = P(0.5, 0.7);
+    const r = U * 0.2 * (1 + 0.05 * e);
+    ctx.save();
+    G.add((g) => {
+      g.strokeStyle = col;
+      g.globalAlpha = 0.2 + 0.8 * e;
+      g.lineWidth = U * (0.03 + 0.04 * e);
+      g.beginPath();
+      g.arc(kx, ky, r, 0, Math.PI * 2);
+      g.stroke();
+    });
+    ctx.fillStyle = 'rgba(30,14,24,0.95)';
+    ctx.beginPath();
+    ctx.arc(kx, ky, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = Math.max(3, U * 0.016);
+    ctx.strokeStyle = rgba(col, 0.7 + 0.3 * e);
+    ctx.stroke();
+    const kg = ctx.createRadialGradient(kx, ky, 0, kx, ky, r);
+    kg.addColorStop(0, rgba(col, 0.5 * e));
+    kg.addColorStop(1, rgba(col, 0.08));
+    ctx.fillStyle = kg;
+    ctx.beginPath();
+    ctx.arc(kx, ky, r * 0.94, 0, Math.PI * 2);
+    ctx.fill();
+    if (layer.kickText) {
+      let fs = r * 0.32;
+      ctx.font = `900 ${Math.round(fs)}px "Bebas Neue", Impact, sans-serif`;
+      while (fs > 6 && ctx.measureText(layer.kickText).width > r * 1.6) {
+        fs *= 0.9;
+        ctx.font = `900 ${Math.round(fs)}px "Bebas Neue", Impact, sans-serif`;
+      }
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = rgba('#ffffff', 0.75 + 0.25 * e);
+      ctx.fillText(layer.kickText.toUpperCase(), kx, ky);
+      if (e > 0.02) {
+        const font = ctx.font;
+        G.add((g) => {
+          g.font = font;
+          g.textAlign = 'center';
+          g.textBaseline = 'middle';
+          g.fillStyle = col;
+          g.globalAlpha = e;
+          g.fillText(layer.kickText.toUpperCase(), kx, ky);
+        });
+      }
+    }
+    ctx.restore();
+    ripple(kx, ky, r, r, col, age);
+  }
+
+  G.flush(0.9);
+
+  // what's coming: a thin strip along the top
+  {
+    const y = by + bh * 0.04;
+    const x0 = bx + bw * 0.06;
+    const x1 = bx + bw * 0.94;
+    const win = 2;
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    rrect(ctx, x0, y - U * 0.008, x1 - x0, U * 0.016, U * 0.008);
+    ctx.fill();
+    for (let i = first(data.hits, dt); i < data.hits.length; i++) {
+      const h = data.hits[i];
+      if (h.time > dt + win) break;
+      const x = x0 + ((h.time - dt) / win) * (x1 - x0);
+      ctx.fillStyle = laneColor(layer, h.lane);
+      ctx.beginPath();
+      ctx.arc(x, y, U * 0.012, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x0 - 1, y - U * 0.018, Math.max(2, U * 0.005), U * 0.036);
+  }
+  ctx.restore();
+}
+
+// ---- C: glass lanes
+function drawGlass(ctx, W, H, layer, data, dt, { beatPeriod }) {
+  const { bw, bh, bx, by } = box(W, H, layer);
+  const lanes = data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat'];
+  const unit = Math.min(bw, bh);
+  const radius = unit * 0.14;
+  const G = glowPass(ctx, bx, by, bw, bh, unit * 0.05);
+  // frosted backdrop: a blurred copy of what is under the panel
+  ctx.save();
+  rrect(ctx, bx, by, bw, bh, radius);
+  ctx.clip();
+  frost(ctx, bx, by, bw, bh, Math.max(2, Math.round(unit * 0.08)));
+  const sheen = ctx.createLinearGradient(bx, by, bx, by + bh);
+  sheen.addColorStop(0, `rgba(255,255,255,${0.16 + (layer.bgOpacity ?? 0.55) * 0.1})`);
+  sheen.addColorStop(1, `rgba(255,255,255,${0.04 + (layer.bgOpacity ?? 0.55) * 0.05})`);
+  ctx.fillStyle = sheen;
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = rgba(layer.bg, (layer.bgOpacity ?? 0.55) * 0.5);
+  ctx.fillRect(bx, by, bw, bh);
+
+  const labelW = layer.showLabels ? bw * 0.14 : 0;
+  const left = bx + bw * 0.03 + labelW;
+  const right = bx + bw * 0.97;
+  const top = by + bh * 0.1;
+  const rowH = (bh * 0.8) / lanes.length;
+  const win = layer.window || 2.2;
+  const playX = left + ((right - left) * (layer.playhead ?? 22)) / 100;
+  const pps = (right - left) / win;
+  const xOf = (time) => playX + (time - dt) * pps;
+
+  // beat / bar grid; the downbeat flashes as it crosses the hit line
+  const barLen = (data.bars && data.bars.length && data.bars[0].duration) || (beatPeriod ? beatPeriod * 4 : 2);
+  const beat = barLen / 4;
+  for (let k = Math.floor((dt - win * 0.3) / beat); k * beat < dt + win; k++) {
+    const x = xOf(k * beat);
+    if (x < left || x > right) continue;
+    const down = k % 4 === 0;
+    const near = Math.max(0, 1 - Math.abs(x - playX) / (pps * 0.15));
+    ctx.fillStyle = `rgba(255,255,255,${down ? 0.18 + 0.4 * near : 0.07})`;
+    ctx.fillRect(x, top, Math.max(1, down ? unit * 0.008 : unit * 0.004), rowH * lanes.length);
+  }
+
+  lanes.forEach((lane, i) => {
+    const y = top + rowH * (i + 0.5);
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    rrect(ctx, left, y - rowH * 0.36, right - left, rowH * 0.72, rowH * 0.36);
+    ctx.fill();
+    if (layer.showLabels) {
+      ctx.fillStyle = laneColor(layer, lane);
+      ctx.font = `800 ${Math.round(Math.min(unit * 0.07, rowH * 0.42))}px Inter, system-ui, sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(laneLabel(lane).toUpperCase(), bx + bw * 0.03, y);
+    }
+  });
+
+  // notes: gradient capsules sized by velocity, trails, fade-in on the right
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(left, by, right - left, bh);
+  ctx.clip();
+  for (let i = first(data.hits, dt - (playX - left) / pps - 0.3); i < data.hits.length; i++) {
+    const h = data.hits[i];
+    const x = xOf(h.time);
+    if (x > right + 20) break;
+    const li = lanes.indexOf(h.lane);
+    if (li < 0) continue;
+    const y = top + rowH * (li + 0.5);
+    const col = laneColor(layer, h.lane);
+    const vel = 0.55 + 0.45 * Math.min(1, h.vel ?? 1);
+    const hh = rowH * 0.62 * vel;
+    const w = Math.max(hh * 1.5, pps * 0.06);
+    const passed = h.time < dt;
+    const inFade = Math.min(1, (right - x) / ((right - left) * 0.2));
+    ctx.globalAlpha = Math.max(0, inFade) * (passed ? Math.max(0.15, 1 - (dt - h.time) / 0.6) : 1);
+    // trail (notes move left, so it streams to the right)
+    const tg = ctx.createLinearGradient(x, 0, x + w * 2.4, 0);
+    tg.addColorStop(0, rgba(col, 0.45));
+    tg.addColorStop(1, rgba(col, 0));
+    ctx.fillStyle = tg;
+    rrect(ctx, x, y - hh * 0.3, w * 2.4, hh * 0.6, hh * 0.3);
+    ctx.fill();
+    const cg = ctx.createLinearGradient(0, y - hh / 2, 0, y + hh / 2);
+    cg.addColorStop(0, '#ffffff');
+    cg.addColorStop(0.45, col);
+    cg.addColorStop(1, rgba(col, 0.75));
+    ctx.fillStyle = cg;
+    rrect(ctx, x - w / 2, y - hh / 2, w, hh, hh / 2);
+    ctx.fill();
+    const a = ctx.globalAlpha;
+    if (x > left && x < right) {
+      G.add((g) => {
+        g.globalAlpha = a * 0.8;
+        g.fillStyle = col;
+        rrect(g, x - w / 2, y - hh / 2, w, hh, hh / 2);
+        g.fill();
+      });
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // hit bursts at the line
+  const recent = lastHits(data, dt, 0.35);
+  for (const [lane, hit] of recent) {
+    const li = lanes.indexOf(lane);
+    if (li < 0) continue;
+    const y = top + rowH * (li + 0.5);
+    const k = (dt - hit.time) / 0.35;
+    const col = laneColor(layer, lane);
+    const rg = ctx.createRadialGradient(playX, y, 0, playX, y, rowH * (0.6 + k));
+    rg.addColorStop(0, rgba(col, 0.7 * (1 - k)));
+    rg.addColorStop(1, rgba(col, 0));
+    ctx.fillStyle = rg;
+    ctx.fillRect(playX - rowH * 2, y - rowH * 2, rowH * 4, rowH * 4);
+    ctx.strokeStyle = rgba('#ffffff', 0.8 * (1 - k));
+    ctx.lineWidth = Math.max(1, rowH * 0.05);
+    ctx.beginPath();
+    ctx.arc(playX, y, rowH * (0.3 + k * 0.6), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // glowing hit line with diamond caps
+  const hitLine = (c, lw) => {
+    c.strokeStyle = '#ffffff';
+    c.lineWidth = lw;
+    c.beginPath();
+    c.moveTo(playX, top - rowH * 0.15);
+    c.lineTo(playX, top + rowH * lanes.length + rowH * 0.15);
+    c.stroke();
+  };
+  hitLine(ctx, Math.max(1.5, unit * 0.01));
+  G.add((g) => {
+    g.globalAlpha = 0.7;
+    hitLine(g, unit * 0.025);
+  });
+  G.flush(0.9);
+  ctx.fillStyle = '#ffffff';
+  for (const yy of [top - rowH * 0.15, top + rowH * lanes.length + rowH * 0.15]) {
+    ctx.beginPath();
+    ctx.moveTo(playX, yy - unit * 0.025);
+    ctx.lineTo(playX + unit * 0.02, yy);
+    ctx.lineTo(playX, yy + unit * 0.025);
+    ctx.lineTo(playX - unit * 0.02, yy);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+  // glass edge highlight
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = Math.max(1, unit * 0.008);
+  rrect(ctx, bx + 0.5, by + 0.5, bw - 1, bh - 1, radius);
+  ctx.stroke();
+}
+
+const FANCY = { neon: drawNeon, kit: drawKit, glass: drawGlass };

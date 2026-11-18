@@ -95,8 +95,15 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
   full frame, top or bottom half (split screen), circle. Each clip has the full clip inspector.
 - **Guitar tab:** as many tab layers as you need, e.g. lead and rhythm guitar or bass.
 - **Drum chart:** from a Guitar Pro drum track (kick, snare, hi-hat, toms, crash, ride) or detected
-  from a drum stem audio file (kick, snare, hi-hat). Styles: scrolling lanes, a falling "highway", or a
-  circle that sweeps once per bar with hits on rings.
+  from a drum stem audio file (kick, snare, hi-hat). Pick one of six styles from the style grid:
+  - **Scrolling lanes**, a falling **highway**, or a **circle** that sweeps once per bar with hits on rings.
+  - **Neon highway:** a 3D glowing road with gem notes, shockwaves and sparks at the strike line, and an
+    optional combo counter.
+  - **Light-up drum kit:** a drawn kit whose pieces glow, bounce and ripple when hit, with your band name
+    on the kick drum and a strip of upcoming hits along the top.
+  - **Glass lanes:** a frosted panel over your video with gradient capsules, trails and hit bursts.
+
+  Choosing a style also moves the chart to a spot that suits it.
 - **Visualizer:** reacts to any audio you give it: a stem (drums, bass, vocals…) or the song.
   Styles: water ripple (bends the picture on each hit), electricity, spectrum bars, circular spectrum,
   waveform, particles, glow pulse and speaker rings. Stems drive the visuals silently unless you switch
