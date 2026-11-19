@@ -819,6 +819,9 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .mgr-tracker .mgr-table { width: 100%; }
 .mgr-sect textarea { width: 100%; }
 /* ISRC link lookup */
+.mgr-upload { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; margin-bottom: 12px; }
+.mgr-upload .mf { margin: 0; min-width: 0; }
+.mgr-upload .btn { margin-bottom: 1px; }
 .mgr-isrc { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; margin-bottom: 10px; }
 .mgr-isrc .mf { margin: 0; }
 .mgr-isrc-res { border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); padding: 10px 12px; margin-bottom: 12px; display: grid; gap: 8px; }
