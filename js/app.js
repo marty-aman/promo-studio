@@ -14,6 +14,8 @@ import { createPostCheck } from './panel-postcheck.js';
 import { createTips } from './panel-tips.js';
 import { kfTarget, kfSignature } from './panel-kf.js';
 import { createManager } from './manager/shell.js';
+import { makeLayer, makeOverlayClip } from './panel-layers.js';
+import { studioSongFiles } from './manager/files.js';
 import { applyTheme, themeById } from './themes.js';
 import { loadSettings } from './state.js';
 
@@ -548,6 +550,59 @@ manager = createManager({
       ui.refreshPanels(true);
       return { id: rec.id, name: rec.name };
     },
+    /**
+     * Add files from the computer to the media library, keeping only the kinds asked for
+     * (['audio'], ['video'] or ['video', 'image']). Returns { added: [{ id, name, kind }], skipped: [names] }.
+     */
+    async uploadMedia(files, kinds) {
+      const added = [];
+      const skipped = [];
+      for (const file of files) {
+        const audioExt = /\.(mp3|wav|m4a|aac|ogg|oga|opus|flac|aiff?)$/i.test(file.name);
+        const kind = kindOf(file.type || '', file.name) || (audioExt ? 'audio' : null);
+        if (!kinds.includes(kind)) {
+          skipped.push(file.name);
+          continue;
+        }
+        try {
+          const rec = await addMedia(file, file.name, { kind });
+          added.push({ id: rec.id, name: rec.name, kind: rec.kind });
+        } catch (e) {
+          skipped.push(file.name);
+          toast(e.message, 'error', 5000);
+        }
+      }
+      if (added.length) ui.refreshPanels(true);
+      return { added, skipped };
+    },
+    /** Library files of some kinds, for "pick from the library" menus. */
+    libraryFiles: (kinds) => media.all().filter((m) => kinds.includes(m.kind)).map((m) => ({ id: m.id, name: m.name, kind: m.kind })),
+    /** Switch to the Video Studio's Video tab. */
+    openStudio() {
+      setMode('studio');
+      ui.select(null);
+      ui.openTab('video');
+    },
+    /** A library file's details, or null when it was removed from the library. */
+    mediaInfo(id) {
+      const m = id && media.get(id);
+      return m ? { id: m.id, name: m.name, kind: m.kind, duration: m.duration || 0, thumb: m.thumb || null, url: m.url } : null;
+    },
+    /**
+     * Put a song's file into the current edit. `how`: 'clip' (end of the main video track),
+     * 'overlay' (picture-in-picture at the playhead), 'drums' (drum chart from a drum stem),
+     * 'viz' (visualizer that listens to the file), 'audio' (extra audio track at the playhead).
+     * `open` switches to the Video Studio afterwards.
+     */
+    useInEditor(id, how, { open = true } = {}) {
+      const rec = media.get(id);
+      if (!rec) return toast('That file is no longer in the media library.', 'error');
+      sendToEdit(rec, how);
+      if (open) {
+        setMode('studio');
+        if (how === 'clip' || how === 'overlay') ui.openTab('video');
+      }
+    },
     artistsChanged: () => syncArtistSel(),
     imageFiles: () => media.all().filter((m) => m.kind === 'image').map((m) => ({ id: m.id, name: m.name, thumb: m.thumb || null })),
     /** A library image as a JPEG data URL no larger than `max` px on its long side (for the press kit). */
@@ -584,6 +639,51 @@ manager = createManager({
     },
   },
 });
+// The Video Studio's "From your songs" list: the open artist's stems, music videos and footage.
+ui.songFiles = () =>
+  studioSongFiles(manager.store.get().songs, (id) => {
+    const m = id && media.get(id);
+    return m ? { id: m.id, name: m.name, kind: m.kind, duration: m.duration || 0, thumb: m.thumb || null } : null;
+  });
+ui.sendToEdit = (id, how) => {
+  const rec = media.get(id);
+  if (rec) sendToEdit(rec, how);
+};
+ui.openSongFiles = (songId) => {
+  setMode('manager');
+  manager.go('songs', songId, 'files');
+};
+/** Put a library file into the edit (see studio.useInEditor for `how`). */
+function sendToEdit(rec, how) {
+  if (how === 'clip') return panels.actions.addClip(rec);
+  if (how === 'audio') return panels.actions.addAudioTrack(rec);
+  let selectId = null;
+  store.update((d) => {
+    if (how === 'overlay') {
+      let L = (d.layers || []).find((l) => l.type === 'video');
+      if (!L) {
+        L = makeLayer(d, 'video');
+        d.layers.push(L);
+      }
+      L.clips.push(makeOverlayClip(rec, Math.min(engine.t, Math.max(0, d.duration - 1))));
+      selectId = L.id;
+    } else if (how === 'drums') {
+      const L = { ...makeLayer(d, 'drums'), source: 'audio', mediaId: rec.id, offset: 0, name: `Drums: ${rec.name.replace(/\.[a-z0-9]+$/i, '')}` };
+      d.layers.push(L);
+      selectId = L.id;
+    } else if (how === 'viz') {
+      const L = { ...makeLayer(d, 'viz'), source: rec.id, name: `Visualizer: ${rec.name.replace(/\.[a-z0-9]+$/i, '')}` };
+      d.layers.push(L);
+      selectId = L.id;
+    }
+  });
+  const what = { overlay: 'as picture-in-picture at the playhead', drums: 'as a drum chart (hits are found from the stem)', viz: 'as a visualizer' }[how];
+  if (what) toast(`Added “${rec.name}” ${what}`);
+  if (selectId) {
+    ui.select({ type: 'layer', id: selectId });
+    ui.openTab('layers');
+  }
+}
 /** Put an artist's name, theme and logo on the current edit. */
 function applyArtist(id, { quiet = false } = {}) {
   const band = manager.artistBand(id);

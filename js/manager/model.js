@@ -2,6 +2,8 @@
 // bands, contacts, posts (with their stats) and money. Kept in this browser (localStorage) and
 // backed up as a JSON file. Pure functions so they can be unit tested.
 
+import { newFiles, normalizeFiles } from './files.js';
+
 export const MANAGER_KEY = 'pvm.manager.v1';
 export const MANAGER_VERSION = 1;
 
@@ -98,6 +100,7 @@ export function newSong(title = 'New song') {
     audioId: null, // a song file in the video studio's media library
     sound: { genres: '', moods: [], energy: '', vocals: '', similar: '' }, // blank genres and similar fall back to the band's
     press: { headline: '', story: '', quote: '', quoteBy: '', credits: '', label: '', edits: {} },
+    files: newFiles(), // stems, the music video and raw footage (references into the media library)
     pitches: [], // playlist pitches sent: { id, curator, playlist, service, contact, sent, status, followUp, ... }
     isrc: '',
     links: { spotify: '', apple: '', youtube: '', youtubeMusic: '', deezer: '', tidal: '', amazon: '', soundcloud: '', bandcamp: '' },
@@ -136,7 +139,7 @@ export function normalizeManager(raw) {
   for (const k of ['songs', 'shows', 'venues', 'bands', 'contacts', 'posts', 'money']) m[k] = list(raw[k]);
   m.songs = m.songs.map((s) => {
     const d = newSong(s.title);
-    return { ...d, ...s, sound: { ...d.sound, ...(s.sound || {}), moods: Array.isArray(s.sound?.moods) ? s.sound.moods : [] }, press: { ...d.press, ...(s.press || {}), edits: { ...(s.press?.edits || {}) } }, pitches: list(s.pitches), links: { ...d.links, ...(s.links || {}) }, shoot: { ...d.shoot, ...(s.shoot || {}) }, release: Array.isArray(s.release) ? s.release : d.release };
+    return { ...d, ...s, sound: { ...d.sound, ...(s.sound || {}), moods: Array.isArray(s.sound?.moods) ? s.sound.moods : [] }, press: { ...d.press, ...(s.press || {}), edits: { ...(s.press?.edits || {}) } }, pitches: list(s.pitches), files: normalizeFiles(s.files), links: { ...d.links, ...(s.links || {}) }, shoot: { ...d.shoot, ...(s.shoot || {}) }, release: Array.isArray(s.release) ? s.release : d.release };
   });
   m.playlists = list(raw.playlists);
   m.playlistsOff = Array.isArray(raw.playlistsOff) ? raw.playlistsOff.filter((x) => typeof x === 'string') : [];

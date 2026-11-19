@@ -332,12 +332,57 @@ export function createPanels({ store, engine, ui }) {
   }
 
   // ---------------------------------------------------------------- VIDEO / AUDIO / LAYER TABS
+  /** Music videos, footage and stems saved on the open artist's songs in the Manager. */
+  function buildSongFiles() {
+    const songs = ui.songFiles ? ui.songFiles() : [];
+    if (!songs.length) return h('p', { class: 'muted small' }, 'Nothing yet. In the Manager, open a song’s Files tab to add its music video, raw footage and stems.');
+    const send = (id, how) => ui.sendToEdit && ui.sendToEdit(id, how);
+    const len = (s) => (s && Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '');
+    return h(
+      'div',
+      { class: 'song-files' },
+      songs.map((s) =>
+        h(
+          'div',
+          { class: 'song-files-song' },
+          h('div', { class: 'song-files-head' }, h('strong', {}, s.title), h('button', { type: 'button', class: 'link small', onclick: () => ui.openSongFiles && ui.openSongFiles(s.id) }, 'Manage')),
+          [...(s.video ? [{ ...s.video, note: 'Music video' }] : []), ...s.footage].map((m) =>
+            h(
+              'div',
+              { class: 'song-files-item' },
+              m.thumb ? h('img', { src: m.thumb, alt: '' }) : h('span', { class: 'song-files-noimg' }),
+              h('span', { class: 'song-files-name', title: m.name }, m.note || m.name, m.duration ? h('span', { class: 'muted tiny' }, ` ${len(m.duration)}`) : null),
+              button('Add', () => send(m.id, 'clip'), { iconName: 'plus', variant: 'sm', title: 'Add to the end of the video track' }),
+              iconButton('layers', 'Picture-in-picture at the playhead', () => send(m.id, 'overlay'), 'ghost'),
+            ),
+          ),
+          s.stems.length
+            ? h(
+                'div',
+                { class: 'song-files-stems' },
+                s.stems.map((m) =>
+                  h(
+                    'div',
+                    { class: 'song-files-item stem' },
+                    h('span', { class: 'song-files-name', title: m.name }, `${{ drums: 'Drums', bass: 'Bass', guitar: 'Guitar', vocals: 'Vocals', keys: 'Keys', other: 'Stem' }[m.role] || 'Stem'}: ${m.name}`),
+                    m.role === 'drums' ? button('Drum chart', () => send(m.id, 'drums'), { variant: 'sm' }) : null,
+                    button('Visualizer', () => send(m.id, 'viz'), { variant: 'sm' }),
+                  ),
+                ),
+              )
+            : null,
+        ),
+      ),
+    );
+  }
+
   function buildVideoTab(b) {
     const n = (store.get().layers || []).filter((l) => l.type === 'video').length;
     return h(
       'div',
       {},
       fold('video-clips', 'My clips', { hint: 'Upload and arrange your footage' }, buildMedia(b)),
+      fold('video-songs', 'From your songs', { open: false, hint: 'Music videos, footage and stems saved on your songs' }, () => buildSongFiles()),
       fold('video-stock', 'Stock video', { open: false, hint: 'Pexels, Pixabay, Wikimedia' }, () => buildStock()),
       fold('video-youtube', 'From your YouTube channel', { open: false, hint: 'Videos you posted' }, buildYouTubeImport()),
       fold(
