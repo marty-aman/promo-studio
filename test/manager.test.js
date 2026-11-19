@@ -322,3 +322,15 @@ test('money: ledger plus show settlements, totals by category and month, release
   assert.deepEqual(releaseSpend(m, s), { spent: 250, budget: 400, left: 150 });
   assert.equal(moneySummary(lines, { from: '2027-01-01', to: '2027-12-31' }).net, 0);
 });
+
+import { SEED_BANDS } from '../js/manager/seed.js';
+test('the scene band list loads cleanly, with no venue or listing-site accounts', () => {
+  const list = SEED_BANDS.map(bandFromSeed);
+  assert.ok(list.length >= 30);
+  assert.equal(new Set(list.map((b) => b.id)).size, list.length);
+  assert.ok(list.every((b) => b.name && b.sources.length));
+  const links = list.flatMap((b) => Object.values(b.socials)).filter(Boolean);
+  assert.ok(links.length > list.length);
+  assert.ok(!links.some((u) => /do206|Do206Seattle|elcorazon/i.test(u)));
+  assert.ok(list.filter((b) => b.socials.instagram).length >= 25);
+});

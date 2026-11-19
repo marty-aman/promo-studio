@@ -3,7 +3,7 @@
 // "check before you reach out" until you tick it. Generated; edit the research, not this file.
 
 export const SEED_VENUES_ON = "2026-11-18";
-export const SEED_BANDS_ON = "";
+export const SEED_BANDS_ON = "2026-11-18";
 export const SEED_VENUES = [
  {
   "id": "el-corazon",
@@ -918,4 +918,1260 @@ export const SEED_VENUES = [
   ]
  }
 ];
-export const SEED_BANDS = [];
+export const SEED_BANDS = [
+ {
+  "id": "bathypelagic",
+  "name": "Bathypelagic",
+  "city": "Seattle",
+  "genres": [
+   "heavy"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-18",
+  "socials": {
+   "instagram": "https://www.instagram.com/bathypelagic_band/",
+   "tiktok": "",
+   "spotify": "",
+   "bandcamp": "https://bathypelagic.bandcamp.com/album/lahar",
+   "youtube": "",
+   "website": "",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Bathypelagic is a heavy music duo based in Seattle, Washington.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/rain-city-doom-fest-2026-18-dec"
+  ]
+ },
+ {
+  "id": "boydream",
+  "name": "Boydream",
+  "city": "Seattle",
+  "genres": [
+   "emo",
+   "pop-punk",
+   "rock",
+   "shoegaze"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-26",
+  "socials": {
+   "instagram": "https://www.instagram.com/boydreamwa",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/1di04o6FOVSnNQmuWA1iSE",
+   "bandcamp": "",
+   "youtube": "",
+   "website": "",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Boydream is a Seattle-based emo rock and \"nudreamgaze\" band.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/boydream-26-dec"
+  ]
+ },
+ {
+  "id": "brake-down",
+  "name": "Brake Down",
+  "city": "Seattle",
+  "genres": [
+   "alternative rock"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2027-01-10",
+  "socials": {
+   "instagram": "https://www.instagram.com/brakedownband/",
+   "tiktok": "",
+   "spotify": "",
+   "bandcamp": "",
+   "youtube": "",
+   "website": "",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "We're a Seattle-based, female-fronted alternative rock band (think 90s, early 2000s) that practices at our local auto shop.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/the-basement-rockmomenough-brake-down-10-jan"
+  ]
+ },
+ {
+  "id": "christian-mistress",
+  "name": "Christian Mistress",
+  "city": "Olympia",
+  "genres": [
+   "grunge",
+   "metal",
+   "heavy"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-18",
+  "socials": {
+   "instagram": "https://www.instagram.com/christianmistress/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/0fEyv0n8MBgXZQLOMcHbZO",
+   "bandcamp": "https://christianmistress.bandcamp.com/music",
+   "youtube": "",
+   "website": "",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Olympia, Washington's Christian Mistress fly in the face of the region's grunge-birthing reputation with a sound representing what was arguably the strongest musical style laid low by the flannel revolution: heavy metal.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/rain-city-doom-fest-2026-18-dec"
+  ]
+ },
+ {
+  "id": "city-of-reign",
+  "name": "City Of Reign",
+  "city": "Olympia",
+  "genres": [
+   "deathcore"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-11-20",
+  "socials": {
+   "instagram": "https://www.instagram.com/cityofreignwa/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/5niRPcBLsvqLYQflAfl3Y9",
+   "bandcamp": "https://cityofreign.bandcamp.com/album/republicus-lord-of-war",
+   "youtube": "",
+   "website": "",
+   "facebook": "https://www.facebook.com/Cityofreignoly/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Originally formed in late 2014, City Of Reign is a politically impelled deathcore band from the showery Pacific Northwest.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/divinity-productions-presents-crucible-of-absolution-20-nov"
+  ]
+ },
+ {
+  "id": "cut-both-ways",
+  "name": "Cut Both Ways",
+  "city": "Seattle",
+  "genres": [
+   "hardcore"
+  ],
+  "active": "Listed on Do206",
+  "socials": {
+   "instagram": "",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/4POSTV64nV50R9djGXT5OA",
+   "bandcamp": "https://cutbothwayshc.bandcamp.com",
+   "youtube": "",
+   "website": "",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Premiering in Summer of 2018, Cut Both Ways is a Seattle hardcore band formed by the unlikely union of three Midwest transplants and two Seattle locals who shared one goal: bringing as much energy to the stage as possibl",
+  "playsAt": [],
+  "notes": "",
+  "sources": [
+   "https://do206.com/artists/cut-both-ways",
+   "https://cutbothwayshc.bandcamp.com"
+  ]
+ },
+ {
+  "id": "death-parade",
+  "name": "Death Parade",
+  "city": "Portland",
+  "genres": [
+   "heavy"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-18",
+  "socials": {
+   "instagram": "https://www.instagram.com/death.parade.band/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/3bEV1PmyJoIZ1PCHOFOFzm",
+   "bandcamp": "https://deathparadepdx.bandcamp.com/music",
+   "youtube": "",
+   "website": "https://www.deathparadepdx.com/",
+   "facebook": "https://www.facebook.com/death.parade.pdx/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Death Parade is a heavy, doomgaze, and dreamdoom band based in Portland, Oregon (formerly known as Laura Palmer's Death Parade), though they frequently perform in the Pacific Northwest including Seattle.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/rain-city-doom-fest-2026-18-dec"
+  ]
+ },
+ {
+  "id": "deceiving-the-masses",
+  "name": "Deceiving The Masses",
+  "city": "Spokane",
+  "genres": [
+   "deathcore"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-11-20",
+  "socials": {
+   "instagram": "https://www.instagram.com/deceivingthemasses/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/1vTRD9GroKM1HnWBKhb9H4",
+   "bandcamp": "https://deceivingthemasses.bandcamp.com/album/deceiving-the-masses",
+   "youtube": "",
+   "website": "",
+   "facebook": "https://www.facebook.com/profile.php?id=61558790672358"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "PNW DEATHCORE 5 piece hailing from Spokane WA formed in 2023 and released our debut single “CEASE TO BE” January 31st 2024.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/divinity-productions-presents-crucible-of-absolution-20-nov"
+  ]
+ },
+ {
+  "id": "defier",
+  "name": "Defier",
+  "city": "Tacoma",
+  "genres": [
+   "deathcore",
+   "metal"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-11-20",
+  "socials": {
+   "instagram": "https://www.instagram.com/defierbandofficial/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/1ADaQGvFNHZC4GYmyy6X0a",
+   "bandcamp": "",
+   "youtube": "",
+   "website": "",
+   "facebook": "https://www.facebook.com/defierbandofficial/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Defier is an extreme metal and deathcore band based in Tacoma, Washington.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/divinity-productions-presents-crucible-of-absolution-20-nov"
+  ]
+ },
+ {
+  "id": "demensia",
+  "name": "Demensia",
+  "city": "Seattle",
+  "genres": [
+   "thrash",
+   "death metal"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-11-29",
+  "socials": {
+   "instagram": "https://www.instagram.com/demansia.band?exln=MW55aXFzNWhseHRxZA==",
+   "tiktok": "",
+   "spotify": "",
+   "bandcamp": "",
+   "youtube": "",
+   "website": "",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Demansia is a new and upcoming thrash/technical death metal band from Seattle.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/ancient-entities-echoes-over-america-tour-29-nov"
+  ]
+ },
+ {
+  "id": "dust-moth",
+  "name": "Dust Moth",
+  "city": "Seattle",
+  "genres": [
+   "rock"
+  ],
+  "active": "Listed on Do206",
+  "socials": {
+   "instagram": "",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/3Jpd65MlJhXetEF4v1Evxz",
+   "bandcamp": "http://dustmoth.bandcamp.com/",
+   "youtube": "",
+   "website": "",
+   "facebook": "https://www.facebook.com/dustmothband"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Dust Moth is a nocturnal juggernaut gravitating towards the light—a restless collective of Seattle art rock veterans injecting beauty and femininity into their wall-of-sound dirges.",
+  "playsAt": [],
+  "notes": "",
+  "sources": [
+   "https://do206.com/artists/dust-moth",
+   "https://dustmothband.bandcamp.com"
+  ]
+ },
+ {
+  "id": "far-reaches",
+  "name": "Far Reaches",
+  "city": "Seattle",
+  "genres": [
+   "grunge",
+   "heavy",
+   "hard rock"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-10",
+  "socials": {
+   "instagram": "https://www.instagram.com/farreachesrock/",
+   "tiktok": "",
+   "spotify": "",
+   "bandcamp": "",
+   "youtube": "",
+   "website": "",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "FarReaches is an original four-piece hard rock band based in Seattle, blending 90s grunge, 70s rock, and modern prog.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/far-reaches-electric-head-killbilly-primal-beast-10-dec"
+  ]
+ },
+ {
+  "id": "filth-is-eternal",
+  "name": "Filth Is Eternal",
+  "city": "Seattle",
+  "genres": [
+   "hardcore",
+   "punk",
+   "grunge",
+   "metal"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-13",
+  "socials": {
+   "instagram": "https://www.instagram.com/filthiseternal",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/0BqcFG3uqS8l59OsCtIiH0",
+   "bandcamp": "",
+   "youtube": "https://www.youtube.com/@filthiseternal",
+   "website": "https://filthiseternal.com/",
+   "facebook": "https://www.facebook.com/filthiseternal/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Filth Is Eternal is an American hardcore punk and heavy metal band formed in Seattle, Washington.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/ignite-w-year-of-the-cobra-13-dec",
+   "https://do206.com/artists/filth-is-eternal"
+  ]
+ },
+ {
+  "id": "four-dead-seasons",
+  "name": "Four Dead Seasons",
+  "city": "Portland",
+  "genres": [
+   "deathcore",
+   "hardcore",
+   "death metal"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-11-20",
+  "socials": {
+   "instagram": "https://www.instagram.com/four_dead_seasons/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/6diByANF2yoaXuzHwmj5bt",
+   "bandcamp": "",
+   "youtube": "",
+   "website": "https://fourdeadseasons.com/home",
+   "facebook": "https://www.facebook.com/FourDeadSeasons/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Four Dead Seasons is a Portland, Oregon-based independent metal band established in 2003 that blends elements of deathcore, hardcore, and brutal death metal.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/divinity-productions-presents-crucible-of-absolution-20-nov"
+  ]
+ },
+ {
+  "id": "gouged",
+  "name": "Gouged",
+  "city": "Seattle",
+  "genres": [
+   "deathcore",
+   "metal",
+   "heavy"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-11-25",
+  "socials": {
+   "instagram": "https://www.instagram.com/gougedpnw/",
+   "tiktok": "https://www.tiktok.com/@GougedPNW",
+   "spotify": "https://open.spotify.com/artist/5YBdymBwFJxlqr0l23Dusl",
+   "bandcamp": "",
+   "youtube": "https://www.youtube.com/@gougedpnw",
+   "website": "",
+   "facebook": "https://www.facebook.com/GougedPNW/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Gouged is an underground Pacific Northwest deathcore and heavy metal band based out of the Seattle and Tacoma, Washington area.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/distant-into-despair-usa-tour-2026-25-nov",
+   "https://do206.com/artists/gouged"
+  ]
+ },
+ {
+  "id": "heiress",
+  "name": "Heiress",
+  "city": "Seattle",
+  "genres": [
+   "hardcore",
+   "punk",
+   "metal",
+   "rock",
+   "grunge"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-18",
+  "socials": {
+   "instagram": "https://www.instagram.com/heiress_seattle/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/3sKj3Oc9JJog5J5XIAxi7v",
+   "bandcamp": "https://heiress.bandcamp.com/music",
+   "youtube": "",
+   "website": "https://heiress.co/",
+   "facebook": "https://www.facebook.com/Heiressy/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Heiress is an American rock band from Seattle, WA featuring former members of Himsa, Undertow, Jough Dawn Baker and Shift.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/rain-city-doom-fest-2026-18-dec",
+   "https://do206.com/artists/heiress",
+   "https://heiress.bandcamp.com",
+   "https://heiressband.bandcamp.com"
+  ]
+ },
+ {
+  "id": "honeyed",
+  "name": "Honeyed",
+  "city": "Tacoma",
+  "genres": [
+   "post-hardcore",
+   "emo",
+   "metal",
+   "heavy"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-06",
+  "socials": {
+   "instagram": "https://www.instagram.com/honeyed_pnw/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/6J0zvCuXn9wCuU89NRLXkC",
+   "bandcamp": "",
+   "youtube": "https://www.youtube.com/channel/UCKYdq9eVpPET-2EVtg4AE5A/about",
+   "website": "",
+   "facebook": "https://www.facebook.com/p/Honeyed-Band-61550908856855/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Honeyed is an independent Pacific Northwest post-hardcore and emo band based out of Tacoma, Washington.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/instant-crush-palettes-pastel-faces-honeyed-06-dec",
+   "https://do206.com/artists/honeyed"
+  ]
+ },
+ {
+  "id": "instant-crush",
+  "name": "Instant Crush",
+  "city": "Seattle",
+  "genres": [
+   "rock"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-06",
+  "socials": {
+   "instagram": "https://www.instagram.com/weareinstantcrush/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/6CzsxPxOIeXoyhmNiFmtmu",
+   "bandcamp": "",
+   "youtube": "https://www.youtube.com/channel/UCQz5ePxV7LpgjEgX1a1u6oQ",
+   "website": "https://weareinstantcrush.com/",
+   "facebook": "https://www.facebook.com/weareinstantcrush"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Instant Crush is a Seattle-based alternative pop-rock band that blends hard-hitting indie rock energy with danceable pop rhythms.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/instant-crush-palettes-pastel-faces-honeyed-06-dec"
+  ]
+ },
+ {
+  "id": "kids-on-fire",
+  "name": "Kids on Fire",
+  "city": "Seattle",
+  "genres": [
+   "punk",
+   "rock"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-11-21",
+  "socials": {
+   "instagram": "https://www.instagram.com/kids_on_fire_seattle/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/0pKqIU4uKerKQrDvp1NNnJ",
+   "bandcamp": "",
+   "youtube": "",
+   "website": "",
+   "facebook": "https://www.facebook.com/kidsonfirepnw/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Hailing from the rain soaked streets of Seattle, comes the punk rock sweethearts, Kids on Fire.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/the-obgm-s-heart-problems-tour-21-nov"
+  ]
+ },
+ {
+  "id": "killbilly",
+  "name": "Killbilly",
+  "city": "Seattle",
+  "genres": [
+   "grunge"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-10",
+  "socials": {
+   "instagram": "https://www.instagram.com/killbillymusic/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/5VpUbvNyQ9c4BLSccc8Qpf",
+   "bandcamp": "",
+   "youtube": "",
+   "website": "",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "4-piece Seattle grunge revivalists hitting the scene with a 4 track EP in the summer of 2024 and playing all over the region in coming months.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/far-reaches-electric-head-killbilly-primal-beast-10-dec"
+  ]
+ },
+ {
+  "id": "lacabra",
+  "name": "Lacabra",
+  "city": "Seattle",
+  "genres": [
+   "punk",
+   "death metal"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-11-20",
+  "socials": {
+   "instagram": "https://www.instagram.com/lacabrametal/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/3vUiPAhpOCW2r5TdcyQrc3",
+   "bandcamp": "https://lacabrametal.bandcamp.com/",
+   "youtube": "https://www.youtube.com/watch?v=_vvFCE7JcCI",
+   "website": "",
+   "facebook": "https://www.facebook.com/lacabrametal/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "LACABRA is an extreme metal band based in Seattle, Washington.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/fear-factory-cybernetic-domination-tour-2026-20-nov"
+  ]
+ },
+ {
+  "id": "mister-blank",
+  "name": "Mister Blank",
+  "city": "Seattle",
+  "genres": [
+   "punk"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2027-01-14",
+  "socials": {
+   "instagram": "https://www.instagram.com/misterblankofficial/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/7iCgVDrZSVxLEoe6Ajm1rg",
+   "bandcamp": "",
+   "youtube": "https://www.youtube.com/channel/UCRM5bPVlJKkcEN6-rX1W85g",
+   "website": "https://misterblankband.com/",
+   "facebook": "https://www.facebook.com/misterblankofficial/#"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Mister Blank is an eight-piece high-energy ska and punk band based in Seattle, Washington.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/mustard-plug-14-jan"
+  ]
+ },
+ {
+  "id": "modern-bird",
+  "name": "Modern Bird",
+  "city": "Seattle",
+  "genres": [
+   "punk"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-26",
+  "socials": {
+   "instagram": "https://www.instagram.com/modernbirdband/",
+   "tiktok": "",
+   "spotify": "",
+   "bandcamp": "",
+   "youtube": "",
+   "website": "",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Modern Bird is an underground DIY trans-punk band based in Seattle, Washington.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/boydream-26-dec"
+  ]
+ },
+ {
+  "id": "mount-saturn",
+  "name": "Mount Saturn",
+  "city": "Bellingham",
+  "genres": [
+   "doom",
+   "metal",
+   "heavy"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-18",
+  "socials": {
+   "instagram": "https://www.instagram.com/mountsaturn/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/1a7Rk3101PadFf27XfzWAS&dl_branch=1",
+   "bandcamp": "https://mountsaturn.bandcamp.com/music",
+   "youtube": "",
+   "website": "",
+   "facebook": "https://www.facebook.com/mountsaturnband/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Mount Saturn is a Pacific Northwest stoner/doom metal and heavy psych band originally formed in Bellingham, Washington, and currently based in Portland, Oregon.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/rain-city-doom-fest-2026-18-dec"
+  ]
+ },
+ {
+  "id": "odd-man-out",
+  "name": "Odd Man Out",
+  "city": "Seattle",
+  "genres": [],
+  "active": "Listed on Do206",
+  "socials": {
+   "instagram": "https://www.instagram.com/oddmanoutbandga",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/5wnAwAJumfgRhuqn1HNMEX",
+   "bandcamp": "https://odd-man-out.bandcamp.com",
+   "youtube": "",
+   "website": "",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Odd Man Out supports a lifestyle that informs and inspires all forms of life.",
+  "playsAt": [],
+  "notes": "",
+  "sources": [
+   "https://do206.com/artists/odd-man-out",
+   "https://odd-man-out.bandcamp.com"
+  ]
+ },
+ {
+  "id": "palettes",
+  "name": "Palettes",
+  "city": "Seattle",
+  "genres": [
+   "emo",
+   "pop-punk",
+   "heavy",
+   "rock"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-06",
+  "socials": {
+   "instagram": "https://www.instagram.com/palettesband/",
+   "tiktok": "https://www.tiktok.com/@palettesband",
+   "spotify": "https://open.spotify.com/artist/6fktdsYeSWl3qSGekown62",
+   "bandcamp": "https://palettesband.bandcamp.com",
+   "youtube": "https://www.youtube.com/@palettesband",
+   "website": "",
+   "facebook": "https://www.facebook.com/palettesband/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "palettes is an independent emo, rock, and pop-punk band formed in 2021 in Seattle, Washington.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/instant-crush-palettes-pastel-faces-honeyed-06-dec",
+   "https://do206.com/artists/palettes",
+   "https://palettesband.bandcamp.com"
+  ]
+ },
+ {
+  "id": "pastel-faces",
+  "name": "Pastel Faces",
+  "city": "Seattle",
+  "genres": [
+   "metalcore",
+   "post-hardcore",
+   "melodic hardcore",
+   "emo"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-06",
+  "socials": {
+   "instagram": "https://www.instagram.com/pastelfaces_/",
+   "tiktok": "https://www.tiktok.com/@pastelfaces_",
+   "spotify": "https://open.spotify.com/artist/2ynLWEnx8MMjgKBVN7AfWo",
+   "bandcamp": "",
+   "youtube": "https://www.youtube.com/channel/UCN0gd2VJnphv5Gpo8FL9wdA",
+   "website": "",
+   "facebook": "https://www.facebook.com/pastelfaces/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Pastel Faces is an independent melodic hardcore, post-hardcore, and emo band based right here in Seattle, Washington.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/instant-crush-palettes-pastel-faces-honeyed-06-dec",
+   "https://do206.com/artists/pastel-faces"
+  ]
+ },
+ {
+  "id": "red-sky-riot",
+  "name": "Red Sky Riot",
+  "city": "Seattle",
+  "genres": [
+   "heavy"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2027-01-17",
+  "socials": {
+   "instagram": "https://www.instagram.com/redskyriot/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/2gCDGC4wxTlqlr9iWplU5K",
+   "bandcamp": "",
+   "youtube": "",
+   "website": "",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Get ready for some hard hitting music made right here in Seattle!",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/red-sky-riot-drop-sea-no-more-enemies-17-jan",
+   "https://do206.com/artists/red-sky-riot"
+  ]
+ },
+ {
+  "id": "riot-in-rhythm",
+  "name": "Riot In Rhythm",
+  "city": "Tacoma",
+  "genres": [
+   "punk",
+   "rock"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2027-01-16",
+  "socials": {
+   "instagram": "https://www.instagram.com/riotinrhythm06",
+   "tiktok": "",
+   "spotify": "",
+   "bandcamp": "https://riotinrhythm06.bandcamp.com/track/hourglass",
+   "youtube": "https://www.youtube.com/@riotinrhythm06",
+   "website": "",
+   "facebook": "https://www.facebook.com/riotinrhythm"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Riot In Rhythm is an energetic, Tacoma-based rock band that blends raw punk attitude with authentic rock sounds.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/riot-in-rhythm-16-jan"
+  ]
+ },
+ {
+  "id": "running-savage",
+  "name": "Running Savage",
+  "city": "PNW",
+  "genres": [
+   "punk",
+   "death metal"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-01",
+  "socials": {
+   "instagram": "",
+   "tiktok": "",
+   "spotify": "",
+   "bandcamp": "",
+   "youtube": "",
+   "website": "",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Running Savage is a high-octane old school metal band hailing from the PNW.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/afterbirth-pulp-running-savage-no-sign-of-serenity-jettizon-01-dec"
+  ]
+ },
+ {
+  "id": "splitshift",
+  "name": "Splitshift",
+  "city": "Olympia",
+  "genres": [
+   "post-hardcore",
+   "grunge",
+   "alternative rock",
+   "shoegaze"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-26",
+  "socials": {
+   "instagram": "https://www.instagram.com/splitshft/",
+   "tiktok": "https://tiktok.com/@splitshft",
+   "spotify": "https://open.spotify.com/artist/0BJyt7LD53L7CrYgsuMUDD",
+   "bandcamp": "",
+   "youtube": "https://www.youtube.com/@splitshft",
+   "website": "",
+   "facebook": "https://www.facebook.com/profile.php?id=61566296877334&mibextid=LQQJ4d&rdid=HDImkBe9coG8xlYT&share_url=https%3A%2F%2Fwww.facebook.com%2Fshare%2F18ibRikj2Q%2F%3Fmibextid%3DLQQJ4d#"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Splitshft (pronounced \"Splitshift\") is an alternative rock band based just south of Seattle in Olympia, Washington, that regularly performs across the Seattle and Puget Sound music scenes.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/boydream-26-dec"
+  ]
+ },
+ {
+  "id": "sun-crow",
+  "name": "Sun Crow",
+  "city": "Seattle",
+  "genres": [
+   "doom",
+   "heavy",
+   "rock"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-18",
+  "socials": {
+   "instagram": "https://www.instagram.com/sun.crow.rock.heavy/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/5RsGTkPrSGRTERy7ZPONB0",
+   "bandcamp": "https://suncrow.bandcamp.com/album/quest-for-oblivion",
+   "youtube": "",
+   "website": "",
+   "facebook": "https://www.facebook.com/theSunCrow/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Sun Crow is a Seattle-based heavy rock band.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/rain-city-doom-fest-2026-18-dec"
+  ]
+ },
+ {
+  "id": "the-basement",
+  "name": "The Basement",
+  "city": "Seattle",
+  "genres": [
+   "post-punk",
+   "shoegaze"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2027-01-10",
+  "socials": {
+   "instagram": "https://www.instagram.com/thebasementseattle/",
+   "tiktok": "https://www.tiktok.com/@thebasementseattle",
+   "spotify": "",
+   "bandcamp": "",
+   "youtube": "https://www.youtube.com/@thebasementseattle",
+   "website": "https://thebasementseattle.com/",
+   "facebook": "https://www.facebook.com/thebasementseattle/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "The Basement is a 5-member Seattle post-punk band writing original tunes featuring crisp vocals, and indie-shoegaze guitar textures.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/the-basement-rockmomenough-brake-down-10-jan"
+  ]
+ },
+ {
+  "id": "the-moon-is-flat",
+  "name": "The Moon Is Flat",
+  "city": "Everett",
+  "genres": [
+   "heavy",
+   "rock"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2027-03-11",
+  "socials": {
+   "instagram": "https://www.instagram.com/themoonisflat",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/3UgKjqFxsgIkVaPIZ4cwCu",
+   "bandcamp": "",
+   "youtube": "https://www.youtube.com/channel/UCeXRIZiu99O1LZyJbFU_ggg",
+   "website": "https://www.themoonisflat.com/",
+   "facebook": "https://www.facebook.com/themoonisflat/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "The Moon is Flat is an independent space, stoner, and psychedelic rock band based out of Everett, Washington.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/the-lemonheads-the-love-chant-tour-11-mar"
+  ]
+ },
+ {
+  "id": "the-moray",
+  "name": "The Moray",
+  "city": "Tacoma",
+  "genres": [
+   "punk"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2027-01-30",
+  "socials": {
+   "instagram": "https://www.instagram.com/themoray_official/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/1os5kJGu4CSsgg7YZdPpeG",
+   "bandcamp": "https://themoray.bandcamp.com/",
+   "youtube": "",
+   "website": "",
+   "facebook": "https://www.facebook.com/TheMoray/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "The Moray is a three-piece folk-punk, protest folk, and riot folk band based out of Tacoma and western Washington.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/escape-from-the-zoo-if-you-re-treadin-water-you-re-still-kickin-2027-tour-30-jan"
+  ]
+ },
+ {
+  "id": "this-soil-is-diseased",
+  "name": "This Soil Is Diseased",
+  "city": "Seattle",
+  "genres": [
+   "metal",
+   "heavy",
+   "death metal"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-10-04",
+  "socials": {
+   "instagram": "https://www.instagram.com/tsidband/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/2HFm96wJopcO9A28nTMYMA",
+   "bandcamp": "https://thissoilisdiseased.bandcamp.com/album/we-are-the-astronauts",
+   "youtube": "",
+   "website": "",
+   "facebook": "https://www.facebook.com/TSIDband/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "This Soil Is Diseased (TSID) is a heavy metal band based right here in Seattle, Washington.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/primer-55-shattered-schemes-broken-dreams-tour-04-oct",
+   "https://do206.com/artists/this-soil-is-diseased"
+  ]
+ },
+ {
+  "id": "truancy",
+  "name": "Truancy",
+  "city": "PNW",
+  "genres": [
+   "hardcore",
+   "punk",
+   "rock"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-11-21",
+  "socials": {
+   "instagram": "https://www.instagram.com/truancysmokes/",
+   "tiktok": "",
+   "spotify": "",
+   "bandcamp": "https://truancysmokes.bandcamp.com/music",
+   "youtube": "",
+   "website": "",
+   "facebook": "https://www.facebook.com/TruancySmokes"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "TRUANCY grew their roots amidst the underground of the Pacific Northwest's DIY punk scene.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/the-obgm-s-heart-problems-tour-21-nov"
+  ]
+ },
+ {
+  "id": "wicked-game",
+  "name": "Wicked Game",
+  "city": "Tacoma",
+  "genres": [
+   "hardcore",
+   "metal"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-05",
+  "socials": {
+   "instagram": "https://www.instagram.com/wickedgamehc/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/4JCCeVDzMqoXXMC3TSVrTN",
+   "bandcamp": "",
+   "youtube": "",
+   "website": "",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Wicked Game is an emerging hardcore/metal band based out of Tacoma, Washington.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/mammoth-nw-presents-guilt-trip-05-dec",
+   "https://do206.com/artists/wicked-game"
+  ]
+ },
+ {
+  "id": "witch-ripper",
+  "name": "Witch Ripper",
+  "city": "Seattle",
+  "genres": [
+   "metal"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-18",
+  "socials": {
+   "instagram": "https://www.instagram.com/witch_ripper/",
+   "tiktok": "",
+   "spotify": "https://open.spotify.com/artist/3v6xMwgOKzEYpZNalgtqhI",
+   "bandcamp": "https://witchripper.bandcamp.com/music",
+   "youtube": "",
+   "website": "",
+   "facebook": "https://www.facebook.com/Witchripper/"
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "Formed in 2012, Witch Ripper is a four-piece metal band from Seattle, WA that blends melodic prog and crushing riffs together with complex precision.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/rain-city-doom-fest-2026-18-dec"
+  ]
+ },
+ {
+  "id": "wrung",
+  "name": "Wrung",
+  "city": "PNW",
+  "genres": [
+   "metal",
+   "rock"
+  ],
+  "active": "Booked at El Corazon / Funhouse, 2026-12-11",
+  "socials": {
+   "instagram": "https://www.instagram.com/wrung.wav",
+   "tiktok": "",
+   "spotify": "",
+   "bandcamp": "",
+   "youtube": "https://www.youtube.com/@WRUNG.wav222",
+   "website": "https://www.thebandwrung.com/",
+   "facebook": ""
+  },
+  "followers": {
+   "instagram": null,
+   "seenOn": ""
+  },
+  "soundsLike": "BASED IN THE PNW, WRUNG IS A GLOOMY METAL INFLUENCED ALT ROCK BAND (FFO DEFTONES, NORTHLANE AND MOODRING) ESTABLISHED IN 2024 AND HAD THEIR LIVE DEBUT IN DECEMBER OF 2025.",
+  "playsAt": [
+   "El Corazon / Funhouse"
+  ],
+  "notes": "",
+  "sources": [
+   "https://www.elcorazonseattle.com/shows/missio-love-heartbreak-tour-11-dec"
+  ]
+ }
+];

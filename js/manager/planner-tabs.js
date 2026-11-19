@@ -66,7 +66,7 @@ export function bandsTab(ctx) {
     'div',
     {},
     h('div', { class: 'mgr-filters' }, search, genreSel, button('Add a band', () => ctx.update((d) => d.bands.unshift(newBand())), { iconName: 'plus', variant: 'sm' })),
-    h('p', { class: 'muted tiny' }, `${list.length} of ${m.bands.length} bands. ${SEED_BANDS_ON ? `Starter list researched ${niceDate(SEED_BANDS_ON, { weekday: false })} from venue calendars, Bandcamp and local press; social links are ones found on the band’s own pages.` : ''}`),
+    h('p', { class: 'muted tiny' }, `${list.length} of ${m.bands.length} bands. ${SEED_BANDS_ON ? `Starter list gathered ${niceDate(SEED_BANDS_ON, { weekday: false })} from El Corazon / Funhouse show pages, Do206 artist pages and Bandcamp; links are the ones listed for each band there.` : ''}`),
     m.bands.length ? h('div', { class: 'mgr-bands' }, list.map(card)) : h('div', { class: 'mgr-empty' }, h('p', {}, 'No bands yet. Add the ones you know from shows you’ve played.')),
   );
 }
