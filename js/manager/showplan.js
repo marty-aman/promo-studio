@@ -6,6 +6,7 @@
 // Stage plot: kept on the artist as `band.stage`. Gear placed on a stage (x and y from 0 to 1,
 // the audience at the bottom), from which the input list and monitor mixes are made.
 import { esc, escBr, docHTML } from './pdf.js';
+import { drawGear, GEAR_DEFS } from './stagegear.js';
 
 let n = 0;
 const sid = (p) => `${p}_${Date.now().toString(36)}${(n++).toString(36)}${Math.random().toString(36).slice(2, 5)}`;
@@ -124,7 +125,7 @@ ${plan.notes ? `<h2>Notes</h2><p>${escBr(plan.notes)}</p>` : ''}`;
  * suggested mic), `w`/`h` its size on a 1000 × 600 stage drawing.
  */
 export const STAGE_GEAR = {
-  drums: { label: 'Drum kit', w: 150, h: 120, inputs: [['Kick', 'Beta 91 / D112'], ['Snare', 'SM57'], ['Hi-hat', 'Small condenser'], ['Rack tom', 'e604'], ['Floor tom', 'e604'], ['Overhead L', 'Condenser'], ['Overhead R', 'Condenser']] },
+  drums: { label: 'Drum kit', w: 180, h: 140, inputs: [['Kick', 'Beta 91 / D112'], ['Snare', 'SM57'], ['Hi-hat', 'Small condenser'], ['Rack tom', 'e604'], ['Floor tom', 'e604'], ['Overhead L', 'Condenser'], ['Overhead R', 'Condenser']] },
   guitar: { label: 'Guitar amp', w: 90, h: 50, inputs: [['Guitar amp', 'SM57']] },
   bass: { label: 'Bass amp', w: 90, h: 60, inputs: [['Bass DI', 'DI box'], ['Bass amp', 'RE20 / D112']] },
   keys: { label: 'Keys', w: 120, h: 40, inputs: [['Keys L', 'DI box'], ['Keys R', 'DI box']] },
@@ -205,40 +206,17 @@ export function monitorMixes(stage) {
 export const STAGE_TOP = 40;
 export const STAGE_H = 600;
 
-/** One piece of gear as SVG at its place on the stage. */
+/** One piece of gear as SVG at its place on the stage (the drawings are in stagegear.js). */
 function gearSVG(it, name) {
   const g = STAGE_GEAR[it.type];
   const cx = Math.round(it.x * 1000);
   const cy = Math.round(STAGE_TOP + it.y * STAGE_H);
   const x = cx - g.w / 2;
   const y = cy - g.h / 2;
-  let shape = '';
-  switch (it.type) {
-    case 'drums':
-      shape = `<circle cx="${cx}" cy="${cy + 18}" r="26" class="sp-fill"/><circle cx="${cx - 40}" cy="${cy - 10}" r="17" class="sp-fill"/><circle cx="${cx + 40}" cy="${cy - 10}" r="17" class="sp-fill"/><circle cx="${cx + 52}" cy="${cy + 32}" r="21" class="sp-fill"/><circle cx="${cx - 52}" cy="${cy + 26}" r="14" class="sp-fill"/><circle cx="${cx - 66}" cy="${cy - 38}" r="16" class="sp-line"/><circle cx="${cx + 66}" cy="${cy - 38}" r="18" class="sp-line"/><circle cx="${cx}" cy="${cy - 40}" r="9" class="sp-line"/>`;
-      break;
-    case 'vocal':
-      shape = `<circle cx="${cx}" cy="${cy}" r="11" class="sp-fill"/><line x1="${cx}" y1="${cy + 11}" x2="${cx}" y2="${cy + 22}" class="sp-stroke"/>`;
-      break;
-    case 'wedge':
-      shape = `<path d="M${x} ${y + g.h}L${x + 10} ${y}H${x + g.w - 10}L${x + g.w} ${y + g.h}Z" class="sp-fill"/>`;
-      break;
-    case 'iem':
-    case 'power':
-      shape = `<rect x="${x}" y="${y}" width="${g.w}" height="${g.h}" rx="6" class="sp-line"/><text x="${cx}" y="${cy + 5}" class="sp-ico">${it.type === 'power' ? '⚡' : 'IEM'}</text>`;
-      break;
-    case 'riser':
-      shape = `<rect x="${x}" y="${y}" width="${g.w}" height="${g.h}" rx="4" class="sp-riser"/>`;
-      break;
-    case 'person':
-      shape = `<circle cx="${cx}" cy="${cy}" r="18" class="sp-line"/>`;
-      break;
-    default:
-      shape = `<rect x="${x}" y="${y}" width="${g.w}" height="${g.h}" rx="4" class="sp-fill"/>`;
-  }
+  const { shape, hit } = drawGear(it.type, g.w, g.h, cx, cy);
   // a riser's name sits small in its top-left corner, so it doesn't cover the kit's
   const text = it.type === 'riser' ? `<text x="${x + 8}" y="${y + 16}" class="sp-small">${esc(name)}</text>` : `<text x="${cx}" y="${y + g.h + 16}" class="sp-label">${esc(name)}</text>`;
-  return `<g class="sp-item sp-t-${it.type}" data-id="${esc(it.id)}">${shape}${text}</g>`;
+  return `<g class="sp-item sp-t-${it.type}" data-id="${esc(it.id)}">${hit}${shape}${text}</g>`;
 }
 
 /** The stage drawing as SVG (the audience at the bottom). Risers are drawn under everything else. */
@@ -246,7 +224,8 @@ export function stagePlotSVG(stage, { title = '' } = {}) {
   const names = gearNames(stage.items);
   const items = [...stage.items].sort((a, b) => (a.type === 'riser' ? -1 : 0) - (b.type === 'riser' ? -1 : 0));
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 680" class="sp-svg" role="img" aria-label="${esc(title || 'Stage plot')}">
-<style>.sp-stage{fill:#fafafa;stroke:#222;stroke-width:3}.sp-fill{fill:#d9d9d9;stroke:#222;stroke-width:2}.sp-line{fill:#fff;stroke:#222;stroke-width:2}.sp-stroke{stroke:#222;stroke-width:3}.sp-riser{fill:#eee;stroke:#666;stroke-width:2;stroke-dasharray:8 6}.sp-label{font:600 15px system-ui,sans-serif;fill:#111;text-anchor:middle}.sp-ico{font:700 13px system-ui,sans-serif;fill:#111;text-anchor:middle}.sp-small{font:italic 400 13px system-ui,sans-serif;fill:#555}.sp-edge{font:700 13px system-ui,sans-serif;fill:#666;text-anchor:middle;letter-spacing:.2em}</style>
+${GEAR_DEFS}
+<style>.sp-stage{fill:url(#spg-floor);stroke:#222;stroke-width:3}.sp-hit{fill:transparent;stroke:none}.sp-label{font:600 15px system-ui,sans-serif;fill:#111;text-anchor:middle;paint-order:stroke;stroke:#f4f2ee;stroke-width:4px;stroke-linejoin:round}.sp-small{font:italic 400 13px system-ui,sans-serif;fill:#fbf3e6}.sp-edge{font:700 13px system-ui,sans-serif;fill:#666;text-anchor:middle;letter-spacing:.2em}</style>
 <text x="500" y="20" class="sp-edge">BACK OF STAGE</text>
 <rect x="2" y="30" width="996" height="620" rx="8" class="sp-stage"/>
 ${items.map((it) => gearSVG(it, names[it.id])).join('\n')}

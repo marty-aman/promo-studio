@@ -719,6 +719,9 @@ function photoContext() {
     shows: m.shows,
     tours: (m.tours || []).map((t) => ({ ...t, stops: t.stops.map((s) => ({ ...s, venueName: venueName((s.picks.find((p) => p.status === 'yes') || {}).venueId) })) })),
     currentSongId: manager.currentSong()?.id || '',
+    // the Photos page's folders, and which folder each library photo is in
+    photoFolders: m.photoFolders || [],
+    photoFolderOf: Object.fromEntries((m.photos || []).map((p) => [p.mediaId, p.folder || ''])),
     today: todayStr(),
   };
 }

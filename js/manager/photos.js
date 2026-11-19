@@ -8,7 +8,7 @@ export const EPK_PHOTO_MAX = 4;
 export { parseTags };
 
 export function newPhoto(rec, now = Date.now()) {
-  return { id: mid('photo'), mediaId: rec.id, caption: '', credit: '', tags: [], favorite: false, addedAt: now };
+  return { id: mid('photo'), mediaId: rec.id, caption: '', credit: '', tags: [], favorite: false, addedAt: now, folder: '' };
 }
 
 /** Clean a saved list (drops broken entries and repeats of the same file). */
@@ -26,18 +26,19 @@ export function normalizePhotos(raw) {
       tags: Array.isArray(p.tags) ? p.tags.map((t) => String(t).toLowerCase()).filter(Boolean) : [],
       favorite: !!p.favorite,
       addedAt: +p.addedAt || 0,
+      folder: typeof p.folder === 'string' ? p.folder : '',
     });
   }
   return out;
 }
 
 /** Add photos (newest first), skipping files already on the page. Returns how many were added. */
-export function addPhotos(m, recs, now = Date.now()) {
+export function addPhotos(m, recs, now = Date.now(), folder = '') {
   m.photos ||= [];
   const fresh = [];
   recs.forEach((r, i) => {
     if (m.photos.some((p) => p.mediaId === r.id) || fresh.some((p) => p.mediaId === r.id)) return;
-    fresh.push(newPhoto(r, now + recs.length - i)); // a batch keeps the order it was picked in
+    fresh.push({ ...newPhoto(r, now + recs.length - i), folder }); // a batch keeps the order it was picked in
   });
   m.photos.unshift(...fresh);
   return fresh.length;
@@ -81,4 +82,118 @@ export function toggleEpkPhoto(band, mediaId, max = EPK_PHOTO_MAX) {
 /** "Photo: Jo Lee" credit lines for the press kit, in the press kit's photo order. */
 export function epkCredits(photos, epkIds) {
   return (epkIds || []).map((id) => photos.find((p) => p.mediaId === id)).map((p) => (p && p.credit.trim() ? `Photo: ${p.credit.trim()}` : ''));
+}
+
+// ---------------------------------------------------------------- folders
+// Folders can hold folders. A photo is in one folder (or none: `folder` is '').
+
+export const newFolder = (name, parent = '') => ({ id: mid('fold'), name: String(name || 'New folder').trim().slice(0, 60) || 'New folder', parent });
+
+/** Clean a saved folder list: drops broken entries, and parents that don't exist or loop back. */
+export function normalizeFolders(raw) {
+  const list = (Array.isArray(raw) ? raw : []).filter((f) => f && typeof f.id === 'string' && f.id).map((f) => ({ id: f.id, name: String(f.name || 'Folder').slice(0, 60), parent: typeof f.parent === 'string' ? f.parent : '' }));
+  const ids = new Set(list.map((f) => f.id));
+  for (const f of list) if (f.parent && !ids.has(f.parent)) f.parent = '';
+  // break loops (a folder inside itself, directly or further down)
+  for (const f of list) {
+    const seen = new Set([f.id]);
+    let p = f.parent;
+    while (p) {
+      if (seen.has(p)) {
+        f.parent = '';
+        break;
+      }
+      seen.add(p);
+      p = (list.find((x) => x.id === p) || {}).parent || '';
+    }
+  }
+  return list;
+}
+
+/** The folders directly inside `parent` ('' = the top), by name. */
+export const subfolders = (folders, parent = '') => folders.filter((f) => (f.parent || '') === parent).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+/** From the top down to `id`: [{ id, name }, …] (empty for the top). */
+export function folderPath(folders, id) {
+  const out = [];
+  let cur = folders.find((f) => f.id === id);
+  while (cur && out.length < 50) {
+    out.unshift(cur);
+    cur = folders.find((f) => f.id === cur.parent);
+  }
+  return out;
+}
+
+/** A folder and every folder inside it. */
+export function folderTree(folders, id) {
+  const out = new Set([id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const f of folders) if (out.has(f.parent) && !out.has(f.id)) (out.add(f.id), (grew = true));
+  }
+  return out;
+}
+
+/** Photos in a folder; `deep` counts those in its folders too. */
+export function photosIn(photos, folders, id = '', { deep = false } = {}) {
+  if (!deep) return photos.filter((p) => (p.folder || '') === id);
+  if (!id) return photos;
+  const tree = folderTree(folders, id);
+  return photos.filter((p) => tree.has(p.folder));
+}
+
+/** Delete a folder: its photos and folders move up to its parent (nothing is lost). */
+export function deleteFolder(m, id) {
+  const f = (m.photoFolders || []).find((x) => x.id === id);
+  if (!f) return 0;
+  let moved = 0;
+  for (const p of m.photos) if (p.folder === id) (p.folder = f.parent || ''), moved++;
+  for (const x of m.photoFolders) if (x.parent === id) x.parent = f.parent || '';
+  m.photoFolders = m.photoFolders.filter((x) => x.id !== id);
+  return moved;
+}
+
+/** Put photos (by photo id) in a folder. Returns how many moved. */
+export function movePhotos(m, ids, folder = '') {
+  const want = new Set(ids);
+  let n = 0;
+  for (const p of m.photos) if (want.has(p.id) && p.folder !== folder) (p.folder = folder), n++;
+  return n;
+}
+
+/** Move a folder into another one (not into itself or one of its own folders). */
+export function moveFolder(m, id, parent = '') {
+  const f = (m.photoFolders || []).find((x) => x.id === id);
+  if (!f || (parent && folderTree(m.photoFolders, id).has(parent))) return false;
+  f.parent = parent;
+  return true;
+}
+
+// ---------------------------------------------------------------- pages
+export const PAGE_SIZES = [24, 48, 96, 200];
+const PAGE_KEY = 'pvm.photos.pageSize';
+export function loadPageSize(storage = globalThis.localStorage) {
+  try {
+    const n = +storage.getItem(PAGE_KEY);
+    return PAGE_SIZES.includes(n) ? n : 48;
+  } catch {
+    return 48;
+  }
+}
+export function savePageSize(n, storage = globalThis.localStorage) {
+  try {
+    storage.setItem(PAGE_KEY, String(n));
+  } catch {
+    /* private mode: it lasts for this visit */
+  }
+}
+
+/** One page of a list: { items, page (from 1, clamped), pages, from, to, total }. */
+export function paginate(list, page = 1, size = 48) {
+  const total = list.length;
+  const pages = Math.max(1, Math.ceil(total / size));
+  const p = Math.min(pages, Math.max(1, Math.floor(page) || 1));
+  const start = (p - 1) * size;
+  return { items: list.slice(start, start + size), page: p, pages, from: total ? start + 1 : 0, to: Math.min(total, start + size), total };
 }
