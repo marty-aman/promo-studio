@@ -87,6 +87,11 @@ export function createManager({ root, studio }) {
     }, { iconName: 'upload', variant: 'sm ghost', title: 'Load a backup file' }),
   );
   const switcher = h('div', { class: 'mgr-artist' });
+  /** The artist's profile photo, or its first letter when it has none. */
+  const avatar = (a, cls = '') => {
+    const ph = a.photoId && studio.mediaInfo ? studio.mediaInfo(a.photoId) : null;
+    return ph ? h('span', { class: `mgr-artist-dot photo ${cls}`, 'aria-hidden': 'true' }, h('img', { src: ph.url, alt: '' })) : h('span', { class: `mgr-artist-dot ${cls}`, 'aria-hidden': 'true' }, (a.name[0] || '?').toUpperCase());
+  };
   root.replaceChildren(h('div', { class: 'mgr-side' }, h('div', {}, switcher, nav), tools), main);
 
   // ---- artists
@@ -122,9 +127,9 @@ export function createManager({ root, studio }) {
     const list = artistList(current());
     const cur = list.find((a) => a.id === ws.current) || list[0];
     const menu = h('details', { class: 'mgr-artist-menu' },
-      h('summary', { 'aria-label': `Artist: ${cur.name}. Switch artist` }, h('span', { class: 'mgr-artist-dot', 'aria-hidden': 'true' }, (cur.name[0] || '?').toUpperCase()), h('span', { class: 'mgr-artist-name' }, h('strong', {}, cur.name), h('span', { class: 'muted tiny' }, list.length > 1 ? `${list.length} artists` : cur.city || 'Artist')), icon('chevron', 14)),
+      h('summary', { 'aria-label': `Artist: ${cur.name}. Switch artist` }, avatar(cur), h('span', { class: 'mgr-artist-name' }, h('strong', {}, cur.name), h('span', { class: 'muted tiny' }, list.length > 1 ? `${list.length} artists` : cur.city || 'Artist')), icon('chevron', 14)),
       h('div', { class: 'mgr-artist-list', role: 'menu' },
-        list.map((a) => h('button', { type: 'button', role: 'menuitemradio', 'aria-checked': a.id === cur.id ? 'true' : 'false', class: `mgr-artist-item${a.id === cur.id ? ' on' : ''}`, onclick: () => (a.id === cur.id ? (menu.open = false) : switchArtist(a.id)) }, h('span', { class: 'mgr-artist-dot', 'aria-hidden': 'true' }, (a.name[0] || '?').toUpperCase()), h('span', {}, a.name, a.city ? h('span', { class: 'muted tiny' }, ` · ${a.city}`) : null), a.id === cur.id ? icon('check', 14) : null)),
+        list.map((a) => h('button', { type: 'button', role: 'menuitemradio', 'aria-checked': a.id === cur.id ? 'true' : 'false', class: `mgr-artist-item${a.id === cur.id ? ' on' : ''}`, onclick: () => (a.id === cur.id ? (menu.open = false) : switchArtist(a.id)) }, avatar(a), h('span', {}, a.name, a.city ? h('span', { class: 'muted tiny' }, ` · ${a.city}`) : null), a.id === cur.id ? icon('check', 14) : null)),
         h('button', { type: 'button', role: 'menuitem', class: 'mgr-artist-item add', onclick: newArtist }, icon('plus', 14), h('span', {}, 'Add an artist')),
       ),
     );

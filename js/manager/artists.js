@@ -59,7 +59,7 @@ export function removeArtist(ws, id) {
   return { ...ws, artists, current: ws.current === id ? artists[0].id : ws.current };
 }
 
-export const artistList = (ws) => ws.artists.map((a) => ({ id: a.id, name: a.band.name || 'Untitled artist', city: a.band.city || '', theme: a.band.theme || '', logoId: a.band.logoId || null }));
+export const artistList = (ws) => ws.artists.map((a) => ({ id: a.id, name: a.band.name || 'Untitled artist', city: a.band.city || '', theme: a.band.theme || '', logoId: a.band.logoId || null, photoId: a.band.photoId || null }));
 
 /** The next two weeks for every artist, each item tagged with its artist. */
 export function combinedAgenda(ws, from, days = 14) {

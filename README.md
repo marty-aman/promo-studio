@@ -36,7 +36,7 @@ theme and logo (set under Press kit → Branding for promos) on the edit. Older 
 | **Show planner** | *Venues*: a researched starter list of 29 Seattle-area rooms (Seattle, Tacoma, Everett, Bellingham, Olympia) with capacity, ages, genres, how each one says to book, the booking email or form, links and sources. Filter by size, city and all-ages, enter how many people you bring to see which rooms fit, and write a **pitch email** from your profile, songs and dates (copy it or open it in your email app). *Bands*: scene bands with their official accounts. *Build a show*: pick a date, a room and bands, see the break-even and the expected crowd, and create the show with its to-do list. *Contacts*: promoters, sound, photo, press, radio and curators. Researched entries say "Check before you reach out" until you tick them. |
 | **Content** | Every planned and posted short across songs: type, app, status, link and stats. Paste a YouTube or Shorts link and **Fetch YouTube stats** reads views, likes, comments and length with a free YouTube Data API key. TikTok and Instagram only share stats with approved apps, so type the numbers from the post's insights, or **Import stats (CSV)** from TikTok Studio or Meta Business Suite exports (rows are matched to your posts by link). *What works best* ranks types of post, apps, days and lengths by shares, saves, comments and likes per view, and says it in plain words. |
 | **Calendar** | Shows, releases, shoots, posts and to-dos on a month grid; **Download for my calendar (.ics)** imports into Google Calendar, Apple Calendar or Outlook |
-| **Photos** | Each artist's photos: upload in bulk (or drag them in, or add from the media library), caption, photographer and tags on each, star favorites, search and filter by tag, starred or press kit, a full-size viewer (arrow keys to step, Esc to close), **Press kit** (up to four, used by the downloadable press kit with the photographer credited), **Logo** (the artist's logo on promos), **Video** (add to the Video Studio's video track) and download |
+| **Photos** | Each artist's photos: **Profile** makes a photo the artist's profile photo (shown in the artist menu, on Home and at the top of the press kit; it can also be uploaded or picked on the Press kit page); upload in bulk (or drag them in, or add from the media library), caption, photographer and tags on each, star favorites, search and filter by tag, starred or press kit, a full-size viewer (arrow keys to step, Esc to close), **Press kit** (up to four, used by the downloadable press kit with the photographer credited), **Logo** (the artist's logo on promos), **Video** (add to the Video Studio's video track) and download |
 | **Press kit** | The band profile (bio, highlights, genres, "for fans of", links, members, press quotes, booking contact, up to four photos picked here or on the Photos page and remembered) with a live preview, **Download press kit** (one self-contained HTML page) and **Copy short bio** |
 | **Money** | A ledger of money in and out plus every show's settlement, totals for the year, by category and by month, each release's spend against its budget, and a CSV download |
 
@@ -50,9 +50,9 @@ The rail on the left has one **Start** tab for ideas, then a tab for each kind o
 | **Video** | My clips (upload and arrange), Stock video, From your YouTube channel, Video layers |
 | **Audio** | Song and your own audio (beats, hook, voice-over, clip sound), Sound effects (Your sounds: your clips, the free pack and built-ins, starred, renamed and tagged; Freesound; Openverse; Add your own sounds) |
 | **Lyrics** | Lines, sync, display and style; select a line for its own look |
-| **Visualizer** | Visualizer layers and all 18 styles |
+| **Visualizer** | Visualizer layers and all 21 styles, including polyrhythm and polymeter |
 | **Guitar Pro** | Guitar, bass and drum layers, and Tab Studio |
-| **Text**, **End card**, **Look**, **Export** | As before; Look also has the pop-up tips switch |
+| **Text**, **End card**, **Look**, **Export** | As before; Look also has the pop-up tips switch. Text has **Your fonts**: upload TTF, OTF, WOFF or WOFF2 files (saved in this browser), see each one in a sample, **Use everywhere** (lyrics, every text, the end card) or delete it (anything using it switches back to Bebas Neue). Every font menu also has an **Add a font** button that uploads one and picks it right away |
 
 Sections remember whether you left them open. API key boxes fold away once a key is saved. Every
 layer tab has an *All layers and rows* section to reorder or hide everything at once.
@@ -358,6 +358,17 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
   - **Vibrating strings:** six strings over a guitar body that blur and ring like a plucked string, low
     strings with the low end.
 
+  And three rhythm styles that keep time with the song (from Audio → Detect BPM, or a tempo you set),
+  with or without audio (audio only adds a glow on loud moments):
+  - **Polyrhythm shapes:** nested shapes (3, 4, 5, 6 sides…). A dot runs round each shape once per cycle
+    and lights the corner it hits, so you see 3 against 4 against 5; the frame flashes when they all meet.
+  - **Polyrhythm arcs:** a fan of half-circles over a line; each ball swings across its arc one hit faster
+    than the one inside it (1 to 12), drifting apart and lining back up.
+  - **Polymeter grid:** step rows of different lengths (4, 5, 7…) all moving on the same pulse, so their
+    first steps drift; each row's first step is outlined when it comes round.
+  Type the counts ("3, 4, 5", "3:4" or a range like "2-9") or pick a preset, and set the cycle (half a bar
+  to 8 bars) or the pulse (quarters to sixteenths), beats per bar, rainbow colours and the numbers.
+
   They use real-world colours (amber meters, green phosphor, orange fire) unless you switch "Real-world
   colours" off to use the layer's colours; themes do that for you. Stems drive the visuals silently unless
   you switch their sound on. Analysis runs once per file, so preview and export match.
@@ -438,6 +449,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/viz.js` | Audio visualizers: FFT analysis and the styles |
 | `js/vizreal.js` | Realistic visualizers: VU meters, LED rack, oscilloscope, speaker, fire, spectrogram |
 | `js/vizgear.js` | More realistic visualizers: tape reels, mixing desk, lightning, vibrating strings |
+| `js/vizpoly.js` | Polyrhythm shapes and arcs and the polymeter grid, locked to the song's tempo (timing unit tested) |
 | `js/postcheck.js`, `js/panel-postcheck.js` | Post check score and pop-over |
 | `js/tips.js`, `js/panel-tips.js` | Pop-up editing tips |
 | `js/lyricideas.js` | Theme, visualizer, display and line-look ideas from the lyrics |

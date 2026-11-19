@@ -1,9 +1,9 @@
 // EPK (press kit): the band's profile in one place, and a one-page press kit you download as a
 // single HTML file (photos embedded) to email to venues, press and curators or host anywhere.
-import { h, button, iconButton, toast, download } from '../dom.js';
+import { h, button, iconButton, toast, download, pickFiles } from '../dom.js';
 import { mid } from './model.js';
 import { EPK_LINKS, epkHTML, shortBio } from './extras.js';
-import { epkCredits } from './photos.js';
+import { epkCredits, addPhotos } from './photos.js';
 import { THEMES } from '../themes.js';
 
 export const epkUI = { photos: [] };
@@ -46,7 +46,8 @@ export function buildEPK(ctx) {
     }
     const cur = ctx.store.get();
     const credits = epkCredits(cur.photos || [], ui.photos.filter((id) => images.some((x) => x.id === id)));
-    return epkHTML(cur, { today: ctx.today(), photos, credits });
+    const avatar = cur.band.photoId ? await ctx.studio.imageDataUrl(cur.band.photoId, 600) : null;
+    return epkHTML(cur, { today: ctx.today(), photos, credits, avatar });
   };
   const save = async () => {
     const html = await build();
@@ -81,6 +82,36 @@ export function buildEPK(ctx) {
           'section',
           { class: 'mgr-sect' },
           h('h2', {}, 'The band'),
+          (() => {
+            const ph = b.photoId && ctx.studio.mediaInfo(b.photoId);
+            const setPhoto = (id) => ctx.update(B((x) => (x.photoId = id || null)));
+            const upload = async () => {
+              const files = await pickFiles('image/*,.jpg,.jpeg,.png,.webp', false);
+              if (!files.length) return;
+              const { added, skipped } = await ctx.studio.uploadMedia(files, ['image']);
+              if (skipped.length) return toast(`“${skipped[0]}” isn’t a photo.`, 'error');
+              ctx.update((d) => {
+                addPhotos(d, added);
+                d.band.photoId = added[0].id;
+              });
+              toast('Profile photo set. It’s also on the Photos page.');
+            };
+            const options = ranked.filter((x) => x.id !== b.photoId);
+            const pick = options.length ? h('select', { 'aria-label': 'Pick a profile photo', 'data-k': 'epk-photo-pick' }, h('option', { value: '' }, 'Or pick one of your photos'), options.map((x) => h('option', { value: x.id }, x.name))) : null;
+            if (pick) pick.addEventListener('change', () => pick.value && setPhoto(pick.value));
+            return h(
+              'div',
+              { class: 'mgr-profile' },
+              h('div', { class: 'mgr-profile-img' }, ph ? h('img', { src: ph.url, alt: `${b.name || 'Artist'} profile photo` }) : (b.name || '?')[0].toUpperCase()),
+              h(
+                'div',
+                {},
+                h('strong', {}, 'Profile photo'),
+                h('p', { class: 'muted tiny' }, 'Shown in the artist menu, on Home and at the top of the press kit. A square photo works best.'),
+                h('div', { class: 'row' }, button(ph ? 'Upload a new one' : 'Upload a photo', upload, { iconName: 'upload', variant: 'sm primary' }), pick, ph ? button('Remove', () => setPhoto(null), { variant: 'sm ghost' }) : null),
+              ),
+            );
+          })(),
           h('div', { class: 'mgr-two' }, f.text('epk-name', 'Band name', b.name, B((x, v) => (x.name = v.trim()))), f.text('epk-city', 'City', b.city, B((x, v) => (x.city = v)))),
           h('div', { class: 'mgr-two' }, f.text('epk-genres', 'Genres', b.genres, B((x, v) => (x.genres = v)), { placeholder: 'alt-metal, emocore' }), f.text('epk-similar', 'For fans of', b.similar || '', B((x, v) => (x.similar = v)), { placeholder: 'Bad Omens, Deftones, Loathe' })),
           f.text('epk-bio', 'Bio', b.bio, B((x, v) => (x.bio = v)), { rows: 7, placeholder: 'Who you are, how you sound, what you’ve done. The first paragraph is your short bio.', hint: b.bio ? `Short bio: ${shortBio(b.bio).length} characters` : '' }),
