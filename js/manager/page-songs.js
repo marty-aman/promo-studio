@@ -1,6 +1,6 @@
 // Songs: one page per song with tabs for the overview, lyrics, video shoot, release checklist, its
 // content plan, suggested playlists, the press release and playlist pitching. "Make a promo" hands the song to the video studio.
-import { h, icon, button, iconButton, toast } from '../dom.js';
+import { h, icon, button, iconButton, toast, pickFiles } from '../dom.js';
 import { SONG_STATUSES, TASK_CATS, newSong, taskDue, releaseProgress, releaseChecklist, niceDate, daysBetween, mid } from './model.js';
 import { hookLines, planPosts } from './ideas.js';
 import { buildShootTab } from './page-shoot.js';
@@ -93,6 +93,27 @@ function songPage(ctx, song) {
   );
 }
 
+/** Which song is uploading a file right now (not saved). */
+export const uploadUI = { busy: null };
+
+/** Pick a song file from the computer, add it to the media library and attach it to the song. */
+async function uploadSong(ctx, song, S) {
+  const [file] = await pickFiles('audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.aif,.aiff', false);
+  if (!file) return;
+  uploadUI.busy = song.id;
+  ctx.setTab('overview');
+  try {
+    const rec = await ctx.studio.uploadAudio(file);
+    ctx.update(S((s) => (s.audioId = rec.id)));
+    toast(`“${rec.name}” is now the song file for “${song.title}”`);
+  } catch (e) {
+    toast(e.message || 'Could not read that file.', 'error', 5000);
+  } finally {
+    uploadUI.busy = null;
+    ctx.setTab('overview');
+  }
+}
+
 function overviewTab(ctx, song, S) {
   const f = ctx.form;
   const audio = ctx.studio.audioFiles();
@@ -115,7 +136,12 @@ function overviewTab(ctx, song, S) {
         h('li', {}, h('span', {}, 'Lyrics'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('lyrics') }, song.lyrics.trim() ? `${song.lyrics.trim().split(/\n+/).length} lines` : 'None yet')),
       ),
       h('div', { class: 'mgr-two' }, f.text(`bpm-${song.id}`, 'BPM', song.bpm, S((s, v) => (s.bpm = v)), { type: 'number' }), f.text(`key-${song.id}`, 'Key', song.key, S((s, v) => (s.key = v)), { placeholder: 'e.g. Drop C, D minor' })),
-      f.select(`audio-${song.id}`, 'Song file (for promos)', song.audioId || '', [['', audio.length ? '— pick a file —' : 'Upload audio in Video Studio → Audio'], ...audio.map((a) => [a.id, a.name])], S((s, v) => (s.audioId = v || null))),
+      h(
+        'div',
+        { class: 'mgr-upload' },
+        f.select(`audio-${song.id}`, 'Song file (for promos)', song.audioId || '', [['', audio.length ? '— pick a file —' : 'No file yet: upload one'], ...audio.map((a) => [a.id, a.name])], S((s, v) => (s.audioId = v || null))),
+        button(uploadUI.busy === song.id ? 'Uploading…' : 'Upload from computer', () => uploadSong(ctx, song, S), { iconName: 'upload', variant: 'sm', disabled: uploadUI.busy === song.id, title: 'Pick an MP3, WAV, M4A, OGG or FLAC file. It goes into the Video Studio’s media library too.' }),
+      ),
       f.text(`notes-${song.id}`, 'Notes', song.notes, S((s, v) => (s.notes = v)), { rows: 4, placeholder: 'Story behind the song, who wrote what, studio notes…' }),
     ),
     linksSection(ctx, song, S),

@@ -1,7 +1,7 @@
 // App shell: layout, wiring, keyboard shortcuts and autosave.
 import { ASPECTS, clipAt, splitClip, formatTime, clamp, linesFromText, timelineToSong } from './core.js';
 import { createStore, newProject, loadProject, saveProject, FONTS, findClip } from './state.js';
-import { media, restoreMedia } from './media.js';
+import { media, restoreMedia, addMedia, kindOf } from './media.js';
 import { Engine } from './engine.js';
 import { createTimeline } from './timeline.js';
 import { createPanels } from './panels.js';
@@ -540,6 +540,14 @@ manager = createManager({
   root: managerRoot,
   studio: {
     audioFiles: () => media.all().filter((m) => m.kind === 'audio').map((m) => ({ id: m.id, name: m.name })),
+    /** Add a song file from the computer to the media library (audio only); returns { id, name }. */
+    async uploadAudio(file) {
+      const audio = kindOf(file.type || '', file.name) === 'audio' || /\.(mp3|wav|m4a|aac|ogg|oga|opus|flac|aiff?)$/i.test(file.name);
+      if (!audio) throw new Error(`“${file.name}” isn’t an audio file. Pick an MP3, WAV, M4A, OGG or FLAC.`);
+      const rec = await addMedia(file, file.name, { kind: 'audio' });
+      ui.refreshPanels(true);
+      return { id: rec.id, name: rec.name };
+    },
     artistsChanged: () => syncArtistSel(),
     imageFiles: () => media.all().filter((m) => m.kind === 'image').map((m) => ({ id: m.id, name: m.name, thumb: m.thumb || null })),
     /** A library image as a JPEG data URL no larger than `max` px on its long side (for the press kit). */
