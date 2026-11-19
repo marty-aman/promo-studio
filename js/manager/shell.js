@@ -7,6 +7,7 @@ import { buildHome } from './page-home.js';
 import { buildSongs } from './page-songs.js';
 import { buildShows } from './page-shows.js';
 import { buildPlanner } from './page-planner.js';
+import { buildContent } from './page-content.js';
 
 const VIEW_KEY = 'pvm.manager.view.v1';
 export const MANAGER_PAGES = [
@@ -14,6 +15,7 @@ export const MANAGER_PAGES = [
   { id: 'songs', label: 'Songs', icon: 'music', build: buildSongs },
   { id: 'shows', label: 'Shows', icon: 'ticket', build: buildShows },
   { id: 'planner', label: 'Show planner', icon: 'mapPin', build: buildPlanner },
+  { id: 'content', label: 'Content', icon: 'chart', build: buildContent },
 ];
 
 /** Small form helpers shared by the pages. Every control has a stable data-k so focus survives a re-render. */

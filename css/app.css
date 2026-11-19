@@ -757,3 +757,22 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .mgr-band .row { margin: 2px 0; }
 .mgr-band-top { display: grid; }
 @media (max-width: 1100px) { .mgr-venue-head { grid-template-columns: 16px minmax(0, 1fr) 50px 110px; } .mgr-venue-head > .mgr-chip { display: none; } }
+
+/* ---- content */
+.mgr-page.wide { max-width: 1320px; }
+.mgr-page > .keybox { margin-bottom: 16px; }
+.mgr-findings { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.mgr-findings li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+.mgr-findings li .icon { color: var(--accent); flex: none; margin-top: 2px; }
+.mgr-findings li.best { font-weight: 650; }
+.mgr-findings li.worst .icon { color: #fb923c; }
+.mgr-compare td { white-space: nowrap; }
+.mgr-barcell { width: 30%; }
+.mgr-posts td:nth-child(2) { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgr-posts tr.posted td:first-child input { color: var(--ok); }
+.mgr-statbtn { border: 1px dashed var(--border-strong); background: transparent; color: var(--muted); border-radius: 6px; padding: 5px 8px; cursor: pointer; white-space: nowrap; font-size: 12px; }
+.mgr-statbtn.has { border-style: solid; color: var(--text); background: var(--panel-2); }
+.mgr-statsrow td { background: var(--panel-2); }
+.mgr-statgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.mgr-page .row > select, .mgr-filters > select { width: auto; min-width: 140px; }
+.mgr-posts td { vertical-align: middle; }

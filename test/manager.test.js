@@ -177,3 +177,83 @@ test('show to-dos show up on Home and in the overdue list', () => {
   const late = overdueTasks(m, '2026-11-18');
   assert.ok(late.some((x) => x.show && /Pitch the venue/.test(x.task.text)));
 });
+
+// ---- content and insights
+import { parseLink, isYouTube, isoDuration, parseYouTube, fetchYouTubeStats, youtubeStatsUrl, postMetrics, compare, findings, parseCSV, importRows, matchImport } from '../js/manager/content.js';
+
+test('links: which app, and the video id', () => {
+  assert.deepEqual(parseLink('https://youtube.com/shorts/abcDEF12345?feature=share'), { platform: 'Shorts', id: 'abcDEF12345' });
+  assert.deepEqual(parseLink('https://www.youtube.com/watch?v=abcDEF12345&t=3'), { platform: 'YouTube', id: 'abcDEF12345' });
+  assert.deepEqual(parseLink('https://youtu.be/abcDEF12345'), { platform: 'YouTube', id: 'abcDEF12345' });
+  assert.deepEqual(parseLink('https://www.tiktok.com/@arcflash/video/7501082162368662827'), { platform: 'TikTok', id: '7501082162368662827' });
+  assert.deepEqual(parseLink('https://www.instagram.com/reel/C9xYz/'), { platform: 'Reels', id: 'C9xYz' });
+  assert.deepEqual(parseLink('not a link'), { platform: '', id: '' });
+  assert.ok(isYouTube('https://youtube.com/shorts/abcDEF12345'));
+  assert.ok(!isYouTube('https://www.tiktok.com/@a/video/1'));
+  assert.equal(isoDuration('PT1M5S'), 65);
+  assert.equal(isoDuration('PT45S'), 45);
+});
+
+test('YouTube stats are parsed, batched by 50, and key errors explained', async () => {
+  const item = (id, v) => ({ id, statistics: { viewCount: String(v), likeCount: '10', commentCount: '2' }, contentDetails: { duration: 'PT30S' }, snippet: { title: 'T', publishedAt: '2026-11-01T10:00:00Z' } });
+  const got = parseYouTube({ items: [item('aaaaaaaaaaa', 1000)] }, 'now');
+  assert.deepEqual(got.aaaaaaaaaaa, { views: 1000, likes: 10, comments: 2, shares: null, saves: null, length: 30, title: 'T', publishedAt: '2026-11-01', source: 'youtube', fetchedAt: 'now' });
+  assert.match(youtubeStatsUrl(['a', 'b'], 'K&Y'), /id=a,b&key=K%26Y$/);
+  const calls = [];
+  const ids = Array.from({ length: 60 }, (_, i) => `id${String(i).padStart(9, '0')}`);
+  const fake = async (url) => {
+    calls.push(url);
+    const asked = new URL(url).searchParams.get('id').split(',');
+    return { ok: true, status: 200, json: async () => ({ items: asked.map((x) => item(x, 5)) }) };
+  };
+  const all = await fetchYouTubeStats(ids, 'k', fake);
+  assert.equal(calls.length, 2);
+  assert.equal(Object.keys(all).length, 60);
+  const bad = async () => ({ ok: false, status: 403, json: async () => ({ error: { errors: [{ reason: 'quotaExceeded' }] } }) });
+  await assert.rejects(fetchYouTubeStats(['x'], 'k', bad), /quota/);
+});
+
+test('engagement per post, groups ranked by sends and saves, and findings', () => {
+  assert.equal(postMetrics(null), null);
+  assert.equal(postMetrics({ views: 0, likes: 3 }), null);
+  const mt = postMetrics({ views: 1000, likes: 50, comments: 10, shares: 20, saves: 20, avgWatch: 9, length: 12 });
+  assert.equal(mt.engagement, 0.1);
+  assert.equal(mt.sharesPer1k, 20);
+  assert.equal(mt.watched, 0.75);
+  const P = (format, platform, date, s) => ({ id: `${format}${date}`, format, platform, date, title: format, stats: s });
+  const posts = [
+    P('learnriff', 'TikTok', '2026-11-02', { views: 2000, likes: 100, comments: 20, shares: 80, saves: 60 }),
+    P('learnriff', 'TikTok', '2026-11-09', { views: 1500, likes: 80, comments: 10, shares: 50, saves: 40 }),
+    P('countdown', 'Reels', '2026-11-03', { views: 3000, likes: 90, comments: 5, shares: 3, saves: 2 }),
+    P('countdown', 'Reels', '2026-11-10', { views: 2500, likes: 60, comments: 4, shares: 2, saves: 1 }),
+    P('bts', 'Shorts', '2026-11-04', { views: 800, likes: 30, comments: 6, shares: 4, saves: 2 }),
+    P('rate', 'TikTok', '2026-11-05', null),
+  ];
+  const fmt = compare(posts, 'format');
+  assert.ok(/riff/i.test(fmt[0].key));
+  assert.equal(fmt.find((g) => /riff/i.test(g.key)).n, 2);
+  assert.ok(!fmt.some((g) => /rate/i.test(g.key))); // no stats, not counted
+  assert.equal(compare(posts, 'platform')[0].key, 'TikTok');
+  const fd = findings(posts);
+  assert.ok(fd.ready && fd.count === 5);
+  assert.match(fd.lines[0].text, /riff/i);
+  assert.match(fd.lines[0].text, /× the shares, saves and comments per view/);
+  assert.ok(fd.lines.some((l) => l.kind === 'top' && /3,000 views on Reels/.test(l.text)));
+  assert.equal(findings(posts.slice(0, 2)).ready, false);
+});
+
+test('analytics CSV: quoted cells, k/M numbers, columns by name, matched to posts by link', () => {
+  assert.deepEqual(parseCSV('a,b\n"x, y","say ""hi"""\n'), [['a', 'b'], ['x, y', 'say "hi"']]);
+  const csv = '\uFEFFVideo title,Video link,Post time,Total views,Total likes,Total comments,Total shares,Add to Favorites\n"Riff, part 2",https://www.tiktok.com/@arcflash/video/111,2026-11-02 18:00,1.2K,"1,050",33,40,12\nOther,https://www.tiktok.com/@arcflash/video/222,11/03/2026,900,10,1,0,0\n';
+  const rows = importRows(csv, 'now');
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows[0], { url: 'https://www.tiktok.com/@arcflash/video/111', title: 'Riff, part 2', date: '2026-11-02', stats: { views: 1200, likes: 1050, comments: 33, shares: 40, saves: 12, avgWatch: null, length: null, source: 'csv', fetchedAt: 'now' } });
+  assert.equal(rows[1].date, '2026-11-03');
+  const posts = [{ id: 'p1', url: 'https://www.tiktok.com/@arcflash/video/111?is_from_webapp=1' }];
+  const { matched, fresh } = matchImport(posts, rows);
+  assert.deepEqual(matched.map((x) => x.postId), ['p1']);
+  assert.equal(fresh.length, 1);
+  assert.throws(() => importRows('a,b\n1,2'), /views/);
+  const ig = importRows('Permalink;Publish time;Views;Likes;Comments;Shares;Saves\nhttps://www.instagram.com/reel/AbC/;2026-11-05T19:00:00;4300;210;12;30;44\n');
+  assert.equal(ig[0].stats.saves, 44);
+});
