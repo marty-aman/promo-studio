@@ -147,7 +147,12 @@ export const drumColors = (c) => ({
   snare: c.light,
   hihat: mix(c.light, c.accent, 0.35),
   tom: mix(c.accent, c.light, 0.25),
+  tom1: mix(c.accent, c.light, 0.4),
+  tom2: mix(c.accent, c.light, 0.25),
+  floor: mix(c.accent, c.deep, 0.25),
   crash: mix(c.light, '#ffffff', 0.4),
+  crash2: mix(c.light, c.accent, 0.15),
+  china: mix(c.accent, '#ffffff', 0.35),
   ride: mix(c.accent, c.light, 0.6),
 });
 

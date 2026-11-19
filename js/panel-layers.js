@@ -495,6 +495,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         L.style === 'kit' ? b.select('Finish', g('kitFinish', 'neon'), set((x, v) => (x.kitFinish = v)), KIT_FINISHES) : null,
         L.style === 'kit' && L.kitFinish === 'stage' ? b.select('Shells', g('kitWrap', 'black'), set((x, v) => (x.kitWrap = v)), KIT_WRAPS.map(([k, l]) => [k, l])) : null,
         L.style === 'kit' && (L.kitFinish || 'neon') !== 'neon' ? b.toggle('Double bass drums', get((x) => kitDoubleKick(x)), set((x, v) => (x.doubleKick = v))) : null,
+        L.style !== 'kit' ? b.toggle('Show every drum and cymbal (even ones the part doesn’t use)', get((x) => x.allLanes ?? x.source !== 'audio'), set((x, v) => (x.allLanes = v))) : null,
         L.style === 'neon' ? b.toggle('Show the combo counter', g('showCombo', true), set((x, v) => (x.showCombo = v))) : null,
         rec ? syncTools(tl, isStem) : null,
         visibleRange(),

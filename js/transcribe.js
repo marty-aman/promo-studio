@@ -408,7 +408,7 @@ export function transcribeSamples(samples, sr, kind, grid, { tuning } = {}) {
 
 /** Drum hits [{ time, lane }] (from drumHitsFromAudio) -> a percussion track. */
 export function drumsToTrack(hits, grid) {
-  const GM = { kick: 36, snare: 38, hihat: 42, tom: 45, crash: 49, ride: 51 };
+  const GM = { kick: 36, snare: 38, hihat: 42, tom: 45, tom1: 48, tom2: 45, floor: 41, crash: 49, crash2: 57, china: 52, ride: 51 };
   const byTime = new Map();
   for (const h of hits) {
     const key = h.time.toFixed(3);

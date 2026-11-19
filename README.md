@@ -302,13 +302,17 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
     shakes when it's played.
 
   Chord names (Em, G, C/G, E5, Am7…) are worked out from the notes.
-- **Drum chart:** from a Guitar Pro drum track (kick, snare, hi-hat, toms, crash, ride) or detected
-  from a drum stem audio file (kick, snare, hi-hat). Pick one of six styles from the style grid:
+- **Drum chart:** from a Guitar Pro drum track or detected from a drum stem audio file (kick, snare,
+  hi-hat). Every style charts the whole kit: kick, snare, hi-hat, high tom, mid tom, floor tom, crash 1,
+  crash 2, china and ride (GM 50/48 high tom, 47/45 mid tom, 43/41 floor tom, 49 crash 1, 57 and the
+  55 splash crash 2, 52 china). Lane styles show every drum and cymbal for a Guitar Pro part, and only the
+  found ones for a stem; *Show every drum and cymbal* changes that. Pick one of six styles from the style grid:
   - **Scrolling lanes**, a falling **highway**, or a **circle** that sweeps once per bar with hits on rings.
   - **Neon highway:** a 3D glowing road with gem notes, shockwaves and sparks at the strike line, and an
     optional combo counter.
-  - **Light-up drum kit:** a drawn kit (kick, snare, two rack toms, floor tom, hi-hat, crash, ride) with
-    your band name on the kick drum and a strip of upcoming hits along the top. *Finish*:
+  - **Light-up drum kit:** a drawn kit (kick, snare, high and mid rack toms, floor tom, hi-hat, two
+    crashes, a china and a ride) with your band name on the kick drum and a strip of upcoming hits along
+    the top. *Finish*:
     - **Neon glow:** lit shells and heads that glow, bounce and ripple.
     - **Stage (realistic):** wrapped shells with chrome hoops and lugs, coated heads that flex on a hit,
       bronze cymbals with lathe rings that wobble, a hi-hat stand with its pedal, tripod stands, a rug and
@@ -320,6 +324,8 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
     - **Frostbite:** black shells covered in frost crystals, white heads, silver cymbals, fog and snow.
     - **Steel & spikes:** brushed steel shells with rivets, spiked kick hoops, black hardware, and welding
       sparks off every hit.
+    - **Blackout:** all black and grey: satin black shells, black hardware, grey heads, smoked cymbals,
+      grey light and haze, and a grey upcoming-hits strip.
     The realistic and metal finishes can use **Double bass drums** (two kicks that take turns; on by default
     for the metal finishes), with the band name split across both.
   - **Glass lanes:** a frosted panel over your video with gradient capsules, trails and hit bursts.

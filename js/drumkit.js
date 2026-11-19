@@ -10,9 +10,10 @@ export const KIT_FINISHES = [
   ['thunder', 'Thunder: lightning strikes'],
   ['frostbite', 'Frostbite: black metal frost'],
   ['steel', 'Steel & spikes: industrial'],
+  ['blackout', 'Blackout: all black and grey'],
 ];
 /** Finishes that default to a double bass drum setup. */
-export const METAL_FINISHES = new Set(['inferno', 'thunder', 'frostbite', 'steel']);
+export const METAL_FINISHES = new Set(['inferno', 'thunder', 'frostbite', 'steel', 'blackout']);
 export const kitDoubleKick = (layer) => layer.doubleKick ?? METAL_FINISHES.has(layer.kitFinish);
 
 // Shell wraps for the Stage finish.
@@ -36,6 +37,8 @@ const LOOKS = {
   thunder: { wrap: { kind: 'sparkle', base: '#0a1024', fleck: '#8cc4ff', reso: '#06080f', ink: '#bfe0ff' }, hardware: 'chrome', heads: 'coated', cymbals: 'bronze', light: '#9cc0ff', rug: '#141a2c', fx: 'lightning' },
   frostbite: { wrap: { kind: 'frost', base: '#0c0e13', crystal: '#e6f2ff', reso: '#0a0b0e', ink: '#eef6ff' }, hardware: 'chrome', heads: 'white', cymbals: 'silver', light: '#cfe4ff', rug: '#1a1f28', fx: 'frost' },
   steel: { wrap: { kind: 'brushed', base: '#6d727c', reso: '#111214', ink: '#e8e8e8' }, hardware: 'black', heads: 'dark', cymbals: 'dark', light: '#ffd49a', rug: '#26221c', fx: 'sparks', spikes: true },
+  // all black and grey: satin black shells, black hardware, grey heads, smoked cymbals, grey light
+  blackout: { wrap: { kind: 'matte', base: '#1b1b1d', reso: '#0d0d0e', ink: '#a8a8ad' }, hardware: 'black', heads: 'grey', cymbals: 'smoke', light: '#bdbdc2', rug: '#1c1c1e', fx: 'haze', glow: '#b8b8be' },
 };
 export const lookOf = (finish) => LOOKS[finish] || LOOKS.stage;
 
@@ -81,18 +84,26 @@ export function kitLayout(bx, by, bw, bh, { doubleKick = false } = {}) {
     snare: piece(...P(doubleKick ? 0.18 : 0.22, 0.58), U * 0.095, U * 0.036, U * 0.06),
     hihat: { x: P(0.05, 0.42)[0], y: P(0.05, 0.42)[1], r: U * 0.1 },
     crash: { x: P(0.14, 0.2)[0], y: P(0.14, 0.2)[1], r: U * 0.15, tilt: -12 },
-    ride: { x: P(0.88, 0.22)[0], y: P(0.88, 0.22)[1], r: U * 0.16, tilt: 10 },
+    crash2: { x: P(0.7, 0.11)[0], y: P(0.7, 0.11)[1], r: U * 0.135, tilt: 8 },
+    china: { x: P(0.3, 0.1)[0], y: P(0.3, 0.1)[1], r: U * 0.12, tilt: -6 },
+    ride: { x: P(0.9, 0.27)[0], y: P(0.9, 0.27)[1], r: U * 0.16, tilt: 10 },
   };
 }
 
-/** Where a hit lands on a piece (tom and kick hits use their piece number). */
+/** The tom lanes in kit order: high, mid, floor. */
+export const KIT_TOMS = ['tom1', 'tom2', 'floor'];
+
+/** Where a hit lands on a piece (kick hits use their kick number on a double bass kit). */
 export function strikePoint(L, lane, piece = 0) {
   if (lane === 'snare') return [L.snare.x + L.snare.rx * 0.15, L.snare.y];
   if (lane === 'hihat') return [L.hihat.x + L.hihat.r * 0.45, L.hihat.y - L.U * 0.01];
   if (lane === 'crash') return [L.crash.x + L.crash.r * 0.55, L.crash.y + L.crash.r * 0.1];
+  if (lane === 'crash2') return [L.crash2.x - L.crash2.r * 0.5, L.crash2.y + L.crash2.r * 0.08];
+  if (lane === 'china') return [L.china.x + L.china.r * 0.5, L.china.y + L.china.r * 0.06];
   if (lane === 'ride') return [L.ride.x - L.ride.r * 0.45, L.ride.y - L.ride.r * 0.08];
-  if (lane === 'tom') {
-    const t = L.toms[Math.max(0, Math.min(2, piece))];
+  const ti = KIT_TOMS.indexOf(lane);
+  if (ti >= 0 || lane === 'tom') {
+    const t = L.toms[ti >= 0 ? ti : Math.max(0, Math.min(2, piece))];
     return [t.x, t.y];
   }
   if (lane === 'kick') {
@@ -191,6 +202,12 @@ function paintWrap(ctx, wrap, x, y, w, h, seed, e, t) {
     rime.addColorStop(1, rgba(wrap.crystal, 0.35));
     ctx.fillStyle = rime;
     ctx.fillRect(x, y, w, h);
+  } else if (wrap.kind === 'matte') {
+    // satin black: a faint fine grain, nothing shiny
+    for (let i = 0; i < 30; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${0.025 + 0.03 * rnd(seed + i)})`;
+      ctx.fillRect(x + rnd(seed + i * 1.7) * w, y, Math.max(0.6, w * 0.004), h);
+    }
   } else if (wrap.kind === 'brushed') {
     // brushed steel: fine horizontal hairlines and rivet rows
     ctx.lineWidth = Math.max(0.5, h * 0.004);
@@ -233,11 +250,13 @@ const HEADS = {
   coated: ['#f4efe4', '#e2dbcc', '#bdb5a4', 'rgba(90,80,64,0.14)'],
   dark: ['#4a4744', '#242322', '#121212', 'rgba(255,255,255,0.06)'],
   white: ['#ffffff', '#eef3f8', '#c3ccd8', 'rgba(120,140,170,0.12)'],
+  grey: ['#8e8e93', '#5c5c61', '#323235', 'rgba(0,0,0,0.12)'],
 };
 const CYMBALS = {
   bronze: ['#6e4a14', '#d9a64a', '#f2cf7a', '#b9822e', '#5c3c10', '#fbe3a2', '#9a6a22'],
   dark: ['#2e2210', '#7a5a2a', '#a8854a', '#5e4420', '#22180a', '#c9a15a', '#4a3416'],
   silver: ['#5c6470', '#c8ced8', '#f4f7fb', '#a4acb8', '#4a515c', '#ffffff', '#8a929e'],
+  smoke: ['#151517', '#4a4a4f', '#7c7c82', '#36363a', '#111113', '#a2a2a8', '#2c2c30'],
 };
 
 // ------------------------------------------------------------ effects
@@ -448,13 +467,14 @@ export function drawStageKit(ctx, L, layer, hit, t, colors) {
     ctx.arc(L.cx, L.kick.top - U * 0.3, U * 0.95, 0, Math.PI * 2);
     ctx.fill();
   }
-  const flash = Math.max(hit('crash').e, hit('ride').e * 0.5, hit('snare').e * 0.4);
+  const flash = Math.max(hit('crash').e, hit('crash2').e, hit('china').e, hit('ride').e * 0.5, hit('snare').e * 0.4);
   if (look.fx === 'fire') fireBack(ctx, L, t, kickE);
   if (look.fx === 'lightning') stormBack(ctx, L, t, flash);
   if (look.fx === 'frost') fogBack(ctx, L, t, 1.3);
   if (look.fx === 'sparks') fogBack(ctx, L, t, 0.6);
+  if (look.fx === 'haze') fogBack(ctx, L, t, 0.9 + 0.6 * kickE);
   const G = glowPass(ctx, L.cx - U * 0.9, boxTop, U * 1.8, L.floor - boxTop + U * 0.1, U * 0.035);
-  const glowCol = (lane) => (look.fx === 'fire' ? '#ff6a1a' : look.fx === 'frost' ? '#cfe6ff' : look.fx === 'lightning' ? '#7ab4ff' : colors[lane]);
+  const glowCol = (lane) => look.glow || (look.fx === 'fire' ? '#ff6a1a' : look.fx === 'frost' ? '#cfe6ff' : look.fx === 'lightning' ? '#7ab4ff' : colors[lane]);
 
   // stands: tripods for the cymbals and the hi-hat (with its pedal)
   const tripod = (x, yTop, spread) => {
@@ -474,6 +494,8 @@ export function drawStageKit(ctx, L, layer, hit, t, colors) {
     ctx.stroke();
   };
   tripod(L.crash.x, L.crash.y, U * 0.07);
+  tripod(L.crash2.x, L.crash2.y, U * 0.06);
+  tripod(L.china.x, L.china.y, U * 0.06);
   tripod(L.ride.x, L.ride.y, U * 0.07);
   tripod(L.hihat.x, L.hihat.y, U * 0.06);
   ctx.fillStyle = '#2a2c33';
@@ -661,7 +683,7 @@ export function drawStageKit(ctx, L, layer, hit, t, colors) {
       });
     }
   };
-  const tomE = (i) => hit('tom', i).e;
+  const tomE = (i) => hit(KIT_TOMS[i]).e;
   if (!L.doubleKick) {
     ctx.strokeStyle = metal(ctx, hw, L.kick.x - 3, 0, L.kick.x + 3, 0);
     ctx.lineWidth = lw(0.011);
@@ -681,8 +703,8 @@ export function drawStageKit(ctx, L, layer, hit, t, colors) {
     ctx.lineTo(L.toms[1].x - U * 0.02, L.toms[1].y + L.toms[1].depth);
     ctx.stroke();
   }
-  drum(L.toms[0], 'tom', tomE(0), 11);
-  drum(L.toms[1], 'tom', tomE(1), 23);
+  drum(L.toms[0], 'tom1', tomE(0), 11);
+  drum(L.toms[1], 'tom2', tomE(1), 23);
   const legs = (x, yTop, spread) => {
     ctx.strokeStyle = hw === 'black' ? '#5a5e68' : '#9aa0ad';
     ctx.lineWidth = lw(0.007);
@@ -695,7 +717,7 @@ export function drawStageKit(ctx, L, layer, hit, t, colors) {
   };
   const ft = L.toms[2];
   legs(ft.x, ft.y + ft.depth * 0.6, U * 0.11);
-  drum(ft, 'tom', tomE(2), 37);
+  drum(ft, 'floor', tomE(2), 37);
   const sn = L.snare;
   legs(sn.x, sn.y + sn.depth + U * 0.05, U * 0.08);
   ctx.strokeStyle = metal(ctx, hw, sn.x - 3, 0, sn.x + 3, 0);
@@ -744,6 +766,19 @@ export function drawStageKit(ctx, L, layer, hit, t, colors) {
     ctx.beginPath();
     ctx.ellipse(0, -Math.abs(ry) * 0.15, c.r * 0.18, Math.abs(ry) * 0.42, 0, 0, Math.PI * 2);
     ctx.fill();
+    if (lane === 'china') {
+      // a china's edge turns up: a raised outer band with a darker lip
+      ctx.strokeStyle = cyms[3];
+      ctx.lineWidth = Math.max(2, Math.abs(ry) * 0.5);
+      ctx.beginPath();
+      ctx.ellipse(0, -Math.abs(ry) * 0.3, c.r * 0.96, Math.abs(ry) * 0.85, 0, Math.PI * 1.02, Math.PI * 1.98);
+      ctx.stroke();
+      ctx.strokeStyle = cyms[0];
+      ctx.lineWidth = Math.max(1.5, Math.abs(ry) * 0.2);
+      ctx.beginPath();
+      ctx.ellipse(0, -Math.abs(ry) * 0.45, c.r * 0.98, Math.abs(ry) * 0.85, 0, Math.PI * 1.02, Math.PI * 1.98);
+      ctx.stroke();
+    }
     const gx = (-0.6 + 1.2 * Math.min(1, age / 0.5)) * c.r;
     ctx.fillStyle = `rgba(255,255,240,${0.15 + 0.55 * e})`;
     ctx.beginPath();
@@ -766,6 +801,8 @@ export function drawStageKit(ctx, L, layer, hit, t, colors) {
     cymbal({ x: L.hihat.x, y: L.hihat.y + gap / 2, r: L.hihat.r, tilt: 0 }, 'hihat', 0.14);
     cymbal({ x: L.hihat.x, y: L.hihat.y - gap / 2, r: L.hihat.r, tilt: 0 }, 'hihat', 0.14);
   }
+  cymbal(L.china, 'china', 0.15);
+  cymbal(L.crash2, 'crash2');
   cymbal(L.crash, 'crash');
   cymbal(L.ride, 'ride', 0.16);
   G.flush(look.fx === 'fire' ? 1 : 0.8);
@@ -774,7 +811,7 @@ export function drawStageKit(ctx, L, layer, hit, t, colors) {
   if (look.fx === 'fire') embersFront(ctx, L, t, kickE);
   if (look.fx === 'frost') snowFront(ctx, L, t, { top: boxTop });
   if (look.fx === 'lightning') {
-    for (const lane of ['crash', 'snare', 'ride']) {
+    for (const lane of ['crash', 'crash2', 'china', 'snare', 'ride']) {
       const h = hit(lane);
       if (!h.hit || h.age > 0.16) continue;
       const [x, y] = strikePoint(L, lane);
@@ -793,8 +830,10 @@ export function drawStageKit(ctx, L, layer, hit, t, colors) {
     };
     fire('snare');
     fire('crash');
+    fire('crash2');
+    fire('china');
     fire('ride');
-    for (let i = 0; i < 3; i++) fire('tom', i);
+    for (const t of KIT_TOMS) fire(t);
     if (L.kicks.length > 1) L.kicks.forEach((k, i) => fire('kick', i));
     else fire('kick');
   }

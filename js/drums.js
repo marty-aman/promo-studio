@@ -3,26 +3,54 @@
 import { timedBeats } from './tab.js';
 import { glowPass, frost } from './canvasfx.js';
 import { energyEnvelope } from './core.js';
-import { kitLayout, drawStageKit, kitDoubleKick } from './drumkit.js';
+import { kitLayout, drawStageKit, kitDoubleKick, KIT_TOMS } from './drumkit.js';
 
 export const LANES = [
-  { id: 'crash', label: 'Crash', color: '#ff8c42' },
+  { id: 'china', label: 'China', color: '#f472b6' },
+  { id: 'crash', label: 'Crash 1', color: '#ff8c42' },
+  { id: 'crash2', label: 'Crash 2', color: '#fbbf24' },
   { id: 'ride', label: 'Ride', color: '#5eead4' },
   { id: 'hihat', label: 'Hi-hat', color: '#4dd2ff' },
-  { id: 'tom', label: 'Toms', color: '#a78bfa' },
+  { id: 'tom1', label: 'High tom', color: '#c4b5fd' },
+  { id: 'tom2', label: 'Mid tom', color: '#a78bfa' },
+  { id: 'floor', label: 'Floor tom', color: '#818cf8' },
   { id: 'snare', label: 'Snare', color: '#ffd400' },
   { id: 'kick', label: 'Kick', color: '#ff4d6d' },
 ];
+/** Lanes added later take the colour a project already set for the lane they came from. */
+export const LANE_FALLBACK = { tom1: 'tom', tom2: 'tom', floor: 'tom', crash2: 'crash', china: 'crash' };
+export const TOM_LANES = ['tom1', 'tom2', 'floor'];
+export const CYMBAL_LANES = ['china', 'crash', 'crash2', 'ride'];
 
 /** General MIDI drum number -> lane id (null for sounds we do not chart). */
 export function midiToLane(m) {
   if (m === 35 || m === 36) return 'kick';
   if (m >= 37 && m <= 40) return 'snare';
   if (m === 42 || m === 44 || m === 46) return 'hihat';
-  if ([41, 43, 45, 47, 48, 50].includes(m)) return 'tom';
-  if ([49, 52, 55, 57].includes(m)) return 'crash';
+  if (m === 48 || m === 50) return 'tom1'; // high and high-mid tom
+  if (m === 45 || m === 47) return 'tom2'; // low-mid and low tom
+  if (m === 41 || m === 43) return 'floor'; // low and high floor tom
+  if (m === 49) return 'crash';
+  if (m === 57 || m === 55) return 'crash2'; // crash 2 (and the splash)
+  if (m === 52) return 'china';
   if ([51, 53, 59].includes(m)) return 'ride';
   return null;
+}
+
+/**
+ * The lanes a lane-based style draws: the whole kit (so every drum and cymbal has its place) for a
+ * Guitar Pro chart, or only the lanes that have hits for a drum stem (which only finds kick, snare
+ * and hi-hat). `layer.allLanes` overrides.
+ */
+export function chartLanes(layer, data) {
+  const all = layer.allLanes ?? layer.source !== 'audio';
+  if (all) return LANES.map((l) => l.id);
+  return data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat'];
+}
+
+export function laneColorOf(layer, id) {
+  const c = layer.colors || {};
+  return c[id] || (LANE_FALLBACK[id] && c[LANE_FALLBACK[id]]) || (LANES.find((l) => l.id === id) || {}).color || '#ffffff';
 }
 
 export function drumTracks(score) {
@@ -224,8 +252,8 @@ export function drawDrums(ctx, W, H, layer, data, t, songTime, visibleEnd, beatP
   }
   const fade = Math.min(1, (t - (layer.start || 0)) / 0.3, (end - t) / 0.3);
   const dt = (songTime - layer.offset) * (layer.tempoScale || 1);
-  const lanes = data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat'];
-  const color = (id) => (layer.colors && layer.colors[id]) || (LANES.find((l) => l.id === id) || {}).color || '#fff';
+  const lanes = chartLanes(layer, data);
+  const color = (id) => laneColorOf(layer, id);
   const label = (id) => (LANES.find((l) => l.id === id) || {}).label || id;
 
   const bw = (W * layer.width) / 100;
@@ -496,7 +524,7 @@ export const STYLE_PLACEMENT = {
 export const DRUM_CHROME = { bg0: '#05030f', bg1: '#140a2e', bg2: '#230b3d', road: '#0a061e', grid: '#a078ff', glow: '#ff5ac8', edge: '#c8a0ff', shell: '#1e1830', kickShell: '#1e0e18' };
 const chromeOf = (layer) => ({ ...DRUM_CHROME, ...(layer.chrome || {}) });
 
-const laneColor = (layer, id) => (layer.colors && layer.colors[id]) || (LANES.find((l) => l.id === id) || {}).color || '#ffffff';
+const laneColor = laneColorOf;
 const laneLabel = (id) => (LANES.find((l) => l.id === id) || {}).label || id;
 const fract = (x) => x - Math.floor(x);
 const rnd = (n) => fract(Math.sin(n * 12.9898 + 78.233) * 43758.5453);
@@ -523,8 +551,8 @@ function box(W, H, layer) {
 function drawNeon(ctx, W, H, layer, data, dt, { shownFrom }) {
   const { bw, bh, bx, by } = box(W, H, layer);
   const C = chromeOf(layer);
-  const lanes = (data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat']).filter((l) => l !== 'kick');
-  const hasKick = data.lanes.includes('kick');
+  const lanes = chartLanes(layer, data).filter((l) => l !== 'kick');
+  const hasKick = chartLanes(layer, data).includes('kick');
   const cols = Math.max(1, lanes.length);
   const horizon = by + bh * 0.06;
   const strike = by + bh * 0.82;
@@ -823,19 +851,14 @@ function drawKit(ctx, W, H, layer, data, dt) {
     const h = recent.get(lane);
     return h ? { e: Math.max(0, Math.exp(-(dt - h.time) * 7)), age: dt - h.time, hit: h } : { e: 0, age: 9, hit: null };
   };
-  // toms share one lane; spread consecutive tom hits over the three toms for fills
-  const tomHit = recent.get('tom');
-  const tomPiece = tomHit ? tomHit.index % 3 : -1;
-
   const L = kitLayout(bx, by, bw, bh, { doubleKick: kitDoubleKick(layer) });
-  const colors = Object.fromEntries(['kick', 'snare', 'hihat', 'tom', 'crash', 'ride'].map((k) => [k, laneColor(layer, k)]));
+  const colors = Object.fromEntries(LANES.map((l) => [l.id, laneColor(layer, l.id)]));
   if (layer.kitFinish && layer.kitFinish !== 'neon') {
     // double bass: kick hits alternate between the two kicks
     const kickHit = recent.get('kick');
     const kickPiece = kickHit ? kickHit.index % 2 : -1;
     const none = { e: 0, age: 9, hit: null };
     const hitOf = (lane, piece) => {
-      if (lane === 'tom') return piece === tomPiece ? energy('tom') : none;
       if (lane === 'kick' && L.kicks.length > 1 && piece != null) return piece === kickPiece ? energy('kick') : none;
       return energy(lane);
     };
@@ -850,12 +873,14 @@ function drawKit(ctx, W, H, layer, data, dt) {
       ctx.lineTo(x, y2);
       ctx.stroke();
     };
-    const [crx, cry] = P(0.14, 0.2);
-    const [rdx, rdy] = P(0.88, 0.22);
-    const [hhx, hhy] = P(0.05, 0.42);
+    const [crx, cry] = [L.crash.x, L.crash.y];
+    const [rdx, rdy] = [L.ride.x, L.ride.y];
+    const [hhx, hhy] = [L.hihat.x, L.hihat.y];
     stand(crx, cry, by + bh * 0.95);
     stand(rdx, rdy, by + bh * 0.95);
     stand(hhx, hhy, by + bh * 0.95);
+    stand(L.crash2.x, L.crash2.y, by + bh * 0.95);
+    stand(L.china.x, L.china.y, by + bh * 0.95);
 
     const G = glowPass(ctx, bx, by, bw, bh, U * 0.04);
     const glowEllipse = (x, y, rx, ry, rot, col, e) =>
@@ -1013,8 +1038,10 @@ function drawKit(ctx, W, H, layer, data, dt) {
       }
       ripple(hhx, hhy, U * 0.1, U * 0.016, col, age);
     }
-    cymbal('crash', crx, cry, U * 0.15, -12);
-    cymbal('ride', rdx, rdy, U * 0.16, 10);
+    cymbal('china', L.china.x, L.china.y, L.china.r, L.china.tilt);
+    cymbal('crash2', L.crash2.x, L.crash2.y, L.crash2.r, L.crash2.tilt);
+    cymbal('crash', crx, cry, L.crash.r, L.crash.tilt);
+    cymbal('ride', rdx, rdy, L.ride.r, L.ride.tilt);
 
 
     // kick: front-facing bass drum with the band name
@@ -1114,9 +1141,9 @@ function drawKit(ctx, W, H, layer, data, dt) {
     }
 
     // rack toms sit on an arm from the top of the kick; snare and floor tom stand beside it
-    const tom = energy('tom');
-    const tomE = (i) => (i === tomPiece ? tom.e : 0);
-    const tomAge = (i) => (i === tomPiece ? tom.age : 9);
+    const tomHits = KIT_TOMS.map((ln) => energy(ln));
+    const tomE = (i) => tomHits[i].e;
+    const tomAge = (i) => tomHits[i].age;
     const floor = by + bh * 0.95;
     const [kx0, ky0] = P(0.5, 0.7);
     const kTop = ky0 - U * 0.2 * 1.06;
@@ -1138,12 +1165,12 @@ function drawKit(ctx, W, H, layer, data, dt) {
       ctx.lineTo(t2x, t2y + U * 0.1);
       ctx.stroke();
     }
-    drum('tom', t1x, t1y, U * 0.075, U * 0.03, U * 0.085, tomE(0), tomAge(0));
-    drum('tom', t2x, t2y, U * 0.08, U * 0.032, U * 0.09, tomE(1), tomAge(1));
+    drum('tom1', t1x, t1y, U * 0.075, U * 0.03, U * 0.085, tomE(0), tomAge(0));
+    drum('tom2', t2x, t2y, U * 0.08, U * 0.032, U * 0.09, tomE(1), tomAge(1));
     const [ftx, fty] = P(0.8, 0.56);
     const ftD = U * 0.17;
     legs(ftx, fty + ftD, floor, U * 0.09);
-    drum('tom', ftx, fty, U * 0.1, U * 0.04, ftD, tomE(2), tomAge(2), layer.showLabels ? 'TOMS' : '');
+    drum('floor', ftx, fty, U * 0.1, U * 0.04, ftD, tomE(2), tomAge(2), layer.showLabels ? 'TOMS' : '');
     const sn = energy('snare');
     const [snx, sny] = P(0.22, 0.58);
     const snD = U * 0.06;
@@ -1168,11 +1195,14 @@ function drawKit(ctx, W, H, layer, data, dt) {
     ctx.fillStyle = 'rgba(255,255,255,0.12)';
     rrect(ctx, x0, y - U * 0.008, x1 - x0, U * 0.016, U * 0.008);
     ctx.fill();
+    // Blackout keeps the strip in greys too: lighter for cymbals, darker for drums
+    const mono = layer.kitFinish === 'blackout';
+    const greyOf = (lane) => (['china', 'crash', 'crash2', 'ride', 'hihat'].includes(lane) ? '#d4d4d8' : lane === 'kick' ? '#6e6e74' : '#9e9ea4');
     for (let i = first(data.hits, dt); i < data.hits.length; i++) {
       const h = data.hits[i];
       if (h.time > dt + win) break;
       const x = x0 + ((h.time - dt) / win) * (x1 - x0);
-      ctx.fillStyle = laneColor(layer, h.lane);
+      ctx.fillStyle = mono ? greyOf(h.lane) : laneColor(layer, h.lane);
       ctx.beginPath();
       ctx.arc(x, y, U * 0.012, 0, Math.PI * 2);
       ctx.fill();
@@ -1186,7 +1216,7 @@ function drawKit(ctx, W, H, layer, data, dt) {
 // ---- C: glass lanes
 function drawGlass(ctx, W, H, layer, data, dt, { beatPeriod }) {
   const { bw, bh, bx, by } = box(W, H, layer);
-  const lanes = data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat'];
+  const lanes = chartLanes(layer, data);
   const unit = Math.min(bw, bh);
   const radius = unit * 0.14;
   const G = glowPass(ctx, bx, by, bw, bh, unit * 0.05);

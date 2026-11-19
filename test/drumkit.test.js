@@ -43,3 +43,36 @@ test('wraps and colour mixing', () => {
   assert.equal(mixHex('#000000', '#ffffff', 0.5), '#808080');
   assert.equal(mixHex('#102030', '#102030', 0.7), '#102030');
 });
+
+test('the kit has a china, two crashes, a ride and high, mid and floor toms', async () => {
+  const { LANES, chartLanes, laneColorOf } = await import('../js/drums.js');
+  const ids = LANES.map((l) => l.id);
+  for (const id of ['china', 'crash', 'crash2', 'ride', 'hihat', 'tom1', 'tom2', 'floor', 'snare', 'kick']) assert.ok(ids.includes(id), id);
+  const L = kitLayout(0, 0, 1600, 900);
+  for (const lane of ['china', 'crash', 'crash2', 'ride', 'tom1', 'tom2', 'floor']) {
+    const p = strikePoint(L, lane);
+    assert.ok(p && p[0] >= 0 && p[0] <= 1600 && p[1] >= 0 && p[1] <= 900, lane);
+  }
+  // cymbals stay inside the box and clear of each other
+  const cym = [L.china, L.crash, L.crash2, L.ride];
+  for (const c of cym) assert.ok(c.x - c.r >= 0 && c.x + c.r <= 1600, 'inside');
+  for (let i = 0; i < cym.length; i++) for (let j = i + 1; j < cym.length; j++) assert.ok(Math.hypot(cym[i].x - cym[j].x, (cym[i].y - cym[j].y) * 4) > (cym[i].r + cym[j].r) * 0.8, `${i}-${j}`);
+  // lane styles show the whole kit for a Guitar Pro part, only the found lanes for a stem
+  assert.equal(chartLanes({ source: 'gp' }, { lanes: ['kick'] }).length, 10);
+  assert.deepEqual(chartLanes({ source: 'audio' }, { lanes: ['kick', 'snare'] }), ['kick', 'snare']);
+  assert.equal(chartLanes({ source: 'gp', allLanes: false }, { lanes: ['kick'] }).length, 1);
+  // older projects: new toms take the old tom colour, crash 2 and china the crash colour
+  assert.equal(laneColorOf({ colors: { tom: '#123456' } }, 'floor'), '#123456');
+  assert.equal(laneColorOf({ colors: { crash: '#abcdef' } }, 'china'), '#abcdef');
+  assert.equal(laneColorOf({ colors: { china: '#000001', crash: '#abcdef' } }, 'china'), '#000001');
+});
+
+test('blackout is all black and grey', () => {
+  const look = lookOf('blackout');
+  const grey = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    return Math.max(r, g, b) - Math.min(r, g, b) <= 8;
+  };
+  for (const c of [look.wrap.base, look.wrap.reso, look.wrap.ink, look.light, look.rug, look.glow]) assert.ok(grey(c), c);
+  assert.equal(kitDoubleKick({ kitFinish: 'blackout' }), true);
+});
