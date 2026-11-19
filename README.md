@@ -1,8 +1,9 @@
 # Promo Studio
 
-A browser-based editor for short promo videos for new song releases (Reels, TikTok, Shorts).
-Everything runs in your browser. Your files are not uploaded anywhere; projects and media are
-saved in the browser (localStorage + IndexedDB) and restored when you come back.
+A band manager and a video editor for short promos (Reels, TikTok, Shorts), in one browser app.
+Switch between them at the top: **Manager** plans songs, releases, shows and content; **Video Studio**
+makes the promos. Everything runs in your browser. Your files are not uploaded anywhere; projects and
+media are saved in the browser (localStorage + IndexedDB) and restored when you come back.
 
 ## Run it
 
@@ -14,6 +15,22 @@ PORT=9000 npm start  # different port
 No `npm install` is needed: there are no dependencies. Use a recent Chrome or Edge for MP4 export
 (Firefox exports WebM). Since the app is plain static files, it can also be hosted on Netlify or
 any other static host.
+
+## Manager
+
+The Manager workspace keeps the band's plans. It has its own undo (Ctrl+Z), saves in this browser, and
+**Back up / Restore** (bottom left) moves everything to another computer or bandmate as one file.
+
+| Page | What it does |
+|---|---|
+| **Home** | The next show and the next release (with checklist progress), what's working in your content, anything overdue, and the next two weeks day by day |
+| **Songs** | A page per song. *Overview*: status, release date, BPM, key, links, the song file. *Lyrics*: the words, and the lines that work best as on-screen hooks. *Video shoot*: music video concepts from the lyrics (with the words they came from), then the plan (date, call time, locations, crew, shot list, wardrobe, props, budget) and a printable call sheet. *Release*: a 22-step checklist counted back from release day (upload 5 weeks ahead, Spotify editorial pitch 30 days ahead, pre-save, press, short-form batch, premiere, follow-ups); change the date and every task moves. *Content*: a short-form plan around release day from the posting playbook. **Make a promo** puts the song's title, lyrics and file into the Video Studio. |
+| **Shows** | Upcoming and past shows: date, status, venue, load-in, doors, set time, billing, tickets, deal, contact, notes, lineup, setlist, a to-do list counted back from the show (pitch, confirm, flyer, tickets, promo posts, advance, settle), the settlement (pay, merch, costs, net) and a summary to paste in the band chat |
+| **Show planner** | *Venues*: a researched starter list of 29 Seattle-area rooms (Seattle, Tacoma, Everett, Bellingham, Olympia) with capacity, ages, genres, how each one says to book, the booking email or form, links and sources. Filter by size, city and all-ages, enter how many people you bring to see which rooms fit, and write a **pitch email** from your profile, songs and dates (copy it or open it in your email app). *Bands*: scene bands with their official accounts. *Build a show*: pick a date, a room and bands, see the break-even and the expected crowd, and create the show with its to-do list. *Contacts*: promoters, sound, photo, press, radio and curators. Researched entries say "Check before you reach out" until you tick them. |
+| **Content** | Every planned and posted short across songs: type, app, status, link and stats. Paste a YouTube or Shorts link and **Fetch YouTube stats** reads views, likes, comments and length with a free YouTube Data API key. TikTok and Instagram only share stats with approved apps, so type the numbers from the post's insights, or **Import stats (CSV)** from TikTok Studio or Meta Business Suite exports (rows are matched to your posts by link). *What works best* ranks types of post, apps, days and lengths by shares, saves, comments and likes per view, and says it in plain words. |
+| **Calendar** | Shows, releases, shoots, posts and to-dos on a month grid; **Download for my calendar (.ics)** imports into Google Calendar, Apple Calendar or Outlook |
+| **Press kit** | The band profile (bio, highlights, genres, "for fans of", links, members, press quotes, booking contact, up to four photos) with a live preview, **Download press kit** (one self-contained HTML page) and **Copy short bio** |
+| **Money** | A ledger of money in and out plus every show's settlement, totals for the year, by category and by month, each release's spend against its budget, and a CSV download |
 
 ## How it's laid out
 
@@ -370,6 +387,13 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/lyricideas.js` | Theme, visualizer, display and line-look ideas from the lyrics |
 | `js/mytemplates.js` | Save, apply, export and import your own templates |
 | `js/soundpack.js`, `sounds/pack/` | The bundled CC0 sound pack and its search |
+| `js/manager/shell.js` | The Manager workspace: nav, store, backup and restore |
+| `js/manager/model.js` | Songs, shows, the release checklist, the agenda and backups (unit tested) |
+| `js/manager/ideas.js` | Music video concepts, hook lines and post plans from the lyrics |
+| `js/manager/planner.js`, `seed.js` | Venues, bands, contacts, pitch emails, show to-dos; the researched starter lists |
+| `js/manager/content.js` | Post links, YouTube stats, CSV import and the what-works comparison |
+| `js/manager/extras.js` | Calendar (.ics), the press kit and money totals |
+| `js/manager/page-*.js`, `planner-tabs.js` | The Manager pages |
 | `js/themes.js` | The six dark themes and how they restyle a project |
 | `js/linestyle.js` | Per-line lyric looks (presets and overrides) |
 | `js/panel-layers.js` | Layers panel |
