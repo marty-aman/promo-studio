@@ -26,6 +26,7 @@ import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSetti
 import { buildLayersPanel, makeLayer, TAB_ACCEPT } from './panel-layers.js';
 import { lyricIdeas, applyLyricIdea } from './lyricideas.js';
 import { tipSettings, saveTipSettings } from './panel-tips.js';
+import { createKeyframeUI } from './panel-kf.js';
 import { templateFromProject, applyMyTemplate, templateFile, parseTemplateFile, describeTemplate } from './mytemplates.js';
 import { bgRemoveSection } from './panel-bgremove.js';
 import { buildSuggestPanel, hasNewSuggestions } from './panel-suggest.js';
@@ -76,6 +77,7 @@ const LYRIC_PRESETS = {
 
 export function createPanels({ store, engine, ui }) {
   const settings = loadSettings();
+  const kf = createKeyframeUI({ store, engine });
   const sync = { active: false, cursor: 0 };
 
   // -------------------------------------------------------------- media actions
@@ -245,7 +247,7 @@ export function createPanels({ store, engine, ui }) {
     }
     return TAB_ALIASES[id] || [id];
   }
-  const layerCtx = () => ({ store, engine, ui, importFiles, fontOptions });
+  const layerCtx = () => ({ store, engine, ui, importFiles, fontOptions, kf });
 
   // ---------------------------------------------------------------- START (stacked ideas)
   function buildStart(b) {
@@ -2132,20 +2134,18 @@ export function createPanels({ store, engine, ui }) {
         section(
           'Frame',
           b.segmented('Fit', () => G().fit, c((x, v) => (x.fit = v)), [['cover', 'Fill'], ['contain', 'Fit'], ['blurfill', 'Fit + blur']]),
-          b.range('Zoom', () => G().zoom, c((x, v) => (x.zoom = v)), { min: 0.2, max: 4, step: 0.01, fmt: (v) => `${v.toFixed(2)}×` }),
-          h('div', { class: 'grid2' },
-            b.range('Position X', () => G().posX || 0, c((x, v) => (x.posX = v)), { min: -1, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 50)}%` }),
-            b.range('Position Y', () => G().posY || 0, c((x, v) => (x.posY = v)), { min: -1, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 50)}%` }),
-          ),
+          kf.range(b, sel, 'zoom'),
+          h('div', { class: 'grid2' }, kf.range(b, sel, 'posX'), kf.range(b, sel, 'posY')),
           h('div', { class: 'grid2' },
             b.range('Pan inside X', () => G().panX, c((x, v) => (x.panX = v)), { min: -1, max: 1, step: 0.01, fmt: (v) => v.toFixed(2) }),
             b.range('Pan inside Y', () => G().panY, c((x, v) => (x.panY = v)), { min: -1, max: 1, step: 0.01, fmt: (v) => v.toFixed(2) }),
           ),
-          b.range('Rotate', () => G().rotate, c((x, v) => (x.rotate = v)), { min: -180, max: 180, step: 1, fmt: (v) => `${v}°` }),
+          kf.range(b, sel, 'rotate'),
           b.toggle('Mirror', () => G().flip, c((x, v) => (x.flip = v))),
           h('p', { class: 'muted tiny' }, 'Zoom below 1× or move the picture to show a blurred copy behind it (picture-in-picture look). “Pan inside” moves the image within the frame when it is zoomed in.'),
           button('Reset framing', () => store.update(c((x) => Object.assign(x, { zoom: 1, posX: 0, posY: 0, panX: 0, panY: 0, rotate: 0, flip: false }))), { variant: 'ghost sm' }),
         ),
+        kf.animateSection(b, sel, { skip: ['posX', 'posY', 'zoom', 'rotate', 'grade.exposure', 'grade.contrast', 'grade.saturation'], title: 'Animate (keyframes)' }),
         rec ? bgRemoveSection({ store, media, actions, b, c, G, rec }) : null,
         section(
           'Motion (keyframes)',
@@ -2197,9 +2197,7 @@ export function createPanels({ store, engine, ui }) {
             const { label, ...vals } = g;
             x.grade = k === 'none' ? null : { preset: k, ...vals };
           })), { variant: `chip${(clip.grade?.preset || 'none') === k ? ' on' : ''}` }))),
-          ...[['exposure', 'Exposure', 0.4, 1.6], ['contrast', 'Contrast', 0.5, 1.8], ['saturation', 'Saturation', 0, 2]].map(([k, label, min, max]) =>
-            b.range(label, () => G().grade?.[k] ?? 1, c((x, v) => (x.grade = { ...(x.grade || {}), preset: 'custom', [k]: v })), { min, max, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
-          ),
+          ...['exposure', 'contrast', 'saturation'].map((k) => kf.range(b, sel, `grade.${k}`, { fmt: (v) => `${Math.round(v * 100)}%`, write: (x, v) => (x.grade = { ...(x.grade || {}), preset: 'custom', [k]: v }) })),
           h('div', { class: 'grid2' },
             b.range('Temperature', () => G().grade?.temperature || 0, c((x, v) => (x.grade = { ...(x.grade || {}), preset: 'custom', temperature: v })), { min: -1, max: 1, step: 0.01, fmt: (v) => (v > 0 ? `Warm ${Math.round(v * 100)}` : v < 0 ? `Cool ${Math.round(-v * 100)}` : '0') }),
             b.range('Tint', () => G().grade?.tint || 0, c((x, v) => (x.grade = { ...(x.grade || {}), preset: 'custom', tint: v })), { min: -1, max: 1, step: 0.01, fmt: (v) => (v > 0 ? `Magenta ${Math.round(v * 100)}` : v < 0 ? `Green ${Math.round(-v * 100)}` : '0') }),
@@ -2302,9 +2300,10 @@ export function createPanels({ store, engine, ui }) {
           }, { iconName: 'plus', variant: 'sm' }),
           iconButton('trash', 'Delete line', () => ui.deleteSelection(), 'ghost danger'),
         ),
-        b.range('This line’s height', () => get()?.y ?? store.get().lyricStyle.y, L((x, v) => (x.y = v)), { min: 5, max: 95, step: 1, fmt: (v) => `${v}%` }),
+        kf.range(b, sel, 'y', { label: 'This line’s height', def: store.get().lyricStyle.y }),
         button('Use the shared height', () => store.update(L((x) => delete x.y)), { variant: 'ghost sm' }),
         lineLookSection(b, L, get, l),
+        kf.animateSection(b, sel, { skip: ['y'], write: { size: (x, v) => (x.style = { ...(x.style || {}), size: v }) }, defs: { x: store.get().lyricStyle.x ?? 50, size: (l.style && l.style.size) || store.get().lyricStyle.size } }),
       );
     }
     if (sel.type === 'text') {
@@ -2323,12 +2322,13 @@ export function createPanels({ store, engine, ui }) {
         h('div', { class: 'grid2' }, b.number('Start (s)', () => get().start, T((x, v) => ((x.start = v), x.end <= v && (x.end = v + 0.5))), { min: 0, step: 0.05 }), b.number('End (s)', () => get().end, T((x, v) => (x.end = Math.max(x.start + 0.1, v))), { min: 0, step: 0.05 })),
         b.select('Font', () => get().font, T((x, v) => (x.font = v)), fontOptions()),
         b.select('Animation', () => get().animation, T((x, v) => (x.animation = v)), ANIMATIONS.filter(([k]) => k !== 'karaoke')),
-        b.range('Size', () => get().size, T((x, v) => (x.size = v)), { min: 2, max: 25, step: 0.1, fmt: (v) => v.toFixed(1) }),
-        b.range('Left/right', () => get().x, T((x, v) => (x.x = v)), { min: 0, max: 100, step: 1, fmt: (v) => `${v}%` }),
-        b.range('Up/down', () => get().y, T((x, v) => (x.y = v)), { min: 0, max: 100, step: 1, fmt: (v) => `${v}%` }),
+        kf.range(b, sel, 'size', { label: 'Size', min: 2 }),
+        kf.range(b, sel, 'x', { label: 'Left/right' }),
+        kf.range(b, sel, 'y', { label: 'Up/down' }),
         h('div', { class: 'grid2' }, b.color('Text', () => get().color, T((x, v) => (x.color = v))), b.color('Outline', () => get().outline, T((x, v) => (x.outline = v)))),
         b.toggle('Background box', () => get().box, T((x, v) => (x.box = v))),
         h('div', { class: 'grid2' }, b.color('Box', () => get().boxColor, T((x, v) => (x.boxColor = v))), b.range('Box opacity', () => get().boxOpacity, T((x, v) => (x.boxOpacity = v)), { min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` })),
+        kf.animateSection(b, sel, { skip: ['x', 'y', 'size'] }),
         h('div', { class: 'row' }, button('Duplicate', () => store.update((d) => d.texts.push({ ...structuredClone(get()), id: uid('txt'), start: get().end, end: get().end + (get().end - get().start) })), { iconName: 'copy', variant: 'sm' }), iconButton('trash', 'Delete text', () => ui.deleteSelection(), 'ghost danger')),
       );
     }

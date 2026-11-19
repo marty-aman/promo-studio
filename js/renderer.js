@@ -20,6 +20,7 @@ import { drawLyricDisplay } from './lyricviz.js';
 import { lineStyle } from './linestyle.js';
 import { drawBackdrop } from './backgrounds.js';
 import { blurred } from './canvasfx.js';
+import { animate } from './keyframes.js';
 
 // what the frame being rendered needs deep inside drawClip (set at the start of renderFrame)
 const FRAME = { env: null, t: 0, beat: 0 };
@@ -242,8 +243,9 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
       break;
     default:
   }
-  ctx.globalAlpha *= alpha;
+  ctx.globalAlpha *= alpha * (style.opacity ?? 1);
   ctx.translate(cx, cy + dy);
+  rot += ((style.rotate || 0) * Math.PI) / 180;
   if (rot) ctx.rotate(rot);
   ctx.scale(scale, scale * scaleY);
 
@@ -599,8 +601,11 @@ function applyGradeWash(ctx, W, H, gr) {
 }
 
 /** extra: { alpha, dx, dy, zoom, blur, rot (deg) } on top of the clip's own framing. */
-function drawClip(ctx, W, H, clip, local, src, extra = {}) {
+function drawClip(ctx, W, H, clip0, local, src, extra0 = {}) {
   if (!hasFrame(src)) return false;
+  // keyframed properties take their value at this moment; opacity and blur add to the effect's own
+  const clip = animate(clip0, local);
+  const extra = clip === clip0 && clip.opacity == null && !clip.blur ? extra0 : { ...extra0, alpha: (extra0.alpha ?? 1) * (clip.opacity ?? 1), blur: (extra0.blur || 0) + (clip.blur || 0) };
   const m = clipMotion(clip, local);
   const mask = clip.mask && clip.mask.shape && clip.mask.shape !== 'none' ? clip.mask : null;
   const filter = filterString(clip.filter, extra.blur || 0, clip.grade);
@@ -1020,8 +1025,9 @@ function drawLook(ctx, W, H, look, t, beat) {
 
 
 function drawTexts(ctx, W, H, texts, t, beat = 0, releaseDate = '') {
-  for (const tx of texts) {
-    if (t < tx.start || t >= tx.end) continue;
+  for (const tx0 of texts) {
+    if (t < tx0.start || t >= tx0.end) continue;
+    const tx = animate(tx0, t - tx0.start);
     drawAnimatedText(
       ctx,
       /\{(date|countdown)\}/i.test(tx.text) ? ctaText(tx.text, releaseDate) : tx.text,
@@ -1042,6 +1048,8 @@ function drawTexts(ctx, W, H, texts, t, beat = 0, releaseDate = '') {
         uppercase: false,
         maxW: W * 0.88,
         animation: tx.animation,
+        opacity: tx.opacity,
+        rotate: tx.rotate,
       },
       t - tx.start,
       tx.end - tx.start,
@@ -1053,16 +1061,18 @@ function drawTexts(ctx, W, H, texts, t, beat = 0, releaseDate = '') {
 function drawLyrics(ctx, W, H, project, t, beat = 0) {
   const ts = timelineToSong(t, project.song);
   if (drawLyricDisplay(ctx, W, H, project.lyrics, project.lyricStyle, ts, beat, project.theme)) return;
-  const line = activeLyric(project.lyrics, ts);
-  if (!line) return;
-  const s = lineStyle(project.lyricStyle, line, project.theme);
+  const line0 = activeLyric(project.lyrics, ts);
+  if (!line0) return;
+  const line = animate(line0, ts - line0.start);
+  const s0 = lineStyle(project.lyricStyle, line, project.theme);
+  const s = line.keys && line.keys.size ? { ...s0, size: line.size } : s0;
   const y = clamp(line.y ?? s.y, 5, 95);
   drawAnimatedText(
     ctx,
     line.text,
     (W * (line.x ?? s.x ?? 50)) / 100,
     (H * y) / 100,
-    { ...s, sizePx: (W * s.size) / 100, maxW: (W * s.maxWidth) / 100 },
+    { ...s, sizePx: (W * s.size) / 100, maxW: (W * s.maxWidth) / 100, opacity: line.opacity, rotate: line.rotate },
     ts - line.start,
     line.end - line.start,
     beat,
@@ -1367,13 +1377,21 @@ export function renderFrame(ctx, W, H, project, t, env) {
 
   if (isVisible(project, 'video')) drawVideoLane(ctx, W, H, project, t, env);
   // video layers sit directly on the picture, so the look (vignette, grain…) covers them too
-  for (const l of layers) if (l.type === 'video') drawVideoLayer(ctx, W, H, l, t, env);
+  for (const l of layers) if (l.type === 'video') drawVideoLayer(ctx, W, H, animate(l, t - (l.start || 0)), t, env);
   drawLook(ctx, W, H, project.look, t, beat);
   // graphics layers in stack order
-  for (const l of layers) {
-    if (l.type === 'viz' && env.viz) drawViz(ctx, W, H, l, env.viz(l), t, songT, visEnd);
+  for (const l0 of layers) {
+    if (l0.type === 'video') continue;
+    const l = animate(l0, t - (l0.start || 0));
+    const fadeOwn = l.type !== 'viz' && l.opacity != null && l.opacity < 1; // viz layers apply their own opacity
+    if (fadeOwn) {
+      ctx.save();
+      ctx.globalAlpha *= Math.max(0, l.opacity);
+    }
+    if (l.type === 'viz' && env.viz) drawViz(ctx, W, H, l, env.viz(l0), t, songT, visEnd);
     else if (l.type === 'tab' && env.tab && l.mediaId) drawTab(ctx, W, H, l, env.tab(l.mediaId, l.track), t, songT, visEnd);
-    else if (l.type === 'drums' && env.drums) drawDrums(ctx, W, H, l, env.drums(l), t, songT, visEnd, project.beats && project.beats.period);
+    else if (l.type === 'drums' && env.drums) drawDrums(ctx, W, H, l, env.drums(l0), t, songT, visEnd, project.beats && project.beats.period);
+    if (fadeOwn) ctx.restore();
   }
   if (isVisible(project, 'text')) drawTexts(ctx, W, H, project.texts, t, beat, project.endCard.releaseDate);
   if (t < ecStart && isVisible(project, 'lyrics')) drawLyrics(ctx, W, H, project, t, beat);

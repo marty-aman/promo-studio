@@ -12,6 +12,7 @@ import { buildTabStudio } from './page-tabstudio.js';
 import { buildCarouselPage } from './page-carousel.js';
 import { createPostCheck } from './panel-postcheck.js';
 import { createTips } from './panel-tips.js';
+import { kfTarget, kfSignature } from './panel-kf.js';
 import { createManager } from './manager/shell.js';
 import { applyTheme, themeById } from './themes.js';
 import { loadSettings } from './state.js';
@@ -300,7 +301,7 @@ function leftSignature() {
       JSON.stringify(p.layerVis || {}),
       p.audioTracks.length,
       ui.selection && ui.selection.id,
-      L && [L.mediaId, L.source, L.track, L.mode, L.style, L.playAudio, L.type === 'video' ? L.clips.length : ''].join(','),
+      L && [L.mediaId, L.source, L.track, L.mode, L.style, L.playAudio, L.type === 'video' ? L.clips.length : '', kfSignature(L)].join(','),
       p.beats && p.beats.bpm,
     );
   }
@@ -325,7 +326,8 @@ function inspSignature() {
     (s.type === 'text' && p.texts.some((c) => c.id === s.id)) ||
     (s.type === 'audio' && p.audioTracks.some((c) => c.id === s.id)) ||
     s.type;
-  return `${s.type}#${s.id}#${exists}`;
+  const tg = kfTarget(p, s);
+  return `${s.type}#${s.id}#${exists}#${tg ? kfSignature(tg.item) : ''}`;
 }
 
 function keepScroll(el, fn) {
@@ -401,7 +403,15 @@ media.onChange(() => {
   if (railSignature() !== railSig) renderRail();
 });
 
+let kfRefresh = 0;
 engine.on(() => {
+  // keyframe sliders and diamonds follow the playhead (when paused; every ~100 ms while playing)
+  const nowMs = performance.now();
+  if (!engine.playing || nowMs - kfRefresh > 100) {
+    kfRefresh = nowMs;
+    if (inspBinder) inspBinder.refresh();
+    if (leftBinder && ui.selection && ui.selection.type === 'layer') leftBinder.refresh();
+  }
   timeLabel.textContent = `${formatTime(engine.t)} / ${formatTime(store.get().duration)}`;
   playBtn.replaceChildren(icon(engine.playing ? 'pause' : 'play', 22));
   playBtn.setAttribute('aria-label', engine.playing ? 'Pause' : 'Play');
