@@ -3,25 +3,104 @@
 import { timedBeats } from './tab.js';
 import { glowPass, frost } from './canvasfx.js';
 import { energyEnvelope } from './core.js';
+import { kitLayout, drawStageKit, kitDoubleKick, KIT_TOMS } from './drumkit.js';
 
 export const LANES = [
-  { id: 'crash', label: 'Crash', color: '#ff8c42' },
+  { id: 'china', label: 'China', color: '#f472b6' },
+  { id: 'crash', label: 'Crash 1', color: '#ff8c42' },
+  { id: 'crash2', label: 'Crash 2', color: '#fbbf24' },
   { id: 'ride', label: 'Ride', color: '#5eead4' },
   { id: 'hihat', label: 'Hi-hat', color: '#4dd2ff' },
-  { id: 'tom', label: 'Toms', color: '#a78bfa' },
+  { id: 'tom1', label: 'High tom', color: '#c4b5fd' },
+  { id: 'tom2', label: 'Mid tom', color: '#a78bfa' },
+  { id: 'floor', label: 'Floor tom', color: '#818cf8' },
   { id: 'snare', label: 'Snare', color: '#ffd400' },
   { id: 'kick', label: 'Kick', color: '#ff4d6d' },
 ];
+/** Lanes added later take the colour a project already set for the lane they came from. */
+export const LANE_FALLBACK = { tom1: 'tom', tom2: 'tom', floor: 'tom', crash2: 'crash', china: 'crash' };
+export const TOM_LANES = ['tom1', 'tom2', 'floor'];
+export const CYMBAL_LANES = ['china', 'crash', 'crash2', 'ride'];
 
 /** General MIDI drum number -> lane id (null for sounds we do not chart). */
 export function midiToLane(m) {
   if (m === 35 || m === 36) return 'kick';
   if (m >= 37 && m <= 40) return 'snare';
   if (m === 42 || m === 44 || m === 46) return 'hihat';
-  if ([41, 43, 45, 47, 48, 50].includes(m)) return 'tom';
-  if ([49, 52, 55, 57].includes(m)) return 'crash';
+  if (m === 48 || m === 50) return 'tom1'; // high and high-mid tom
+  if (m === 45 || m === 47) return 'tom2'; // low-mid and low tom
+  if (m === 41 || m === 43) return 'floor'; // low and high floor tom
+  if (m === 49) return 'crash';
+  if (m === 57 || m === 55) return 'crash2'; // crash 2 (and the splash)
+  if (m === 52) return 'china';
   if ([51, 53, 59].includes(m)) return 'ride';
   return null;
+}
+
+/**
+ * The lanes a lane-based style draws: the whole kit (so every drum and cymbal has its place) for a
+ * Guitar Pro chart, or only the lanes that have hits for a drum stem (which only finds kick, snare
+ * and hi-hat). `layer.allLanes` overrides. Pieces turned off in the kit are left out either way.
+ */
+export function chartLanes(layer, data) {
+  const all = layer.allLanes ?? layer.source !== 'audio';
+  const on = (id) => pieceOn(layer, id);
+  if (all) return LANES.map((l) => l.id).filter(on);
+  const found = (data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat']).filter(on);
+  return found.length ? found : ['kick'];
+}
+
+// ---- which pieces are in the kit (layer.kitPieces: { id: false } turns one off)
+
+/** The kick is always in the kit; everything else can be turned off. */
+export const FIXED_PIECES = ['kick'];
+/** Quick kit setups: [label, pieces that are off]. */
+export const KIT_PRESETS = {
+  full: ['Full kit', []],
+  five: ['5-piece, crash and ride', ['china', 'crash2']],
+  four: ['4-piece', ['china', 'crash2', 'tom2']],
+  nochina: ['Full kit, no china', ['china']],
+};
+export const pieceOn = (layer, id) => FIXED_PIECES.includes(id) || (layer.kitPieces || {})[id] !== false;
+/** Where a turned-off piece's hits go, closest first. */
+export const PIECE_STANDINS = {
+  china: ['crash2', 'crash', 'ride'],
+  crash: ['crash2', 'china', 'ride'],
+  crash2: ['crash', 'china', 'ride'],
+  ride: ['crash', 'crash2', 'hihat'],
+  hihat: ['ride', 'crash'],
+  tom1: ['tom2', 'floor'],
+  tom2: ['tom1', 'floor'],
+  floor: ['tom2', 'tom1'],
+  snare: [],
+};
+/** The lane a hit is drawn on with this kit, or null when it has nowhere to go. */
+export function kitLane(layer, lane) {
+  if (pieceOn(layer, lane)) return lane;
+  return (PIECE_STANDINS[lane] || []).find((x) => pieceOn(layer, x)) || null;
+}
+const kitCache = new WeakMap();
+/** The chart with hits moved to the pieces that are in the kit (cached per chart and kit). */
+export function withKit(layer, data) {
+  const pieces = layer.kitPieces || {};
+  if (!Object.values(pieces).includes(false)) return data;
+  const key = JSON.stringify(pieces);
+  const hit = kitCache.get(data);
+  if (hit && hit.key === key) return hit.out;
+  const hits = [];
+  for (const h of data.hits) {
+    const lane = kitLane(layer, h.lane);
+    if (lane) hits.push(lane === h.lane ? h : { ...h, lane });
+  }
+  const present = new Set(hits.map((h) => h.lane));
+  const out = { ...data, hits, lanes: LANES.filter((l) => present.has(l.id)).map((l) => l.id) };
+  kitCache.set(data, { key, out });
+  return out;
+}
+
+export function laneColorOf(layer, id) {
+  const c = layer.colors || {};
+  return c[id] || (LANE_FALLBACK[id] && c[LANE_FALLBACK[id]]) || (LANES.find((l) => l.id === id) || {}).color || '#ffffff';
 }
 
 export function drumTracks(score) {
@@ -165,6 +244,15 @@ const rgba = (hex, a) => {
   const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || '');
   return m ? `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${a})` : `rgba(255,255,255,${a})`;
 };
+/** Mix two #rrggbb colours (k = 0 gives a, 1 gives b). */
+const mixHex = (a, b, k) => {
+  const p = (h) => {
+    const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(h || '');
+    return m ? [1, 2, 3].map((i) => parseInt(m[i], 16)) : [255, 255, 255];
+  };
+  const [x, y] = [p(a), p(b)];
+  return `#${x.map((v, i) => Math.round(v + (y[i] - v) * k).toString(16).padStart(2, '0')).join('')}`;
+};
 function rrect(ctx, x, y, w, h, r) {
   const rr = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
@@ -199,6 +287,8 @@ function barAt(data, t, beatPeriod) {
 
 export function drawDrums(ctx, W, H, layer, data, t, songTime, visibleEnd, beatPeriod) {
   if (!data || !data.hits.length) return;
+  data = withKit(layer, data);
+  if (!data.hits.length) return;
   const end = layer.end ?? visibleEnd;
   if (t < (layer.start || 0) || t >= end) return;
   if (FANCY[layer.style]) {
@@ -214,8 +304,8 @@ export function drawDrums(ctx, W, H, layer, data, t, songTime, visibleEnd, beatP
   }
   const fade = Math.min(1, (t - (layer.start || 0)) / 0.3, (end - t) / 0.3);
   const dt = (songTime - layer.offset) * (layer.tempoScale || 1);
-  const lanes = data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat'];
-  const color = (id) => (layer.colors && layer.colors[id]) || (LANES.find((l) => l.id === id) || {}).color || '#fff';
+  const lanes = chartLanes(layer, data);
+  const color = (id) => laneColorOf(layer, id);
   const label = (id) => (LANES.find((l) => l.id === id) || {}).label || id;
 
   const bw = (W * layer.width) / 100;
@@ -486,7 +576,7 @@ export const STYLE_PLACEMENT = {
 export const DRUM_CHROME = { bg0: '#05030f', bg1: '#140a2e', bg2: '#230b3d', road: '#0a061e', grid: '#a078ff', glow: '#ff5ac8', edge: '#c8a0ff', shell: '#1e1830', kickShell: '#1e0e18' };
 const chromeOf = (layer) => ({ ...DRUM_CHROME, ...(layer.chrome || {}) });
 
-const laneColor = (layer, id) => (layer.colors && layer.colors[id]) || (LANES.find((l) => l.id === id) || {}).color || '#ffffff';
+const laneColor = laneColorOf;
 const laneLabel = (id) => (LANES.find((l) => l.id === id) || {}).label || id;
 const fract = (x) => x - Math.floor(x);
 const rnd = (n) => fract(Math.sin(n * 12.9898 + 78.233) * 43758.5453);
@@ -513,8 +603,8 @@ function box(W, H, layer) {
 function drawNeon(ctx, W, H, layer, data, dt, { shownFrom }) {
   const { bw, bh, bx, by } = box(W, H, layer);
   const C = chromeOf(layer);
-  const lanes = (data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat']).filter((l) => l !== 'kick');
-  const hasKick = data.lanes.includes('kick');
+  const lanes = chartLanes(layer, data).filter((l) => l !== 'kick');
+  const hasKick = chartLanes(layer, data).includes('kick');
   const cols = Math.max(1, lanes.length);
   const horizon = by + bh * 0.06;
   const strike = by + bh * 0.82;
@@ -813,192 +903,346 @@ function drawKit(ctx, W, H, layer, data, dt) {
     const h = recent.get(lane);
     return h ? { e: Math.max(0, Math.exp(-(dt - h.time) * 7)), age: dt - h.time, hit: h } : { e: 0, age: 9, hit: null };
   };
-  // toms share one lane; spread consecutive tom hits over the three toms for fills
-  const tomHit = recent.get('tom');
-  const tomPiece = tomHit ? tomHit.index % 3 : -1;
-
-  // stands
-  ctx.strokeStyle = 'rgba(200,200,220,0.35)';
-  ctx.lineWidth = Math.max(1, U * 0.006);
-  const stand = (x, y1, y2) => {
-    ctx.beginPath();
-    ctx.moveTo(x, y1);
-    ctx.lineTo(x, y2);
-    ctx.stroke();
-  };
-  const [crx, cry] = P(0.14, 0.2);
-  const [rdx, rdy] = P(0.88, 0.22);
-  const [hhx, hhy] = P(0.05, 0.42);
-  stand(crx, cry, by + bh * 0.95);
-  stand(rdx, rdy, by + bh * 0.95);
-  stand(hhx, hhy, by + bh * 0.95);
-
-  const G = glowPass(ctx, bx, by, bw, bh, U * 0.04);
-  const glowEllipse = (x, y, rx, ry, rot, col, e) =>
-    G.add((g) => {
-      g.fillStyle = col;
-      g.globalAlpha = 0.12 + 0.88 * e;
-      g.beginPath();
-      g.ellipse(x, y, rx * (1.1 + 0.25 * e), ry * (1.3 + 0.5 * e), rot, 0, Math.PI * 2);
-      g.fill();
-    });
-  const ripple = (x, y, rx, ry, col, age) => {
-    if (age > 0.5) return;
-    const k = age / 0.5;
-    ctx.strokeStyle = rgba(col, 0.8 * (1 - k));
-    ctx.lineWidth = Math.max(1, U * 0.006 * (1 - k));
-    ctx.beginPath();
-    ctx.ellipse(x, y, rx * (1 + k * 0.9), ry * (1 + k * 0.9), 0, 0, Math.PI * 2);
-    ctx.stroke();
-  };
-  const cymbal = (lane, x, y, rx, tilt) => {
-    const { e, age } = energy(lane);
-    const col = laneColor(layer, lane);
-    const swing = e * 10 * Math.sin(age * 22);
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(((tilt + swing) * Math.PI) / 180);
-    glowEllipse(x, y, rx, rx * 0.16, ((tilt + swing) * Math.PI) / 180, col, e);
-    const g = ctx.createLinearGradient(-rx, 0, rx, 0);
-    g.addColorStop(0, rgba(col, 0.35 + 0.5 * e));
-    g.addColorStop(0.5, rgba('#ffffff', 0.25 + 0.6 * e));
-    g.addColorStop(1, rgba(col, 0.35 + 0.5 * e));
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rx, rx * 0.16, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = rgba('#ffffff', 0.5);
-    ctx.beginPath();
-    ctx.ellipse(0, -rx * 0.03, rx * 0.12, rx * 0.05, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    ripple(x, y, rx, rx * 0.16, col, age);
-  };
-  const drum = (lane, x, y, rx, ry, depth, e, age, label) => {
-    const col = laneColor(layer, lane);
-    const s = 1 + 0.08 * e;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(s, s);
-    // shell
-    ctx.fillStyle = rgba(chromeOf(layer).shell, 0.95);
-    ctx.fillRect(-rx, 0, rx * 2, depth);
-    ctx.beginPath();
-    ctx.ellipse(0, depth, rx, ry, 0, 0, Math.PI);
-    ctx.fill();
-    ctx.strokeStyle = rgba(col, 0.6 + 0.4 * e);
-    ctx.lineWidth = Math.max(1.5, U * 0.007);
-    ctx.strokeRect(-rx, 0, 0, depth);
-    // head
-    glowEllipse(x, y, rx * s, ry * s, 0, col, e);
-    const hg = ctx.createRadialGradient(-rx * 0.3, -ry * 0.3, 0, 0, 0, rx);
-    hg.addColorStop(0, rgba('#ffffff', 0.25 + 0.6 * e));
-    hg.addColorStop(1, rgba(col, 0.25 + 0.6 * e));
-    ctx.fillStyle = hg;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    if (label) {
-      ctx.fillStyle = rgba('#ffffff', 0.7);
-      ctx.font = `700 ${Math.round(U * 0.03)}px Inter, system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.fillText(label, 0, depth + ry + U * 0.035);
-    }
-    ctx.restore();
-    ripple(x, y, rx, ry, col, age);
-  };
-
-  // hi-hat: two plates that clap shut on a hit
-  {
-    const { e, age } = energy('hihat');
-    const col = laneColor(layer, 'hihat');
-    const gap = U * (0.03 - 0.022 * e);
-    for (const dy of [-gap / 2, gap / 2]) {
-      ctx.save();
-      ctx.translate(hhx, hhy + dy);
-      glowEllipse(hhx, hhy + dy, U * 0.1, U * 0.016, 0, col, e);
-      ctx.fillStyle = rgba(col, 0.35 + 0.55 * e);
+  const neonKit = !layer.kitFinish || layer.kitFinish === 'neon';
+  const has = (id) => pieceOn(layer, id);
+  const L = kitLayout(bx, by, bw, bh, { doubleKick: !neonKit && kitDoubleKick(layer), has });
+  const colors = Object.fromEntries(LANES.map((l) => [l.id, laneColor(layer, l.id)]));
+  if (layer.kitFinish && layer.kitFinish !== 'neon') {
+    // double bass: kick hits alternate between the two kicks
+    const kickHit = recent.get('kick');
+    const kickPiece = kickHit ? kickHit.index % 2 : -1;
+    const none = { e: 0, age: 9, hit: null };
+    const hitOf = (lane, piece) => {
+      if (lane === 'kick' && L.kicks.length > 1 && piece != null) return piece === kickPiece ? energy('kick') : none;
+      return energy(lane);
+    };
+    drawStageKit(ctx, L, layer, hitOf, dt, colors);
+  } else {
+    // stands
+    ctx.strokeStyle = 'rgba(200,200,220,0.35)';
+    ctx.lineWidth = Math.max(1, U * 0.006);
+    const stand = (x, y1, y2) => {
       ctx.beginPath();
-      ctx.ellipse(0, 0, U * 0.1, U * 0.016, 0, 0, Math.PI * 2);
+      ctx.moveTo(x, y1);
+      ctx.lineTo(x, y2);
+      ctx.stroke();
+    };
+    const [crx, cry] = [L.crash.x, L.crash.y];
+    const [rdx, rdy] = [L.ride.x, L.ride.y];
+    const [hhx, hhy] = [L.hihat.x, L.hihat.y];
+    if (has('crash')) stand(crx, cry, by + bh * 0.95);
+    if (has('ride')) stand(rdx, rdy, by + bh * 0.95);
+    if (has('hihat')) stand(hhx, hhy, by + bh * 0.95);
+    if (has('crash2')) stand(L.crash2.x, L.crash2.y, by + bh * 0.95);
+    if (has('china')) stand(L.china.x, L.china.y, by + bh * 0.95);
+
+    const G = glowPass(ctx, bx, by, bw, bh, U * 0.04);
+    const glowEllipse = (x, y, rx, ry, rot, col, e) =>
+      G.add((g) => {
+        g.fillStyle = col;
+        g.globalAlpha = 0.12 + 0.88 * e;
+        g.beginPath();
+        g.ellipse(x, y, rx * (1.1 + 0.25 * e), ry * (1.3 + 0.5 * e), rot, 0, Math.PI * 2);
+        g.fill();
+      });
+    const ripple = (x, y, rx, ry, col, age) => {
+      if (age > 0.5) return;
+      const k = age / 0.5;
+      ctx.strokeStyle = rgba(col, 0.8 * (1 - k));
+      ctx.lineWidth = Math.max(1, U * 0.006 * (1 - k));
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx * (1 + k * 0.9), ry * (1 + k * 0.9), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    };
+    const cymbal = (lane, x, y, rx, tilt) => {
+      const { e, age } = energy(lane);
+      const col = laneColor(layer, lane);
+      const swing = e * 10 * Math.sin(age * 22);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(((tilt + swing) * Math.PI) / 180);
+      glowEllipse(x, y, rx, rx * 0.16, ((tilt + swing) * Math.PI) / 180, col, e);
+      const g = ctx.createLinearGradient(-rx, 0, rx, 0);
+      g.addColorStop(0, rgba(col, 0.35 + 0.5 * e));
+      g.addColorStop(0.5, rgba('#ffffff', 0.25 + 0.6 * e));
+      g.addColorStop(1, rgba(col, 0.35 + 0.5 * e));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, rx * 0.16, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = rgba('#ffffff', 0.5);
+      ctx.beginPath();
+      ctx.ellipse(0, -rx * 0.03, rx * 0.12, rx * 0.05, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
+      ripple(x, y, rx, rx * 0.16, col, age);
+    };
+    const METAL = '#c8ccd8';
+    // A drum seen from the front and a little above: a lit cylinder (shell) with lugs, a hoop at
+    // each end and the head on top. The shell takes a dark wrap tinted by the drum's colour.
+    const drum = (lane, x, y, rx, ry, depth, e, age, label) => {
+      const col = laneColor(layer, lane);
+      const wrap = mixHex(chromeOf(layer).shell, col, 0.35);
+      const s = 1 + 0.06 * e;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(s, s);
+      // shell body: the sides plus the front half of the bottom edge
+      const body = () => {
+        ctx.beginPath();
+        ctx.moveTo(-rx, 0);
+        ctx.lineTo(-rx, depth);
+        ctx.ellipse(0, depth, rx, ry, 0, Math.PI, 0, true);
+        ctx.lineTo(rx, 0);
+        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI, false);
+        ctx.closePath();
+      };
+      const sg = ctx.createLinearGradient(-rx, 0, rx, 0);
+      sg.addColorStop(0, mixHex(wrap, '#000000', 0.55));
+      sg.addColorStop(0.28, mixHex(wrap, '#ffffff', 0.28 + 0.3 * e));
+      sg.addColorStop(0.42, wrap);
+      sg.addColorStop(0.85, mixHex(wrap, '#000000', 0.35));
+      sg.addColorStop(1, mixHex(wrap, '#000000', 0.6));
+      ctx.fillStyle = sg;
+      body();
+      ctx.fill();
+      // a thin sheen line down the shell, like a lacquered finish
+      ctx.strokeStyle = rgba('#ffffff', 0.18 + 0.3 * e);
+      ctx.lineWidth = Math.max(1, rx * 0.04);
+      ctx.beginPath();
+      ctx.moveTo(-rx * 0.45, ry * 0.9);
+      ctx.lineTo(-rx * 0.45, depth + ry * 0.9);
+      ctx.stroke();
+      // lugs: small chrome blocks around the front of the shell
+      const lugs = 5;
+      for (let i = 0; i < lugs; i++) {
+        const a = Math.PI * (0.12 + (0.76 * i) / (lugs - 1));
+        const lx = -Math.cos(a) * rx;
+        const ly = Math.sin(a) * ry;
+        const w = Math.max(1.5, rx * 0.07 * Math.sin(a));
+        const top = depth > ry * 2.2 ? depth * 0.22 : depth * 0.12;
+        const len = depth > ry * 2.2 ? depth * 0.56 : depth * 0.76;
+        ctx.fillStyle = rgba(METAL, 0.85);
+        ctx.fillRect(lx - w / 2, ly + top, w, len);
+        ctx.fillStyle = rgba('#ffffff', 0.5);
+        ctx.fillRect(lx - w / 2, ly + top, Math.max(0.5, w * 0.35), len);
+      }
+      // outline in the drum's colour, brighter on a hit
+      ctx.strokeStyle = rgba(col, 0.55 + 0.45 * e);
+      ctx.lineWidth = Math.max(1.2, U * 0.005);
+      body();
+      ctx.stroke();
+      // bottom hoop (front half)
+      ctx.strokeStyle = rgba(METAL, 0.8);
+      ctx.lineWidth = Math.max(1.5, ry * 0.22);
+      ctx.beginPath();
+      ctx.ellipse(0, depth, rx, ry, 0, 0, Math.PI);
+      ctx.stroke();
+      // head
+      glowEllipse(x, y, rx * s, ry * s, 0, col, e);
+      const hg = ctx.createRadialGradient(-rx * 0.3, -ry * 0.3, 0, 0, 0, rx);
+      hg.addColorStop(0, rgba('#ffffff', 0.35 + 0.6 * e));
+      hg.addColorStop(1, rgba(col, 0.3 + 0.6 * e));
+      ctx.fillStyle = hg;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // top hoop
+      ctx.strokeStyle = rgba(METAL, 0.95);
+      ctx.lineWidth = Math.max(1.5, ry * 0.26);
+      ctx.stroke();
+      ctx.strokeStyle = rgba(col, 0.5 + 0.5 * e);
+      ctx.lineWidth = Math.max(1, ry * 0.1);
+      ctx.stroke();
+      if (label) {
+        ctx.fillStyle = rgba('#ffffff', 0.7);
+        ctx.font = `700 ${Math.round(U * 0.03)}px Inter, system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(label, 0, depth + ry + U * 0.04);
+      }
+      ctx.restore();
+      ripple(x, y, rx, ry, col, age);
+    };
+    // hardware under the drums: a tripod for the snare, legs for the floor tom, arms for the rack toms
+    const legs = (x, y0, y1, spread) => {
+      ctx.strokeStyle = rgba(METAL, 0.45);
+      ctx.lineWidth = Math.max(1, U * 0.006);
+      ctx.beginPath();
+      for (const k of [-1, 0, 1]) {
+        ctx.moveTo(x + k * spread * 0.25, y0);
+        ctx.lineTo(x + k * spread, y1);
+      }
+      ctx.stroke();
+    };
+
+    // hi-hat: two plates that clap shut on a hit
+    if (has('hihat')) {
+      const { e, age } = energy('hihat');
+      const col = laneColor(layer, 'hihat');
+      const gap = U * (0.03 - 0.022 * e);
+      for (const dy of [-gap / 2, gap / 2]) {
+        ctx.save();
+        ctx.translate(hhx, hhy + dy);
+        glowEllipse(hhx, hhy + dy, U * 0.1, U * 0.016, 0, col, e);
+        ctx.fillStyle = rgba(col, 0.35 + 0.55 * e);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, U * 0.1, U * 0.016, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ripple(hhx, hhy, U * 0.1, U * 0.016, col, age);
     }
-    ripple(hhx, hhy, U * 0.1, U * 0.016, col, age);
-  }
-  cymbal('crash', crx, cry, U * 0.15, -12);
-  cymbal('ride', rdx, rdy, U * 0.16, 10);
+    if (has('china')) cymbal('china', L.china.x, L.china.y, L.china.r, L.china.tilt);
+    if (has('crash2')) cymbal('crash2', L.crash2.x, L.crash2.y, L.crash2.r, L.crash2.tilt);
+    if (has('crash')) cymbal('crash', crx, cry, L.crash.r, L.crash.tilt);
+    if (has('ride')) cymbal('ride', rdx, rdy, L.ride.r, L.ride.tilt);
 
-  const tom = energy('tom');
-  const tomE = (i) => (i === tomPiece ? tom.e : 0);
-  const tomAge = (i) => (i === tomPiece ? tom.age : 9);
-  const [t1x, t1y] = P(0.38, 0.36);
-  const [t2x, t2y] = P(0.62, 0.36);
-  drum('tom', t1x, t1y, U * 0.075, U * 0.032, U * 0.06, tomE(0), tomAge(0));
-  drum('tom', t2x, t2y, U * 0.075, U * 0.032, U * 0.06, tomE(1), tomAge(1));
-  const [ftx, fty] = P(0.8, 0.6);
-  drum('tom', ftx, fty, U * 0.1, U * 0.04, U * 0.14, tomE(2), tomAge(2), layer.showLabels ? 'TOMS' : '');
-  const sn = energy('snare');
-  const [snx, sny] = P(0.22, 0.6);
-  drum('snare', snx, sny, U * 0.095, U * 0.036, U * 0.05, sn.e, sn.age, layer.showLabels ? 'SNARE' : '');
 
-  // kick: front-facing bass drum with the band name
-  {
-    const { e, age } = energy('kick');
-    const col = laneColor(layer, 'kick');
-    const [kx, ky] = P(0.5, 0.7);
-    const r = U * 0.2 * (1 + 0.05 * e);
-    ctx.save();
-    G.add((g) => {
-      g.strokeStyle = col;
-      g.globalAlpha = 0.2 + 0.8 * e;
-      g.lineWidth = U * (0.03 + 0.04 * e);
-      g.beginPath();
-      g.arc(kx, ky, r, 0, Math.PI * 2);
-      g.stroke();
-    });
-    ctx.fillStyle = rgba(chromeOf(layer).kickShell, 0.95);
-    ctx.beginPath();
-    ctx.arc(kx, ky, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineWidth = Math.max(3, U * 0.016);
-    ctx.strokeStyle = rgba(col, 0.7 + 0.3 * e);
-    ctx.stroke();
-    const kg = ctx.createRadialGradient(kx, ky, 0, kx, ky, r);
-    kg.addColorStop(0, rgba(col, 0.5 * e));
-    kg.addColorStop(1, rgba(col, 0.08));
-    ctx.fillStyle = kg;
-    ctx.beginPath();
-    ctx.arc(kx, ky, r * 0.94, 0, Math.PI * 2);
-    ctx.fill();
-    if (layer.kickText) {
-      let fs = r * 0.32;
-      ctx.font = `900 ${Math.round(fs)}px "Bebas Neue", Impact, sans-serif`;
-      while (fs > 6 && ctx.measureText(layer.kickText).width > r * 1.6) {
-        fs *= 0.9;
+    // kick: front-facing bass drum with the band name
+    {
+      const { e, age } = energy('kick');
+      const col = laneColor(layer, 'kick');
+      const [kx, ky] = P(0.5, 0.7);
+      const r = U * 0.2 * (1 + 0.05 * e);
+      ctx.save();
+      G.add((g) => {
+        g.strokeStyle = col;
+        g.globalAlpha = 0.2 + 0.8 * e;
+        g.lineWidth = U * (0.03 + 0.04 * e);
+        g.beginPath();
+        g.arc(kx, ky, r, 0, Math.PI * 2);
+        g.stroke();
+      });
+      // spurs: two legs that keep the kick from rolling
+      ctx.strokeStyle = rgba(METAL, 0.55);
+      ctx.lineWidth = Math.max(1.5, U * 0.008);
+      ctx.beginPath();
+      for (const k of [-1, 1]) {
+        ctx.moveTo(kx + k * r * 0.8, ky + r * 0.45);
+        ctx.lineTo(kx + k * r * 1.18, ky + r * 1.02);
+      }
+      ctx.stroke();
+      // the shell, seen past the hoop: a darker ring with a lit top edge
+      const wrap = mixHex(chromeOf(layer).kickShell, col, 0.3);
+      const sh = ctx.createLinearGradient(kx, ky - r * 1.06, kx, ky + r * 1.06);
+      sh.addColorStop(0, mixHex(wrap, '#ffffff', 0.3 + 0.2 * e));
+      sh.addColorStop(0.5, wrap);
+      sh.addColorStop(1, mixHex(wrap, '#000000', 0.5));
+      ctx.fillStyle = sh;
+      ctx.beginPath();
+      ctx.arc(kx, ky, r * 1.06, 0, Math.PI * 2);
+      ctx.fill();
+      // front head
+      ctx.fillStyle = rgba(chromeOf(layer).kickShell, 0.95);
+      ctx.beginPath();
+      ctx.arc(kx, ky, r * 0.9, 0, Math.PI * 2);
+      ctx.fill();
+      // hoop: chrome with the kick's colour inside it
+      ctx.lineWidth = Math.max(3, U * 0.014);
+      ctx.strokeStyle = rgba(METAL, 0.9);
+      ctx.beginPath();
+      ctx.arc(kx, ky, r * 0.93, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = Math.max(1.5, U * 0.006);
+      ctx.strokeStyle = rgba(col, 0.7 + 0.3 * e);
+      ctx.beginPath();
+      ctx.arc(kx, ky, r * 0.88, 0, Math.PI * 2);
+      ctx.stroke();
+      // tension rods and claws around the hoop
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 + Math.PI / 10;
+        const c = Math.cos(a);
+        const sn2 = Math.sin(a);
+        ctx.strokeStyle = rgba(METAL, 0.85);
+        ctx.lineWidth = Math.max(2, U * 0.01);
+        ctx.beginPath();
+        ctx.moveTo(kx + c * r * 0.91, ky + sn2 * r * 0.91);
+        ctx.lineTo(kx + c * r * 1.05, ky + sn2 * r * 1.05);
+        ctx.stroke();
+      }
+      const kg = ctx.createRadialGradient(kx, ky, 0, kx, ky, r);
+      kg.addColorStop(0, rgba(col, 0.5 * e));
+      kg.addColorStop(1, rgba(col, 0.08));
+      ctx.fillStyle = kg;
+      ctx.beginPath();
+      ctx.arc(kx, ky, r * 0.86, 0, Math.PI * 2);
+      ctx.fill();
+      if (layer.kickText) {
+        let fs = r * 0.32;
         ctx.font = `900 ${Math.round(fs)}px "Bebas Neue", Impact, sans-serif`;
+        while (fs > 6 && ctx.measureText(layer.kickText).width > r * 1.6) {
+          fs *= 0.9;
+          ctx.font = `900 ${Math.round(fs)}px "Bebas Neue", Impact, sans-serif`;
+        }
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = rgba('#ffffff', 0.75 + 0.25 * e);
+        ctx.fillText(layer.kickText.toUpperCase(), kx, ky);
+        if (e > 0.02) {
+          const font = ctx.font;
+          G.add((g) => {
+            g.font = font;
+            g.textAlign = 'center';
+            g.textBaseline = 'middle';
+            g.fillStyle = col;
+            g.globalAlpha = e;
+            g.fillText(layer.kickText.toUpperCase(), kx, ky);
+          });
+        }
       }
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = rgba('#ffffff', 0.75 + 0.25 * e);
-      ctx.fillText(layer.kickText.toUpperCase(), kx, ky);
-      if (e > 0.02) {
-        const font = ctx.font;
-        G.add((g) => {
-          g.font = font;
-          g.textAlign = 'center';
-          g.textBaseline = 'middle';
-          g.fillStyle = col;
-          g.globalAlpha = e;
-          g.fillText(layer.kickText.toUpperCase(), kx, ky);
-        });
-      }
+      ctx.restore();
+      ripple(kx, ky, r, r, col, age);
     }
-    ctx.restore();
-    ripple(kx, ky, r, r, col, age);
-  }
 
-  G.flush(0.9);
+    // rack toms sit on an arm from the top of the kick; snare and floor tom stand beside it
+    const tomHits = KIT_TOMS.map((ln) => energy(ln));
+    const tomE = (i) => tomHits[i].e;
+    const tomAge = (i) => tomHits[i].age;
+    const floor = by + bh * 0.95;
+    const [kx0, ky0] = P(0.5, 0.7);
+    const kTop = ky0 - U * 0.2 * 1.06;
+    // just above the kick's hoop, never higher than the cymbals
+    const tomY = Math.max(by + bh * 0.2, Math.min(by + bh * 0.3, kTop - U * (0.09 + 0.032 + 0.012)));
+    const [t1x] = [L.toms[0].x];
+    const [t2x] = [L.toms[1].x];
+    const t1y = tomY;
+    const t2y = tomY;
+    if (has('tom1') || has('tom2')) {
+      const kx = kx0;
+      ctx.strokeStyle = rgba(METAL, 0.6);
+      ctx.lineWidth = Math.max(1.5, U * 0.009);
+      ctx.beginPath();
+      ctx.moveTo(kx, kTop + U * 0.01);
+      ctx.lineTo(kx, kTop - U * 0.03);
+      if (has('tom1')) ctx.lineTo(t1x, t1y + U * 0.1);
+      ctx.moveTo(kx, kTop - U * 0.03);
+      if (has('tom2')) ctx.lineTo(t2x, t2y + U * 0.1);
+      ctx.stroke();
+    }
+    if (has('tom1')) drum('tom1', t1x, t1y, U * 0.075, U * 0.03, U * 0.085, tomE(0), tomAge(0));
+    if (has('tom2')) drum('tom2', t2x, t2y, U * 0.08, U * 0.032, U * 0.09, tomE(1), tomAge(1));
+    const [ftx, fty] = P(0.8, 0.56);
+    const ftD = U * 0.17;
+    if (has('floor')) {
+      legs(ftx, fty + ftD, floor, U * 0.09);
+      drum('floor', ftx, fty, U * 0.1, U * 0.04, ftD, tomE(2), tomAge(2), layer.showLabels ? 'TOMS' : '');
+    }
+    const sn = energy('snare');
+    const [snx, sny] = P(0.22, 0.58);
+    const snD = U * 0.06;
+    if (has('snare')) {
+      legs(snx, sny + snD + U * 0.04, floor, U * 0.08);
+      ctx.strokeStyle = rgba(METAL, 0.45);
+      ctx.lineWidth = Math.max(1, U * 0.006);
+      ctx.beginPath();
+      ctx.moveTo(snx, sny + snD + U * 0.04);
+      ctx.lineTo(snx, sny + snD);
+      ctx.stroke();
+      drum('snare', snx, sny, U * 0.095, U * 0.036, snD, sn.e, sn.age, layer.showLabels ? 'SNARE' : '');
+    }
+
+    G.flush(0.9);
+  }
 
   // what's coming: a thin strip along the top
   {
@@ -1009,11 +1253,14 @@ function drawKit(ctx, W, H, layer, data, dt) {
     ctx.fillStyle = 'rgba(255,255,255,0.12)';
     rrect(ctx, x0, y - U * 0.008, x1 - x0, U * 0.016, U * 0.008);
     ctx.fill();
+    // Blackout keeps the strip in greys too: lighter for cymbals, darker for drums
+    const mono = layer.kitFinish === 'blackout';
+    const greyOf = (lane) => (['china', 'crash', 'crash2', 'ride', 'hihat'].includes(lane) ? '#d4d4d8' : lane === 'kick' ? '#6e6e74' : '#9e9ea4');
     for (let i = first(data.hits, dt); i < data.hits.length; i++) {
       const h = data.hits[i];
       if (h.time > dt + win) break;
       const x = x0 + ((h.time - dt) / win) * (x1 - x0);
-      ctx.fillStyle = laneColor(layer, h.lane);
+      ctx.fillStyle = mono ? greyOf(h.lane) : laneColor(layer, h.lane);
       ctx.beginPath();
       ctx.arc(x, y, U * 0.012, 0, Math.PI * 2);
       ctx.fill();
@@ -1027,7 +1274,7 @@ function drawKit(ctx, W, H, layer, data, dt) {
 // ---- C: glass lanes
 function drawGlass(ctx, W, H, layer, data, dt, { beatPeriod }) {
   const { bw, bh, bx, by } = box(W, H, layer);
-  const lanes = data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat'];
+  const lanes = chartLanes(layer, data);
   const unit = Math.min(bw, bh);
   const radius = unit * 0.14;
   const G = glowPass(ctx, bx, by, bw, bh, unit * 0.05);

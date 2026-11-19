@@ -31,7 +31,7 @@ theme and logo (set under Press kit → Branding for promos) on the edit. Older 
 | Page | What it does |
 |---|---|
 | **Home** | The next show and the next release (with checklist progress), what's working in your content, anything overdue, and the next two weeks day by day |
-| **Songs** | A page per song. *Overview*: status, release date, BPM, key, links, the song file. *Lyrics*: the words, and the lines that work best as on-screen hooks. *Video shoot*: music video concepts from the lyrics (with the words they came from), then the plan (date, call time, locations, crew, shot list, wardrobe, props, budget) and a printable call sheet. *Release*: a 22-step checklist counted back from release day (upload 5 weeks ahead, Spotify editorial pitch 30 days ahead, pre-save, press, short-form batch, premiere, follow-ups); change the date and every task moves. *Content*: a short-form plan around release day from the posting playbook. *Playlists*: tag the sound (genres, mood, energy, vocals, "for fans of"); the lyric themes are found from the words; get suggested playlists from a built-in list of about 50 editorial playlists on Spotify, Apple Music, Amazon Music and Deezer, each with why it fits and a search link, plus playlist types to search for. Hide built-ins that no longer exist and add your own playlists and curators (shared by every artist). *Press release*: a full release (FOR IMMEDIATE RELEASE … ###), a short version for blogs and a radio/DJ blurb, drafted from the song, the press kit and confirmed shows; add the story, a quote, label and credits, edit any draft, copy it, download it or print it to PDF. *Pitching*: the Spotify for Artists pitch with a live 500-character counter, the pitch deadline (7 days before release) and what to pick in the form; a short note to an independent curator (copy or open in email); and a pitch tracker (status, sent date, follow-up a week later that shows on Home and the Calendar). **Make a promo** puts the song's title, lyrics and file into the Video Studio. |
+| **Songs** | A page per song. *Overview*: status, release date, BPM, key, the song file, and links to Spotify, Apple Music, YouTube, YouTube Music, Deezer, Tidal, Amazon Music, SoundCloud and Bandcamp. Type the song's ISRC and **Find links** looks it up: Deezer and MusicBrainz match the ISRC exactly (MusicBrainz often lists Spotify and Tidal too), Apple Music is matched by title and length, YouTube uses your YouTube key from the Content page, and every other service gets a search link. Add a free Spotify app's client ID and secret (kept in this browser) for an exact Spotify match. Pick **Use** per link or **Use all**. *Lyrics*: the words, and the lines that work best as on-screen hooks. *Video shoot*: music video concepts from the lyrics (with the words they came from), then the plan (date, call time, locations, crew, shot list, wardrobe, props, budget) and a printable call sheet. *Release*: a 22-step checklist counted back from release day (upload 5 weeks ahead, Spotify editorial pitch 30 days ahead, pre-save, press, short-form batch, premiere, follow-ups); change the date and every task moves. *Content*: a short-form plan around release day from the posting playbook. *Playlists*: tag the sound (genres, mood, energy, vocals, "for fans of"); the lyric themes are found from the words; get suggested playlists from a built-in list of about 50 editorial playlists on Spotify, Apple Music, Amazon Music and Deezer, each with why it fits and a search link, plus playlist types to search for. Hide built-ins that no longer exist and add your own playlists and curators (shared by every artist). *Press release*: a full release (FOR IMMEDIATE RELEASE … ###), a short version for blogs and a radio/DJ blurb, drafted from the song, the press kit and confirmed shows; add the story, a quote, label and credits, edit any draft, copy it, download it or print it to PDF. *Pitching*: the Spotify for Artists pitch with a live 500-character counter, the pitch deadline (7 days before release) and what to pick in the form; a short note to an independent curator (copy or open in email); and a pitch tracker (status, sent date, follow-up a week later that shows on Home and the Calendar). **Make a promo** puts the song's title, lyrics and file into the Video Studio. |
 | **Shows** | Upcoming and past shows: date, status, venue, load-in, doors, set time, billing, tickets, deal, contact, notes, lineup, setlist, a to-do list counted back from the show (pitch, confirm, flyer, tickets, promo posts, advance, settle), the settlement (pay, merch, costs, net) and a summary to paste in the band chat |
 | **Show planner** | *Venues*: a researched starter list of 29 Seattle-area rooms (Seattle, Tacoma, Everett, Bellingham, Olympia) with capacity, ages, genres, how each one says to book, the booking email or form, links and sources. Filter by size, city and all-ages, enter how many people you bring to see which rooms fit, and write a **pitch email** from your profile, songs and dates (copy it or open it in your email app). *Bands*: scene bands with their official accounts. *Build a show*: pick a date, a room and bands, see the break-even and the expected crowd, and create the show with its to-do list. *Contacts*: promoters, sound, photo, press, radio and curators. Researched entries say "Check before you reach out" until you tick them. |
 | **Content** | Every planned and posted short across songs: type, app, status, link and stats. Paste a YouTube or Shorts link and **Fetch YouTube stats** reads views, likes, comments and length with a free YouTube Data API key. TikTok and Instagram only share stats with approved apps, so type the numbers from the post's insights, or **Import stats (CSV)** from TikTok Studio or Meta Business Suite exports (rows are matched to your posts by link). *What works best* ranks types of post, apps, days and lengths by shares, saves, comments and likes per view, and says it in plain words. |
@@ -302,13 +302,37 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
     shakes when it's played.
 
   Chord names (Em, G, C/G, E5, Am7…) are worked out from the notes.
-- **Drum chart:** from a Guitar Pro drum track (kick, snare, hi-hat, toms, crash, ride) or detected
-  from a drum stem audio file (kick, snare, hi-hat). Pick one of six styles from the style grid:
+- **Drum chart:** from a Guitar Pro drum track or detected from a drum stem audio file (kick, snare,
+  hi-hat). Every style charts the whole kit: kick, snare, hi-hat, high tom, mid tom, floor tom, crash 1,
+  crash 2, china and ride (GM 50/48 high tom, 47/45 mid tom, 43/41 floor tom, 49 crash 1, 57 and the
+  55 splash crash 2, 52 china). Lane styles show every drum and cymbal for a Guitar Pro part, and only the
+  found ones for a stem; *Show every drum and cymbal* changes that. **Kit pieces** (in the layer's
+  settings, for every style) turns each drum and cymbal on or off, with quick setups (*Full kit*,
+  *5-piece, crash and ride*, *4-piece*, *Full kit, no china*). A piece that's off isn't drawn and its hits
+  move to the closest piece that's on (a china to crash 2, then crash 1, then the ride; a mid tom to the high
+  tom, then the floor tom; the hi-hat to the ride). The kick always stays; a lone rack tom moves to the
+  middle. Pick one of six styles from the style grid:
   - **Scrolling lanes**, a falling **highway**, or a **circle** that sweeps once per bar with hits on rings.
   - **Neon highway:** a 3D glowing road with gem notes, shockwaves and sparks at the strike line, and an
     optional combo counter.
-  - **Light-up drum kit:** a drawn kit whose pieces glow, bounce and ripple when hit, with your band name
-    on the kick drum and a strip of upcoming hits along the top.
+  - **Light-up drum kit:** a drawn kit (kick, snare, high and mid rack toms, floor tom, hi-hat, two
+    crashes, a china and a ride) with your band name on the kick drum and a strip of upcoming hits along
+    the top. *Finish*:
+    - **Neon glow:** lit shells and heads that glow, bounce and ripple.
+    - **Stage (realistic):** wrapped shells with chrome hoops and lugs, coated heads that flex on a hit,
+      bronze cymbals with lathe rings that wobble, a hi-hat stand with its pedal, tripod stands, a rug and
+      a spotlight. *Shells* picks the wrap: black, wine red or ocean blue sparkle, natural maple, dark
+      walnut or white pearl.
+    - **Inferno:** charred shells with glowing cracks, black hardware and heads, flames behind the kit that
+      leap on every kick, embers drifting up.
+    - **Thunder:** midnight sparkle shells under storm clouds; lightning strikes the crash, ride and snare.
+    - **Frostbite:** black shells covered in frost crystals, white heads, silver cymbals, fog and snow.
+    - **Steel & spikes:** brushed steel shells with rivets, spiked kick hoops, black hardware, and welding
+      sparks off every hit.
+    - **Blackout:** all black and grey: satin black shells, black hardware, grey heads, smoked cymbals,
+      grey light and haze, and a grey upcoming-hits strip.
+    The realistic and metal finishes can use **Double bass drums** (two kicks that take turns; on by default
+    for the metal finishes), with the band name split across both.
   - **Glass lanes:** a frosted panel over your video with gradient capsules, trails and hit bursts.
 
   Choosing a style also moves the chart to a spot that suits it.
@@ -404,6 +428,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/soundlib.js` | Personal sound library stored in IndexedDB |
 | `js/tab.js` | Guitar Pro tab parsing (via alphaTab), timing and drawing |
 | `js/drums.js` | Drum chart: GP drum tracks, drum-stem hit detection, lanes / highway / circle drawing |
+| `js/drumkit.js` | The drum kit's layout (single or double bass), the Stage and metal finishes, shell wraps and effects (unit tested) |
 | `js/viz.js` | Audio visualizers: FFT analysis and the styles |
 | `js/vizreal.js` | Realistic visualizers: VU meters, LED rack, oscilloscope, speaker, fire, spectrogram |
 | `js/vizgear.js` | More realistic visualizers: tape reels, mixing desk, lightning, vibrating strings |
@@ -413,6 +438,8 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/mytemplates.js` | Save, apply, export and import your own templates |
 | `js/soundpack.js`, `sounds/pack/` | The bundled CC0 sound pack and its search |
 | `js/manager/shell.js` | The Manager workspace: nav, artist switcher, store, backup and restore |
+| `js/manager/isrc.js` | ISRC → links: MusicBrainz, Deezer (JSONP in a sandboxed iframe), Spotify, iTunes and YouTube lookups, matching and search links (unit tested) |
+| `js/manager/page-links.js` | The song's Links section with the ISRC lookup |
 | `js/manager/playlists.js` | Lyric themes, genre families, the built-in playlist list, playlist matching and playlist types (unit tested) |
 | `js/manager/press.js` | Press release drafts, the Spotify pitch, curator notes, pitch deadline and follow-ups (unit tested) |
 | `js/manager/page-press.js` | The song's Playlists, Press release and Pitching tabs |

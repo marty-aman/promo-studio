@@ -6,6 +6,7 @@ import { hookLines, planPosts } from './ideas.js';
 import { buildShootTab } from './page-shoot.js';
 import { pressTab, playlistsTab, pitchTab } from './page-press.js';
 import { pitchStats } from './press.js';
+import { linksSection } from './page-links.js';
 
 const TABS = [
   ['overview', 'Overview'],
@@ -97,7 +98,6 @@ function overviewTab(ctx, song, S) {
   const audio = ctx.studio.audioFiles();
   const p = releaseProgress(song);
   const posts = ctx.store.get().posts.filter((x) => x.songId === song.id);
-  const link = (k, label, ph) => f.text(`link-${k}-${song.id}`, label, song.links[k], S((s, v) => (s.links[k] = v.trim())), { type: 'url', placeholder: ph });
   return h(
     'div',
     { class: 'mgr-cols' },
@@ -118,7 +118,7 @@ function overviewTab(ctx, song, S) {
       f.select(`audio-${song.id}`, 'Song file (for promos)', song.audioId || '', [['', audio.length ? '— pick a file —' : 'Upload audio in Video Studio → Audio'], ...audio.map((a) => [a.id, a.name])], S((s, v) => (s.audioId = v || null))),
       f.text(`notes-${song.id}`, 'Notes', song.notes, S((s, v) => (s.notes = v)), { rows: 4, placeholder: 'Story behind the song, who wrote what, studio notes…' }),
     ),
-    h('section', { class: 'mgr-sect' }, h('h2', {}, 'Links'), link('spotify', 'Spotify', 'https://open.spotify.com/track/…'), link('apple', 'Apple Music', 'https://music.apple.com/…'), link('youtube', 'YouTube', 'https://youtu.be/…'), link('bandcamp', 'Bandcamp', 'https://….bandcamp.com/track/…')),
+    linksSection(ctx, song, S),
   );
 }
 

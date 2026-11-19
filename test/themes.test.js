@@ -94,7 +94,7 @@ test('theme helpers', () => {
   const r = stringRamp(c, 6);
   assert.equal(r[0], c.accent);
   assert.equal(new Set(r).size, 6);
-  assert.equal(Object.keys(drumColors(c)).length, 6);
+  assert.equal(Object.keys(drumColors(c)).length, 11); // every lane, plus the old shared 'tom'
   assert.equal(mix('#000000', '#ffffff', 0.5), '#808080');
   assert.deepEqual(themeColors(THEMES[1], { bg: '#123456' }).bg, '#123456');
   const v = themeLayer({ type: 'viz' }, THEMES[3], THEMES[3].colors);

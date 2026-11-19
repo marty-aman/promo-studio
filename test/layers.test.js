@@ -6,7 +6,10 @@ import { midiToLane, drumTracks, drumTimelineFromScore, detectOnsets } from '../
 import { fft, bandEdges, analyseSamples } from '../js/viz.js';
 
 test('GM drum numbers map to chart lanes', () => {
-  assert.deepEqual([36, 38, 42, 46, 45, 49, 51, 80].map(midiToLane), ['kick', 'snare', 'hihat', 'hihat', 'tom', 'crash', 'ride', null]);
+  assert.deepEqual([36, 38, 42, 46, 49, 51, 80].map(midiToLane), ['kick', 'snare', 'hihat', 'hihat', 'crash', 'ride', null]);
+  // toms: high (50, 48), mid (47, 45), floor (43, 41); cymbals: crash 2 (57, splash 55), china (52)
+  assert.deepEqual([50, 48, 47, 45, 43, 41].map(midiToLane), ['tom1', 'tom1', 'tom2', 'tom2', 'floor', 'floor']);
+  assert.deepEqual([57, 55, 52, 53, 59].map(midiToLane), ['crash2', 'crash2', 'china', 'ride', 'ride']);
 });
 
 test('drum timeline from a Guitar Pro drum track', async () => {
@@ -14,7 +17,7 @@ test('drum timeline from a Guitar Pro drum track', async () => {
   const tracks = drumTracks(score);
   assert.equal(tracks.length, 1);
   const tl = drumTimelineFromScore(score, tracks[0].index);
-  assert.deepEqual(tl.lanes, ['crash', 'ride', 'hihat', 'tom', 'snare', 'kick']);
+  assert.deepEqual(tl.lanes, ['crash', 'ride', 'hihat', 'tom1', 'tom2', 'floor', 'snare', 'kick']);
   // bar 1 at 120 BPM: kick on 0, snare on beat 2 (0.5 s), hi-hat eighths (every 0.25 s)
   const at = (t) => tl.hits.filter((h) => Math.abs(h.time - t) < 1e-3).map((h) => h.lane).sort();
   assert.deepEqual(at(0), ['hihat', 'kick']);

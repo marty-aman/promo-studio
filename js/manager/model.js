@@ -99,7 +99,8 @@ export function newSong(title = 'New song') {
     sound: { genres: '', moods: [], energy: '', vocals: '', similar: '' }, // blank genres and similar fall back to the band's
     press: { headline: '', story: '', quote: '', quoteBy: '', credits: '', label: '', edits: {} },
     pitches: [], // playlist pitches sent: { id, curator, playlist, service, contact, sent, status, followUp, ... }
-    links: { spotify: '', youtube: '', bandcamp: '', apple: '' },
+    isrc: '',
+    links: { spotify: '', apple: '', youtube: '', youtubeMusic: '', deezer: '', tidal: '', amazon: '', soundcloud: '', bandcamp: '' },
     shoot: { concept: '', date: '', callTime: '', locations: [], crew: [], shots: [], wardrobe: '', props: '', budget: '', notes: '' },
     release: releaseChecklist(),
   };
