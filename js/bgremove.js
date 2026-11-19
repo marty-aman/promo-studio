@@ -144,6 +144,34 @@ function segmenter() {
 }
 export const segmenterInfo = () => ({ loaded: !!segDelegate, delegate: segDelegate });
 
+/**
+ * A person matte for a still image (the Photo Studio's "Cut out the person" mask): a canvas the
+ * image's shape at up to `long` px, white where there is a person, clear elsewhere.
+ */
+export async function personMatteForImage(img, { long = 768, edge = 0, softness = 0.35 } = {}) {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  if (!iw || !ih) throw new Error('the photo has not loaded');
+  const seg = await segmenter();
+  const { w, h } = matteSize(iw, ih, long);
+  const src = document.createElement('canvas');
+  src.width = w;
+  src.height = h;
+  src.getContext('2d').drawImage(img, 0, 0, w, h);
+  const conf = segmentCanvas(seg, src);
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  const g = out.getContext('2d');
+  const data = g.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) {
+    data.data[i * 4] = data.data[i * 4 + 1] = data.data[i * 4 + 2] = 255;
+    data.data[i * 4 + 3] = Math.round(confidenceToAlpha(conf[i] / 255, edge, softness) * 255);
+  }
+  g.putImageData(data, 0, 0);
+  return out;
+}
+
 /** Confidence (0..255 per pixel) of "person" for a canvas. */
 function segmentCanvas(seg, canvas) {
   const res = seg.segment(canvas);

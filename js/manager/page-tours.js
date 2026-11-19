@@ -310,7 +310,7 @@ function tourPage(ctx, tour) {
       'header',
       { class: 'mgr-head' },
       h('div', {}, h('h1', {}, tour.name), h('p', { class: 'muted' }, 'Add cities in order, find rooms in each, and watch the money and the driving.')),
-      h('div', { class: 'row' }, button('Export PDF', pdf, { iconName: 'print', variant: 'sm primary' }), button('New tour', newOne, { iconName: 'plus', variant: 'sm' }), iconButton('trash', 'Delete this tour', removeTour, 'ghost danger')),
+      h('div', { class: 'row' }, button('Tour poster', () => ctx.studio.openPhoto('tour', { tourId: tour.id }), { iconName: 'image', variant: 'sm', title: 'The dates as a post in the Photo Studio' }), button('Export PDF', pdf, { iconName: 'print', variant: 'sm primary' }), button('New tour', newOne, { iconName: 'plus', variant: 'sm' }), iconButton('trash', 'Delete this tour', removeTour, 'ghost danger')),
     ),
     h(
       'div',

@@ -5,6 +5,7 @@
 import { newFiles, normalizeFiles } from './files.js';
 import { normalizePhotos } from './photos.js';
 import { normalizeTours } from './tours.js';
+import { newStats, normalizeStats } from './stats.js';
 
 export const MANAGER_KEY = 'pvm.manager.v1';
 export const MANAGER_VERSION = 1;
@@ -126,6 +127,7 @@ export function newManager() {
     contacts: [],
     posts: [],
     money: [],
+    stats: newStats(), // streaming numbers: imported reports and live lookups (see stats.js)
     tours: [], // this artist's tours: { id, name, stops: [{ city, date, status, picks, money… }] } (see tours.js)
     photos: [], // this artist's photos: { id, mediaId, caption, credit, tags, favorite, addedAt }
     playlists: [], // your own playlists and curators (shared by every artist)
@@ -147,6 +149,7 @@ export function normalizeManager(raw) {
   });
   m.photos = normalizePhotos(raw.photos);
   m.tours = normalizeTours(raw.tours);
+  m.stats = normalizeStats(raw.stats);
   m.band.epkPhotos = Array.isArray(m.band.epkPhotos) ? m.band.epkPhotos.filter((x) => typeof x === 'string').slice(0, 4) : [];
   m.playlists = list(raw.playlists);
   m.playlistsOff = Array.isArray(raw.playlistsOff) ? raw.playlistsOff.filter((x) => typeof x === 'string') : [];

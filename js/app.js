@@ -14,6 +14,8 @@ import { createPostCheck } from './panel-postcheck.js';
 import { createTips } from './panel-tips.js';
 import { kfTarget, kfSignature } from './panel-kf.js';
 import { createManager } from './manager/shell.js';
+import { createPhotoStudio } from './photo/page.js';
+import { addPhotos as addArtistPhotos } from './manager/photos.js';
 import { makeLayer, makeOverlayClip } from './panel-layers.js';
 import { studioSongFiles } from './manager/files.js';
 import { applyTheme, themeById } from './themes.js';
@@ -21,6 +23,7 @@ import { loadSettings } from './state.js';
 
 const store = createStore(loadProject() || newProject());
 let manager = null; // the Manager workspace (created below)
+let photo = null; // the Photo Studio (created below)
 
 // ------------------------------------------------------------ layout
 const app = document.getElementById('app');
@@ -72,7 +75,7 @@ const postSlot = h('span');
 // Manager | Video Studio: two workspaces in one app
 const MODE_KEY = 'pvm.mode.v1';
 const modeBtn = (id, label, ic) => h('button', { type: 'button', role: 'tab', class: 'mode-btn', 'data-mode': id, onclick: () => setMode(id) }, icon(ic, 16), h('span', {}, label));
-const modeSwitch = h('div', { class: 'mode-switch', role: 'tablist', 'aria-label': 'Workspace' }, modeBtn('manager', 'Manager', 'users'), modeBtn('studio', 'Video Studio', 'film'));
+const modeSwitch = h('div', { class: 'mode-switch', role: 'tablist', 'aria-label': 'Workspace' }, modeBtn('manager', 'Manager', 'users'), modeBtn('studio', 'Video Studio', 'film'), modeBtn('photo', 'Photo Studio', 'image'));
 const studioOnly = (...els) => h('div', { class: 'studio-only' }, ...els);
 // which artist this promo is for (from the Manager): its name, theme and logo go on the edit
 const artistSel = h('select', { class: 'artist-sel', 'aria-label': 'Artist for this promo', title: 'Artist: the promo takes their name, theme and logo (set them in Manager → Press kit)' });
@@ -121,9 +124,11 @@ const timelineRoot = h('section', { class: 'timeline', 'aria-label': 'Timeline' 
 const pageEl = h('div', { class: 'page-overlay', hidden: true, role: 'region', 'aria-label': 'Inspiration' });
 
 const managerRoot = h('div', { class: 'manager', role: 'region', 'aria-label': 'Band manager' });
+const photoRoot = h('div', { class: 'photo', role: 'region', 'aria-label': 'Photo Studio', hidden: true });
 app.append(
   header,
   managerRoot,
+  photoRoot,
   h('main', { class: 'workspace' }, tabRail, leftPanel, h('div', { class: 'center' }, stage, transport), inspector, pageEl),
   timelineRoot,
 );
@@ -467,6 +472,7 @@ new ResizeObserver(() => {
 
 // ------------------------------------------------------------ keyboard
 window.addEventListener('keydown', (e) => {
+  if (mode === 'photo') return photo && photo.onKey(e);
   if (mode === 'manager') {
     const t = (e.target.tagName || '').toUpperCase();
     if (/INPUT|TEXTAREA|SELECT/.test(t)) return;
@@ -638,6 +644,8 @@ manager = createManager({
     artistsChanged: () => (syncArtistSel(), syncNowOn()),
     /** The Manager's page, artist or song changed: update the header badge. */
     contextChanged: () => syncNowOn(),
+    /** Open the Photo Studio on a template: 'promo', 'release', 'countdown', 'show', 'tour'… */
+    openPhoto: (id, opts) => openPhoto(id, opts),
     imageFiles: () => media.all().filter((m) => m.kind === 'image').map((m) => ({ id: m.id, name: m.name, thumb: m.thumb || null })),
     /** A library image as a JPEG data URL no larger than `max` px on its long side (for the press kit). */
     async imageDataUrl(id, max = 1400) {
@@ -687,6 +695,85 @@ ui.openSongFiles = (songId) => {
   setMode('manager');
   manager.go('songs', songId, 'files');
 };
+
+// ------------------------------------------------------------ photo studio
+const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+/** The open artist's details for the Photo Studio's templates. */
+function photoContext() {
+  const m = manager.store.get();
+  const b = m.band;
+  const theme = b.theme ? themeById(b.theme) : null;
+  const logo = b.logoId && media.get(b.logoId);
+  const photoIds = [b.photoId, ...(b.epkPhotos || []), ...(m.photos || []).map((p) => p.mediaId)].filter((id, i, a) => id && a.indexOf(id) === i && media.get(id));
+  const venueName = (id) => (m.venues.find((v) => v.id === id) || {}).name || '';
+  return {
+    band: b,
+    colors: theme ? theme.colors : null,
+    font: theme ? theme.font : 'Bebas Neue',
+    logo: logo ? { id: logo.id, w: logo.width, h: logo.height } : null,
+    photoIds,
+    songs: m.songs,
+    shows: m.shows,
+    tours: (m.tours || []).map((t) => ({ ...t, stops: t.stops.map((s) => ({ ...s, venueName: venueName((s.picks.find((p) => p.status === 'yes') || {}).venueId) })) })),
+    currentSongId: manager.currentSong()?.id || '',
+    today: todayStr(),
+  };
+}
+photo = createPhotoStudio({
+  root: photoRoot,
+  studio: {
+    images: () => media.all().filter((x) => x.kind === 'image').map((x) => ({ id: x.id, name: x.name, thumb: x.thumb, url: x.url, width: x.width, height: x.height })),
+    get: (id) => media.get(id),
+    fonts: () => media.all().filter((x) => x.kind === 'font' && x.family).map((x) => x.family),
+    async upload(files) {
+      const out = [];
+      for (const f of files) {
+        if (kindOf(f.type || '', f.name) !== 'image') continue;
+        try {
+          const rec = await addMedia(f, f.name, { kind: 'image' });
+          out.push({ id: rec.id, name: rec.name });
+        } catch (e) {
+          toast(e.message, 'error', 5000);
+        }
+      }
+      if (out.length) ui.refreshPanels(true);
+      return out;
+    },
+    async addBlob(blob, name, attribution) {
+      const rec = await addMedia(blob, name, { kind: 'image', source: 'stock', attribution });
+      ui.refreshPanels(true);
+      return rec;
+    },
+    /** Finished images go to the media library and the open artist's Photos page. */
+    async saveToLibrary(blobs, names) {
+      const added = [];
+      for (const [i, b] of blobs.entries()) {
+        const rec = await addMedia(b, names[i], { kind: 'image', source: 'photo-studio' });
+        added.push({ id: rec.id, name: rec.name, kind: 'image' });
+      }
+      manager.store.update((d) => addArtistPhotos(d, added));
+      ui.refreshPanels(true);
+      return added;
+    },
+    context: photoContext,
+  },
+});
+media.onChange(() => mode === 'photo' && photo.mediaChanged());
+/** Open the Photo Studio on a template (from the Manager: a song, a show, a tour). */
+function openPhoto(templateId, { songId = '', showId = '', tourId = '' } = {}) {
+  const c = photoContext();
+  const song = c.songs.find((s) => s.id === songId) || null;
+  const show = c.shows.find((s) => s.id === showId) || null;
+  const tour = c.tours.find((t) => t.id === tourId) || null;
+  const extra = { song, show };
+  if (tour) Object.assign(extra, { tourName: tour.name, dates: tour.stops.filter((s) => s.status !== 'dropped').map((s) => ({ date: s.date, city: s.city, venue: s.venueName })) });
+  else extra.dates = c.shows.filter((s) => s.date && s.date >= c.today && s.status !== 'cancelled').sort((a, b) => a.date.localeCompare(b.date)).map((s) => ({ date: s.date, city: s.city, venue: s.venue }));
+  setMode('photo');
+  photo.openTemplate(templateId, extra);
+}
 /** Put a library file into the edit (see studio.useInEditor for `how`). */
 function sendToEdit(rec, how) {
   if (how === 'clip') return panels.actions.addClip(rec);
@@ -745,19 +832,23 @@ function syncArtistSel() {
   artistSel.hidden = list.length < 2 && !cur;
 }
 
-// The app always opens on the Manager. A link ending in #studio (or ?studio) opens the Video Studio instead.
-let mode = location.hash === '#studio' || new URLSearchParams(location.search).has('studio') ? 'studio' : 'manager';
+// The app always opens on the Manager. A link ending in #studio (or ?studio) opens the Video Studio, #photo the Photo Studio.
+let mode = location.hash === '#studio' || new URLSearchParams(location.search).has('studio') ? 'studio' : location.hash === '#photo' ? 'photo' : 'manager';
 function setMode(m) {
   mode = m;
   localStorage.setItem(MODE_KEY, m);
-  document.body.classList.toggle('mode-manager', m === 'manager');
+  // the Photo Studio hides the video editor the same way the Manager does
+  document.body.classList.toggle('mode-manager', m === 'manager' || m === 'photo');
+  document.body.classList.toggle('mode-photo', m === 'photo');
   managerRoot.hidden = m !== 'manager';
+  photoRoot.hidden = m !== 'photo';
   for (const b of modeSwitch.children) {
     const on = b.dataset.mode === m;
     b.classList.toggle('on', on);
     b.setAttribute('aria-selected', on ? 'true' : 'false');
   }
   if (m === 'manager') manager.show();
+  else if (m === 'photo') photo.show();
   else {
     fitStage();
     timeline.render();
@@ -797,4 +888,4 @@ async function boot() {
 boot();
 
 // exposed for the automated browser checks in test/
-window.__pvm = { store, engine, ui, media, panels, manager, setMode };
+window.__pvm = { store, engine, ui, media, panels, manager, photo, setMode };
