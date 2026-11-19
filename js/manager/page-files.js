@@ -1,8 +1,8 @@
-// A song's Files tab: its stems, the music video and raw footage, kept in the shared media library.
+// A song's Files tab: its Guitar Pro tabs, stems, the music video and raw footage, kept in the shared media library.
 // Each file can be sent to the Video Studio: footage and the music video as clips or picture-in-
 // picture, stems as a drum chart, a visualizer or an extra audio track.
 import { h, button, iconButton, toast, pickFiles } from '../dom.js';
-import { STEM_ROLES, newFiles, addStems, addFootage, setVideo, fileCounts } from './files.js';
+import { STEM_ROLES, newFiles, addStems, addFootage, addTabs, setVideo, fileCounts } from './files.js';
 
 /** Which upload is running (not saved). */
 export const filesUI = { busy: null };
@@ -10,6 +10,7 @@ export const filesUI = { busy: null };
 const AUDIO_ACCEPT = 'audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.aif,.aiff';
 const VIDEO_ACCEPT = 'video/*,.mp4,.mov,.webm,.m4v';
 const FOOTAGE_ACCEPT = `${VIDEO_ACCEPT},image/*`;
+const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.gp7,.gp8,.musicxml,.mxl,.xml';
 const len = (s) => (s && Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '');
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -49,6 +50,40 @@ export function filesTab(ctx, song, S) {
   };
   const send = (id, how) => st.useInEditor(id, how, { open: false });
   const missing = (label, onRemove) => h('div', { class: 'mgr-file missing' }, h('span', { class: 'muted small' }, `${label}: this file was removed from the media library.`), button('Remove', onRemove, { variant: 'sm ghost' }));
+
+  // ---- Guitar Pro tabs
+  const tabRows = (files.tabs || []).map((t) => {
+    const m = info(t.mediaId);
+    const drop = () => ctx.update(S((x) => (x.files.tabs = x.files.tabs.filter((y) => y.id !== t.id))));
+    if (!m) return missing('Tab', drop);
+    const parts = [...(m.tracks || []), m.drumTracks ? `drums${m.drumTracks > 1 ? ` ×${m.drumTracks}` : ''}` : ''].filter(Boolean);
+    return h(
+      'div',
+      { class: 'mgr-file tab' },
+      h('div', { class: 'mgr-file-main' }, h('strong', { title: m.name }, m.title || m.name), m.title ? h('span', { class: 'muted tiny' }, m.name) : null),
+      parts.length ? h('div', { class: 'mgr-tracks' }, parts.map((p) => h('span', { class: 'mgr-chip' }, p))) : null,
+      h(
+        'div',
+        { class: 'row' },
+        button('Add to the video', () => send(m.id, 'tab'), { iconName: 'guitar', variant: 'sm', title: 'Show the tab (and drums) on the video, in time with the song' }),
+        button('Open in Tab Studio', () => st.useInEditor(m.id, 'tabstudio'), { iconName: 'type', variant: 'sm', title: 'Edit or fix the tab' }),
+        iconButton('trash', `Remove ${m.name} from this song`, drop, 'ghost'),
+      ),
+    );
+  });
+  const tabs = h(
+    'section',
+    { class: 'mgr-sect' },
+    h('h2', {}, `Guitar Pro tab · ${(files.tabs || []).length}`),
+    h('p', { class: 'muted small' }, 'Guitar Pro 3–8 (.gp, .gp5, .gpx…) or MusicXML. Add it to the video as a scrolling tab, a fretboard or a drum chart, or open it in Tab Studio to fix it.'),
+    tabRows.length ? h('div', { class: 'mgr-files' }, tabRows) : null,
+    h(
+      'div',
+      { class: 'row' },
+      button(busy('tabs') ? 'Uploading…' : 'Upload a Guitar Pro file', () => upload('tabs', TAB_ACCEPT, ['tab'], true, (s, added) => addTabs(s, added), 'Guitar Pro or MusicXML files'), { iconName: 'upload', variant: 'sm primary', disabled: busy('tabs') }),
+      fromLibrary('tabs', ['tab'], (files.tabs || []).map((t) => t.mediaId), (s, added) => addTabs(s, added), 'Or pick a tab from the library'),
+    ),
+  );
 
   // ---- stems
   const stemRows = files.stems.map((s) => {
@@ -175,6 +210,6 @@ export function filesTab(ctx, song, S) {
       h('p', { class: 'muted small' }, `Files are kept in this browser with the Video Studio’s media, so they’re ready in the editor. Removing one here only takes it off this song.${n.total ? '' : ' Nothing added yet.'}`),
       button('Open the Video Studio', () => ctx.studio.openStudio(), { iconName: 'film', variant: 'sm' }),
     ),
-    h('div', { class: 'mgr-cols' }, h('div', {}, video, stems), footage),
+    h('div', { class: 'mgr-cols' }, h('div', {}, tabs, video, stems), footage),
   );
 }

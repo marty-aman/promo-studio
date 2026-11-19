@@ -11,6 +11,7 @@ import { buildPlanner } from './page-planner.js';
 import { buildContent } from './page-content.js';
 import { buildCalendar } from './page-calendar.js';
 import { buildEPK } from './page-epk.js';
+import { buildPhotos } from './page-photos.js';
 import { buildMoney } from './page-money.js';
 
 const VIEW_KEY = 'pvm.manager.view.v1';
@@ -21,6 +22,7 @@ export const MANAGER_PAGES = [
   { id: 'planner', label: 'Show planner', icon: 'mapPin', build: buildPlanner },
   { id: 'content', label: 'Content', icon: 'chart', build: buildContent },
   { id: 'calendar', label: 'Calendar', icon: 'calendar', build: buildCalendar },
+  { id: 'photos', label: 'Photos', icon: 'image', build: buildPhotos },
   { id: 'epk', label: 'Press kit', icon: 'clipboard', build: buildEPK },
   { id: 'money', label: 'Money', icon: 'dollar', build: buildMoney },
 ];

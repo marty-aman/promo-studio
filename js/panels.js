@@ -47,8 +47,9 @@ import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate, tabIntoLayout, lyricsIn
 import { LYRIC_DISPLAYS, DISPLAY_DEFAULTS } from './lyricviz.js';
 import { BUILTIN_SFX, synthSfx, searchSfx, SFX_CATEGORIES, SFX_LICENSES } from './sfx.js';
 import { shareFile, canShareFiles, youtube } from './share.js';
-import { soundLib, importSounds, filterSounds, storageInfo, requestPersistence } from './soundlib.js';
-import { loadPack, packCategories, filterPack, packResult } from './soundpack.js';
+import { soundLib, importSounds, storageInfo, requestPersistence } from './soundlib.js';
+import { loadPack, packResult } from './soundpack.js';
+import { SOURCES, SOURCE_LABEL, fromLibrary, fromPack, fromBuiltin, applyMeta, metaFor, filterAll, topTags, parseTags, loadMeta, saveMeta } from './soundindex.js';
 import { searchFreesound, FS_LICENSES, FS_DURATIONS, FS_SORTS, FREESOUND_KEY_URL } from './freesound.js';
 
 import { h, icon, button, iconButton, toast, download, pickFiles, field, section, fold, setFold, keyBox, Binder } from './dom.js';
@@ -356,6 +357,15 @@ export function createPanels({ store, engine, ui }) {
               iconButton('layers', 'Picture-in-picture at the playhead', () => send(m.id, 'overlay'), 'ghost'),
             ),
           ),
+          (s.tabs || []).map((m) =>
+            h(
+              'div',
+              { class: 'song-files-item stem' },
+              h('span', { class: 'song-files-name', title: m.name }, `Tab: ${m.title || m.name}`),
+              button('Add', () => send(m.id, 'tab'), { iconName: 'plus', variant: 'sm', title: 'Show the tab on the video' }),
+              button('Tab Studio', () => send(m.id, 'tabstudio'), { variant: 'sm' }),
+            ),
+          ),
           s.stems.length
             ? h(
                 'div',
@@ -382,7 +392,7 @@ export function createPanels({ store, engine, ui }) {
       'div',
       {},
       fold('video-clips', 'My clips', { hint: 'Upload and arrange your footage' }, buildMedia(b)),
-      fold('video-songs', 'From your songs', { open: false, hint: 'Music videos, footage and stems saved on your songs' }, () => buildSongFiles()),
+      fold('video-songs', 'From your songs', { open: false, hint: 'Music videos, footage, tabs and stems saved on your songs' }, () => buildSongFiles()),
       fold('video-stock', 'Stock video', { open: false, hint: 'Pexels, Pixabay, Wikimedia' }, () => buildStock()),
       fold('video-youtube', 'From your YouTube channel', { open: false, hint: 'Videos you posted' }, buildYouTubeImport()),
       fold(
@@ -692,7 +702,7 @@ export function createPanels({ store, engine, ui }) {
   let previewing = null;
   const soundState = { query: '', license: settings.sfxLicense || 'cc0', results: [], loading: false, error: '', page: 1 };
   const fsState = { query: '', results: [], loading: false, error: '', page: 1, hasMore: false, count: 0 };
-  const libState = { query: '', favoritesOnly: false, limit: 60, importing: '' };
+  const libState = { query: '', favoritesOnly: false, limit: 60, importing: '', source: 'all', tag: '', editKey: null };
   soundLib.onChange(() => ui.tab === 'audio' && !libState.importing && ui.refreshPanels(true));
 
   /** Files from a drop, walking into dropped folders. */
@@ -741,62 +751,137 @@ export function createPanels({ store, engine, ui }) {
     ui.refreshPanels(true);
   }
 
-  const packState = { q: '', cat: '', limit: 30 };
   function buildSounds() {
-    // ---- My sound library (stored in this browser)
-    const libList = h('div', { class: 'sfx-list lib-list' }, h('p', { class: 'muted tiny' }, 'Loading your library…'));
+    // ---- All your sounds in one list: your uploads, the free pack and the built-in effects.
+    // Rename, tag and star any of them; filter by where they came from, by tag, or starred.
+    const libList = h('div', { class: 'sfx-list lib-list' }, h('p', { class: 'muted tiny' }, 'Loading your sounds…'));
     const libInfo = h('p', { class: 'muted tiny' });
     const progress = h('p', { class: 'small', hidden: !libState.importing }, libState.importing || '');
-    const libSearch = h('input', { type: 'search', placeholder: 'Search your sounds (name or folder)', value: libState.query, 'aria-label': 'Search your sound library' });
-    const favBtn = h('button', { type: 'button', class: `btn chip${libState.favoritesOnly ? ' on' : ''}`, 'aria-pressed': libState.favoritesOnly ? 'true' : 'false' }, '★ Starred');
+    const libSearch = h('input', { type: 'search', placeholder: 'Search by name or tag: airhorn, boom, crowd…', value: libState.query, 'aria-label': 'Search your sounds' });
+    const libChips = h('div', { class: 'chips sfx-filters' });
+    const tagChips = h('div', { class: 'chips sfx-tags' });
+    const extOf = (it) => (/\.[a-z0-9]+$/i.exec(it.fileName || '') || ['.mp3'])[0];
+    const urls = new Map();
+    const previewUrl = async (it) => {
+      if (urls.has(it.key)) return urls.get(it.key);
+      let u = it.url;
+      if (it.source === 'mine') u = URL.createObjectURL((await soundLib.get(it.id)).blob);
+      if (it.source === 'builtin') u = URL.createObjectURL(await synthSfx(it.id));
+      urls.set(it.key, u);
+      return u;
+    };
+    const blobOf = async (it) => (it.source === 'mine' ? (await soundLib.get(it.id)).blob : it.source === 'builtin' ? synthSfx(it.id) : fetchBlob(it.url));
+    const addItem = async (it, btn) => {
+      btn.disabled = true;
+      try {
+        const name = `${it.name}${it.source === 'mine' ? extOf(it) : it.source === 'builtin' ? '.wav' : '.mp3'}`;
+        await addSoundBlob(await blobOf(it), name, { source: it.source === 'mine' ? (await soundLib.get(it.id)).source : it.source, attribution: it.attribution });
+      } catch (e) {
+        toast(e.message, 'error');
+      }
+      btn.disabled = false;
+    };
+    /** Save a rename / tags / star: on the record for your sounds, as an override for the others. */
+    const editItem = async (it, patch, defaults) => {
+      if (it.source === 'mine') return soundLib.update(it.id, patch);
+      const meta = loadMeta();
+      const m = metaFor(it, patch, defaults);
+      if (m) meta[it.key] = m;
+      else delete meta[it.key];
+      saveMeta(meta);
+      renderLib();
+    };
+    const editRow = (it, defaults) => {
+      const nameIn = h('input', { type: 'text', value: it.name, 'aria-label': `Name for ${it.name}`, 'data-k': `snd-name-${it.key}` });
+      const tagsIn = h('input', { type: 'text', value: it.tags.join(', '), placeholder: 'Tags, separated by commas: impact, intro, drop', 'aria-label': `Tags for ${it.name}`, 'data-k': `snd-tags-${it.key}` });
+      const save = async () => {
+        libState.editKey = null;
+        await editItem(it, { name: nameIn.value.trim() || it.name, tags: parseTags(tagsIn.value) }, defaults);
+        if (it.source === 'mine') renderLib();
+      };
+      for (const el of [nameIn, tagsIn]) el.addEventListener('keydown', (e) => (e.key === 'Enter' ? save() : e.key === 'Escape' ? ((libState.editKey = null), renderLib()) : null));
+      setTimeout(() => nameIn.focus(), 0);
+      return h(
+        'div',
+        { class: 'sfx-edit' },
+        field('Name', nameIn),
+        field('Tags', tagsIn),
+        h(
+          'div',
+          { class: 'row' },
+          button('Save', save, { variant: 'sm primary' }),
+          button('Cancel', () => ((libState.editKey = null), renderLib()), { variant: 'sm ghost' }),
+          it.source !== 'mine' && it.edited ? button('Back to the original', async () => ((libState.editKey = null), editItem(it, { name: it.defaultName, tags: defaults.tags, favorite: false }, defaults)), { variant: 'sm ghost' }) : null,
+        ),
+      );
+    };
 
     const renderLib = async () => {
-      const all = await soundLib.all();
-      const shown = filterSounds(all, libState.query, { favoritesOnly: libState.favoritesOnly });
+      const lib = await soundLib.all();
+      const packList = loadPack(() => renderLib());
+      const raw = [...lib.map(fromLibrary), ...(packList || []).map((s) => fromPack(s, packResult(s).url)), ...BUILTIN_SFX.map(fromBuiltin)];
+      const defaults = new Map(raw.map((it) => [it.key, { tags: it.tags }]));
+      const items = applyMeta(raw, loadMeta());
+      const base = filterAll(items, { q: libState.query, source: libState.source, starred: libState.favoritesOnly });
+      const tags = topTags(base);
+      if (libState.tag && !base.some((it) => it.tags.includes(libState.tag))) libState.tag = '';
+      const shown = libState.tag ? base.filter((it) => it.tags.includes(libState.tag)) : base;
+      const count = (src) => items.filter((it) => src === 'all' || it.source === src).length;
+      libChips.replaceChildren(
+        ...SOURCES.map(([k, l]) => button(`${l} ${count(k)}`, () => ((libState.source = k), (libState.limit = 60), renderLib()), { variant: `chip${libState.source === k ? ' on' : ''}` })),
+        button(`★ Starred ${items.filter((it) => it.favorite).length}`, () => ((libState.favoritesOnly = !libState.favoritesOnly), (libState.limit = 60), renderLib()), { variant: `chip${libState.favoritesOnly ? ' on' : ''}` }),
+      );
+      tagChips.replaceChildren(...tags.map(({ tag, n }) => button(`#${tag} ${n}`, () => ((libState.tag = libState.tag === tag ? '' : tag), (libState.limit = 60), renderLib()), { variant: `chip sm${libState.tag === tag ? ' on' : ''}` })));
       const info = await storageInfo();
       const mb = (n) => (n == null ? '?' : (n / 1048576).toFixed(n > 1e8 ? 0 : 1));
-      const total = all.reduce((s, x) => s + (x.size || 0), 0);
+      const total = lib.reduce((sum, x) => sum + (x.size || 0), 0);
       libInfo.replaceChildren(
-        `${all.length} sound${all.length === 1 ? '' : 's'} · ${mb(total)} MB`,
+        `${lib.length} of your own sound${lib.length === 1 ? '' : 's'} · ${mb(total)} MB`,
         info.quota ? ` · browser storage ${mb(info.usage)} of ${mb(info.quota)} MB used` : '',
         info.persisted ? ' · protected from clean-up' : '',
       );
-      if (!all.length) {
-        libList.replaceChildren(h('p', { class: 'muted small' }, 'No sounds yet. Add a batch of clips above; they stay here for every project.'));
-        return;
-      }
       if (!shown.length) {
-        libList.replaceChildren(h('p', { class: 'muted small' }, 'No sounds match.'));
+        libList.replaceChildren(h('p', { class: 'muted small' }, libState.source === 'mine' && !lib.length ? 'No sounds of your own yet. Add some at the bottom of this tab.' : 'No sounds match. Try another word, or search Freesound below.'));
         return;
       }
       const limit = libState.limit;
       const more = shown.length > limit ? [button(`Show ${Math.min(60, shown.length - limit)} more of ${shown.length - limit}`, () => ((libState.limit += 60), renderLib()), { variant: 'ghost wide' })] : [];
       libList.replaceChildren(
-        ...shown.slice(0, limit).map((s) => {
-          const play = h('button', { type: 'button', class: 'icon-btn sfx-play', 'aria-label': `Preview ${s.name}` }, icon('play', 16));
-          let url = null;
-          play.addEventListener('click', () => {
-            url = url || URL.createObjectURL(s.blob);
-            playPreview(s.id, url, play);
-          });
-          const star = h('button', { type: 'button', class: `icon-btn star${s.favorite ? ' on' : ''}`, 'aria-label': s.favorite ? `Unstar ${s.name}` : `Star ${s.name}`, 'aria-pressed': s.favorite ? 'true' : 'false', onclick: () => soundLib.update(s.id, { favorite: !s.favorite }) }, s.favorite ? '★' : '☆');
-          const nameBtn = h('button', { type: 'button', class: 'link sfx-name', title: 'Rename', onclick: async () => {
-            const n = prompt('Rename sound', s.name);
-            if (n && n.trim()) await soundLib.update(s.id, { name: n.trim() });
-          } }, s.name);
-          return h(
+        h('p', { class: 'muted tiny' }, `${shown.length} sound${shown.length === 1 ? '' : 's'}${libState.query ? ` for “${libState.query}”` : ''}${libState.tag ? ` tagged #${libState.tag}` : ''}`),
+        ...shown.slice(0, limit).map((it) => {
+          const play = h('button', { type: 'button', class: 'icon-btn sfx-play', 'aria-label': `Preview ${it.name}` }, icon('play', 16));
+          play.addEventListener('click', async () => playPreview(it.key, await previewUrl(it), play));
+          const star = h('button', { type: 'button', class: `icon-btn star${it.favorite ? ' on' : ''}`, 'aria-label': it.favorite ? `Unstar ${it.name}` : `Star ${it.name}`, 'aria-pressed': it.favorite ? 'true' : 'false', onclick: () => editItem(it, { favorite: !it.favorite }, defaults.get(it.key)) }, it.favorite ? '★' : '☆');
+          const add = button('Add', () => addItem(it, add), { iconName: 'plus', variant: 'sm primary', title: 'Add to the timeline at the playhead' });
+          const credit = it.attribution && it.attribution.author && it.source === 'pack' ? it.attribution.author : '';
+          const row = h(
             'div',
-            { class: 'sfx-row lib-row' },
+            { class: 'sfx-row lib-row', 'data-key': it.key },
             play,
-            h('div', { class: 'sfx-meta' }, nameBtn, h('span', { class: 'muted tiny' }, [s.duration ? `${s.duration.toFixed(1)}s` : '', (s.tags || []).slice(0, 3).join(' · '), s.attribution ? `${s.attribution.license}${s.attribution.needsCredit ? ' (credit)' : ''}` : ''].filter(Boolean).join(' · '))),
+            h(
+              'div',
+              { class: 'sfx-meta' },
+              h('span', { class: 'sfx-name', title: it.name }, it.name),
+              h(
+                'span',
+                { class: 'muted tiny sfx-sub' },
+                h('span', { class: `sfx-src src-${it.source}` }, SOURCE_LABEL[it.source]),
+                it.duration ? ` ${it.duration.toFixed(1)}s` : '',
+                credit ? ` · ${credit}` : '',
+                it.attribution && it.attribution.needsCredit ? ' · credit needed' : '',
+              ),
+              it.tags.length ? h('span', { class: 'sfx-taglist' }, it.tags.slice(0, 5).map((t) => h('button', { type: 'button', class: 'sfx-tag', onclick: () => ((libState.tag = t), renderLib()) }, `#${t}`))) : null,
+            ),
             h(
               'div',
               { class: 'lib-acts' },
               star,
-              button('Add', () => addSoundBlob(s.blob, `${s.name}${(/\.[a-z0-9]+$/i.exec(s.fileName || '') || ['.mp3'])[0]}`, { source: s.source, attribution: s.attribution }), { iconName: 'plus', variant: 'sm primary', title: 'Add to the timeline at the playhead' }),
-              iconButton('trash', `Delete ${s.name}`, async () => confirm(`Delete “${s.name}” from your library?`) && soundLib.remove(s.id), 'ghost danger'),
+              iconButton('type', `Rename or tag ${it.name}`, () => ((libState.editKey = libState.editKey === it.key ? null : it.key), renderLib()), 'ghost'),
+              add,
+              it.source === 'mine' ? iconButton('trash', `Delete ${it.name}`, async () => confirm(`Delete “${it.name}” from your sounds?`) && soundLib.remove(it.id), 'ghost danger') : null,
             ),
           );
+          return libState.editKey === it.key ? h('div', { class: 'sfx-editing' }, row, editRow(it, defaults.get(it.key))) : row;
         }),
         ...more,
       );
@@ -814,13 +899,13 @@ export function createPanels({ store, engine, ui }) {
       progress.hidden = true;
       if (res.added.length && !(await storageInfo()).persisted) requestPersistence();
       const why = res.skipped.length ? ` Skipped ${res.skipped.length}: ${[...new Set(res.skipped.map((s) => s.reason))].join(', ')}.` : '';
-      toast(`Added ${res.added.length} sound${res.added.length === 1 ? '' : 's'} to your library.${why}`, res.added.length ? 'info' : 'error', 6000);
+      toast(`Added ${res.added.length} sound${res.added.length === 1 ? '' : 's'} to Your sounds.${why}`, res.added.length ? 'info' : 'error', 6000);
       renderLib();
     };
 
     const drop = h(
       'div',
-      { class: 'dropzone small-drop', tabindex: '0', role: 'button', 'aria-label': 'Add sound files to your library' },
+      { class: 'dropzone small-drop', tabindex: '0', role: 'button', 'aria-label': 'Add sound files to Your sounds' },
       icon('upload', 22),
       h('strong', {}, 'Drop sound files or folders here'),
       h('span', { class: 'muted tiny' }, 'MP3, WAV, OGG, M4A, FLAC… Saved in this browser for all your projects.'),
@@ -843,16 +928,14 @@ export function createPanels({ store, engine, ui }) {
       input.click();
     }, { iconName: 'file', variant: 'sm' });
 
+    let searchTimer = null;
     libSearch.addEventListener('input', () => {
-      libState.query = libSearch.value;
-      libState.limit = 60;
-      renderLib();
-    });
-    favBtn.addEventListener('click', () => {
-      libState.favoritesOnly = !libState.favoritesOnly;
-      favBtn.classList.toggle('on', libState.favoritesOnly);
-      favBtn.setAttribute('aria-pressed', libState.favoritesOnly ? 'true' : 'false');
-      renderLib();
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        libState.query = libSearch.value.trim();
+        libState.limit = 60;
+        renderLib();
+      }, 120);
     });
     renderLib();
 
@@ -862,7 +945,7 @@ export function createPanels({ store, engine, ui }) {
       const ext = (blob.type.split('/')[1] || 'mp3').replace('mpeg', 'mp3').replace(/;.*/, '');
       const file = new File([blob], `${name.slice(0, 60)}.${ext}`, { type: blob.type || 'audio/mpeg' });
       const res = await importSounds([file], { source: meta.source, attribution: meta.attribution || null });
-      toast(res.added.length ? `Saved “${name}” to your library` : `Not saved: ${res.skipped[0]?.reason || 'unknown error'}`, res.added.length ? 'info' : 'error');
+      toast(res.added.length ? `Saved “${name}” to Your sounds` : `Not saved: ${res.skipped[0]?.reason || 'unknown error'}`, res.added.length ? 'info' : 'error');
       btn.disabled = false;
     };
     const fetchBlob = async (url) => {
@@ -918,7 +1001,7 @@ export function createPanels({ store, engine, ui }) {
           try {
             await addSoundBlob(await fetchBlob(r.url), `${r.title.slice(0, 40)}.mp3`, meta);
           } catch (e) {
-            toast(`${e.message}. You can download it from the sound’s page and add it to your library.`, 'error', 6000);
+            toast(`${e.message}. You can download it from the sound’s page and add it under Add your own sounds.`, 'error', 6000);
           }
           add.disabled = false;
         }, { iconName: 'plus', variant: 'sm primary', title: 'Add to the timeline at the playhead' });
@@ -929,7 +1012,7 @@ export function createPanels({ store, engine, ui }) {
             toast(e.message, 'error');
             save.disabled = false;
           }
-        }, { variant: 'sm', title: 'Save to your sound library' });
+        }, { variant: 'sm', title: 'Save to Your sounds' });
         return h(
           'div',
           { class: 'sfx-row' },
@@ -943,28 +1026,6 @@ export function createPanels({ store, engine, ui }) {
           h('div', { class: 'lib-acts' }, save, add),
         );
       });
-
-    // ---- built-ins
-    const builtins = h(
-      'div',
-      { class: 'sfx-grid' },
-      BUILTIN_SFX.map((s) => {
-        let url = null;
-        const play = h('button', { type: 'button', class: 'icon-btn sfx-play', 'aria-label': `Preview ${s.label}` }, icon('play', 16));
-        play.addEventListener('click', async () => {
-          url = url || URL.createObjectURL(await synthSfx(s.id));
-          playPreview(`b-${s.id}`, url, play);
-        });
-        const save = button('Save', async () => saveToLib(await synthSfx(s.id), s.label, { source: 'builtin' }, save), { variant: 'sm', title: 'Save to your sound library' });
-        return h(
-          'div',
-          { class: 'sfx-item' },
-          play,
-          h('span', { class: 'sfx-name' }, s.label, h('span', { class: 'muted tiny' }, ` ${s.secs}s`)),
-          h('div', { class: 'lib-acts' }, save, button('Add', async () => addSoundBlob(await synthSfx(s.id), `${s.label}.wav`, { source: 'builtin' }), { iconName: 'plus', variant: 'sm' })),
-        );
-      }),
-    );
 
     // ---- Openverse
     const licSel = h('select', {}, SFX_LICENSES.map(([v, l]) => h('option', { value: v, selected: v === soundState.license }, l)));
@@ -993,58 +1054,22 @@ export function createPanels({ store, engine, ui }) {
     const ovForm = h('form', { class: 'search-row', onsubmit: (e) => (e.preventDefault(), q.value.trim() && runOv(q.value.trim())) }, q, button('Search', null, { iconName: 'search', variant: 'primary' }));
     ovForm.querySelector('button').type = 'submit';
 
-    // ---- the bundled free sound pack (CC0, ships with the app)
-    const packList = loadPack(() => ui.refreshPanels(true));
-    const packBox = h('div', { class: 'sfx-list pack-list' });
-    const packIn = h('input', { type: 'search', placeholder: 'Search the pack: airhorn, boom, crowd, scratch…', value: packState.q, 'aria-label': 'Search the free sound pack' });
-    const packChips = h('div', { class: 'chips' });
-    const renderPack = () => {
-      if (!packList) return packBox.replaceChildren(h('p', { class: 'muted tiny' }, 'Loading the sound pack…'));
-      if (!packList.length) return packBox.replaceChildren(h('p', { class: 'muted tiny' }, 'The sound pack isn’t installed (sounds/pack is missing).'));
-      packChips.replaceChildren(
-        button('All', () => ((packState.cat = ''), (packState.limit = 30), renderPack()), { variant: `chip${packState.cat ? '' : ' on'}` }),
-        ...packCategories(packList).map((c) => button(c.name, () => ((packState.cat = packState.cat === c.name ? '' : c.name), (packState.limit = 30), renderPack()), { variant: `chip${packState.cat === c.name ? ' on' : ''}` })),
-      );
-      const found = filterPack(packList, packState.q, packState.cat);
-      const shown = found.slice(0, packState.limit);
-      packBox.replaceChildren(
-        h('p', { class: 'muted tiny' }, found.length ? `${found.length} sound${found.length > 1 ? 's' : ''}${packState.q ? ` for “${packState.q}”` : ''}` : 'Nothing in the pack matches. Try the free libraries below, or MyInstants.'),
-        ...resultRows(shown.map(packResult), 'pack'),
-        found.length > shown.length ? button(`Show more (${found.length - shown.length})`, () => ((packState.limit += 30), renderPack()), { variant: 'ghost wide' }) : null,
-      );
-    };
-    let packTimer = null;
-    packIn.addEventListener('input', () => {
-      clearTimeout(packTimer);
-      packTimer = setTimeout(() => ((packState.q = packIn.value.trim()), (packState.limit = 30), renderPack()), 120);
-    });
-    renderPack();
     const myInstants = h('a', { class: 'btn sm ghost', target: '_blank', rel: 'noopener noreferrer', href: 'https://www.myinstants.com/en/search/?name=' }, 'Find on MyInstants');
-    const syncMi = () => (myInstants.href = `https://www.myinstants.com/en/search/?name=${encodeURIComponent(packIn.value.trim())}`);
-    packIn.addEventListener('input', syncMi);
+    const syncMi = () => (myInstants.href = `https://www.myinstants.com/en/search/?name=${encodeURIComponent(libSearch.value.trim())}`);
+    libSearch.addEventListener('input', syncMi);
     syncMi();
 
     return h(
       'div',
       {},
       section(
-        `Free sound pack${packList && packList.length ? ` · ${packList.length} sounds` : ''}`,
-        h('p', { class: 'muted small' }, 'Public-domain (CC0) effects that ship with the app: no key, no credit needed, fine for promos.'),
-        h('div', { class: 'search-row' }, packIn),
-        packChips,
-        packBox,
-        h('div', { class: 'row' }, myInstants, h('span', { class: 'muted tiny' }, 'Opens MyInstants. Most clips there are cut from movies, TV and songs, so only use ones you have the rights to; drop downloads into My sound library.')),
-      ),
-      section(
-        'My sound library',
-        h('p', { class: 'muted small' }, 'Your own collection of clips, kept in this browser for every project. Add them in bulk, star favorites, and drop them on the timeline.'),
-        drop,
-        h('div', { class: 'row' }, folderBtn, button('Add files', async () => doImport(await pickFiles('audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus', true)), { iconName: 'upload', variant: 'sm' })),
-        progress,
-        h('div', { class: 'search-row' }, libSearch, favBtn),
-        libInfo,
+        'Your sounds',
+        h('p', { class: 'muted small' }, 'Everything in one place: sounds you added, the free CC0 pack that ships with the app, and the built-in effects. Star favorites, and rename or tag any sound with the ', icon('type', 12), ' button.'),
+        h('div', { class: 'search-row' }, libSearch),
+        libChips,
+        tagChips,
         libList,
-        h('p', { class: 'muted tiny' }, 'Only add sounds you have the rights to use. The library lives in this browser on this device; clearing site data removes it.'),
+        h('div', { class: 'row' }, myInstants, h('span', { class: 'muted tiny' }, 'Searches MyInstants for the same words. Most clips there are cut from movies, TV and songs, so only use ones you have the rights to.')),
       ),
       section(
         'Freesound',
@@ -1060,11 +1085,6 @@ export function createPanels({ store, engine, ui }) {
         fsState.hasMore ? button('Load more', () => runFs(fsState.query, fsState.page + 1), { variant: 'ghost wide' }) : null,
       ),
       section(
-        'Built-in effects',
-        h('p', { class: 'muted small' }, 'Made in your browser, so there is nothing to credit or license.'),
-        builtins,
-      ),
-      section(
         'More free sounds (Openverse)',
         h('p', { class: 'muted small' }, 'Searches Creative Commons sounds from Freesound, Wikimedia and others through ', h('a', { href: 'https://openverse.org', target: '_blank', rel: 'noopener noreferrer' }, 'Openverse'), ', with no key.'),
         field('License', licSel),
@@ -1074,6 +1094,15 @@ export function createPanels({ store, engine, ui }) {
         h('div', { class: 'sfx-list' }, resultRows(soundState.results, 'openverse')),
         soundState.results.length ? button('Load more', () => runOv(soundState.query, soundState.page + 1), { variant: 'ghost wide' }) : null,
         h('p', { class: 'muted tiny' }, 'Sounds that need credit are added to your post caption in the Export tab automatically.'),
+      ),
+      section(
+        'Add your own sounds',
+        h('p', { class: 'muted small' }, 'Add clips in bulk. They join Your sounds above and stay in this browser for every project. Folder and file names become tags.'),
+        drop,
+        h('div', { class: 'row' }, folderBtn, button('Add files', async () => doImport(await pickFiles('audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus', true)), { iconName: 'upload', variant: 'sm' })),
+        progress,
+        libInfo,
+        h('p', { class: 'muted tiny' }, 'Only add sounds you have the rights to use. They live in this browser on this device; clearing site data removes them.'),
       ),
     );
   }

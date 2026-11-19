@@ -8,7 +8,7 @@ import { createPanels } from './panels.js';
 import { h, icon, iconButton, button, toast, setFold, Binder } from './dom.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { buildInspirationPage } from './page-inspiration.js';
-import { buildTabStudio } from './page-tabstudio.js';
+import { buildTabStudio, openInTabStudio } from './page-tabstudio.js';
 import { buildCarouselPage } from './page-carousel.js';
 import { createPostCheck } from './panel-postcheck.js';
 import { createTips } from './panel-tips.js';
@@ -586,7 +586,9 @@ manager = createManager({
     /** A library file's details, or null when it was removed from the library. */
     mediaInfo(id) {
       const m = id && media.get(id);
-      return m ? { id: m.id, name: m.name, kind: m.kind, duration: m.duration || 0, thumb: m.thumb || null, url: m.url } : null;
+      if (!m) return null;
+      const tab = m.kind === 'tab' ? { title: m.title || '', tracks: (m.tracks || []).map((t) => t.name), drumTracks: (m.drumTracks || []).length } : {};
+      return { id: m.id, name: m.name, kind: m.kind, duration: m.duration || 0, thumb: m.thumb || null, url: m.url, ...tab };
     },
     /**
      * Put a song's file into the current edit. `how`: 'clip' (end of the main video track),
@@ -643,7 +645,7 @@ manager = createManager({
 ui.songFiles = () =>
   studioSongFiles(manager.store.get().songs, (id) => {
     const m = id && media.get(id);
-    return m ? { id: m.id, name: m.name, kind: m.kind, duration: m.duration || 0, thumb: m.thumb || null } : null;
+    return m ? { id: m.id, name: m.name, kind: m.kind, duration: m.duration || 0, thumb: m.thumb || null, title: m.title || '' } : null;
   });
 ui.sendToEdit = (id, how) => {
   const rec = media.get(id);
@@ -656,6 +658,13 @@ ui.openSongFiles = (songId) => {
 /** Put a library file into the edit (see studio.useInEditor for `how`). */
 function sendToEdit(rec, how) {
   if (how === 'clip') return panels.actions.addClip(rec);
+  if (how === 'tab') return panels.actions.useTab(rec);
+  if (how === 'tabstudio') {
+    openInTabStudio(rec, +timelineToSong(0, store.get().song).toFixed(3));
+    setMode('studio');
+    ui.openTab('tabstudio');
+    return;
+  }
   if (how === 'audio') return panels.actions.addAudioTrack(rec);
   let selectId = null;
   store.update((d) => {
