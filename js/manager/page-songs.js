@@ -7,10 +7,13 @@ import { buildShootTab } from './page-shoot.js';
 import { pressTab, playlistsTab, pitchTab } from './page-press.js';
 import { pitchStats } from './press.js';
 import { linksSection } from './page-links.js';
+import { filesTab } from './page-files.js';
+import { fileCounts } from './files.js';
 
 const TABS = [
   ['overview', 'Overview'],
   ['lyrics', 'Lyrics'],
+  ['files', 'Files'],
   ['shoot', 'Video shoot'],
   ['release', 'Release'],
   ['content', 'Content'],
@@ -77,7 +80,7 @@ function songPage(ctx, song) {
     });
     ctx.go('songs');
   };
-  const body = { overview: overviewTab, lyrics: lyricsTab, shoot: buildShootTab, release: releaseTab, content: contentTab, playlists: playlistsTab, press: pressTab, pitch: pitchTab }[tab](ctx, song, S);
+  const body = { overview: overviewTab, lyrics: lyricsTab, files: filesTab, shoot: buildShootTab, release: releaseTab, content: contentTab, playlists: playlistsTab, press: pressTab, pitch: pitchTab }[tab](ctx, song, S);
   return h(
     'div',
     { class: 'mgr-page' },
@@ -132,6 +135,7 @@ function overviewTab(ctx, song, S) {
         h('li', {}, h('span', {}, 'Release checklist'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('release') }, `${p.done} of ${p.total} done`)),
         h('li', {}, h('span', {}, 'Video shoot'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('shoot') }, song.shoot.date ? niceDate(song.shoot.date) : song.shoot.concept ? 'Concept picked, no date' : 'Not planned')),
         h('li', {}, h('span', {}, 'Planned posts'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('content') }, `${posts.length} (${posts.filter((x) => x.status === 'posted').length} posted)`)),
+        h('li', {}, h('span', {}, 'Tab, stems, video and footage'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('files') }, (({ tabs, stems, video, footage, total }) => (total ? [tabs && `${tabs} tab${tabs === 1 ? '' : 's'}`, stems && `${stems} stem${stems === 1 ? '' : 's'}`, video && 'music video', footage && `${footage} clip${footage === 1 ? '' : 's'}`].filter(Boolean).join(' · ') : 'None yet'))(fileCounts(song)))),
         h('li', {}, h('span', {}, 'Playlist pitches'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('pitch') }, (({ total, sent, added }) => (total ? `${sent} sent · ${added} added` : 'None yet'))(pitchStats(song)))),
         h('li', {}, h('span', {}, 'Lyrics'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('lyrics') }, song.lyrics.trim() ? `${song.lyrics.trim().split(/\n+/).length} lines` : 'None yet')),
       ),

@@ -136,6 +136,19 @@ function voice(ac, out, when, track, n, dur) {
   o.stop(when + Math.max(0.15, Math.min(dur, 2)) + 0.05);
 }
 
+/** Open a Guitar Pro / MusicXML file from the media library in Tab Studio (next time the page shows). */
+export function openInTabStudio(rec, offset = 0) {
+  if (!rec || !rec.score) return false;
+  S.model = E.fromScore(rec.score);
+  E.alignTracks(S.model);
+  S.model.offset = offset;
+  S.sourceId = rec.id;
+  S.sel = { track: 0, bar: 0, beat: 0, key: 1 };
+  S.undo = [];
+  S.redo = [];
+  return true;
+}
+
 export function buildTabStudio({ store, engine, ui, panels }) {
   const root = h('div', { class: 'page tab-studio' });
   const status = h('p', { class: 'ts-status', role: 'status', 'aria-live': 'polite' });

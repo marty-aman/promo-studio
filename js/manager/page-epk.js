@@ -3,6 +3,7 @@
 import { h, button, iconButton, toast, download } from '../dom.js';
 import { mid } from './model.js';
 import { EPK_LINKS, epkHTML, shortBio } from './extras.js';
+import { epkCredits } from './photos.js';
 import { THEMES } from '../themes.js';
 
 export const epkUI = { photos: [] };
@@ -13,8 +14,10 @@ export function buildEPK(ctx) {
   const b = m.band;
   const B = (fn) => (d, v) => fn(d.band, v);
   const images = ctx.studio.imageFiles();
+  // the artist's Photos come first, then any other image in the media library
+  const ranked = [...(m.photos || []).map((p) => images.find((x) => x.id === p.mediaId)).filter(Boolean), ...images.filter((x) => !(m.photos || []).some((p) => p.mediaId === x.id))];
   const ui = epkUI;
-  ui.photos = ui.photos.filter((id) => images.some((x) => x.id === id));
+  ui.photos = (b.epkPhotos || []).filter((id) => images.some((x) => x.id === id));
 
   const listEditor = (key, cols, blank, label) =>
     h(
@@ -41,7 +44,9 @@ export function buildEPK(ctx) {
       const url = await ctx.studio.imageDataUrl(id, 1400);
       if (url) photos.push(url);
     }
-    return epkHTML(ctx.store.get(), { today: ctx.today(), photos });
+    const cur = ctx.store.get();
+    const credits = epkCredits(cur.photos || [], ui.photos.filter((id) => images.some((x) => x.id === id)));
+    return epkHTML(cur, { today: ctx.today(), photos, credits });
   };
   const save = async () => {
     const html = await build();
@@ -55,10 +60,7 @@ export function buildEPK(ctx) {
       toast('Could not copy.', 'error');
     }
   };
-  const togglePhoto = (id) => {
-    ui.photos = ui.photos.includes(id) ? ui.photos.filter((x) => x !== id) : [...ui.photos, id].slice(-4);
-    ctx.go('epk');
-  };
+  const togglePhoto = (id) => ctx.update(B((band) => (band.epkPhotos = (band.epkPhotos || []).includes(id) ? band.epkPhotos.filter((x) => x !== id) : [...(band.epkPhotos || []), id].slice(-4))));
 
   return h(
     'div',
@@ -109,9 +111,10 @@ export function buildEPK(ctx) {
           'section',
           { class: 'mgr-sect' },
           h('h2', {}, 'Press photos'),
-          images.length
-            ? h('div', { class: 'mgr-photos' }, images.map((im) => h('button', { type: 'button', class: `mgr-photo${ui.photos.includes(im.id) ? ' on' : ''}`, 'aria-pressed': ui.photos.includes(im.id) ? 'true' : 'false', onclick: () => togglePhoto(im.id) }, im.thumb ? h('img', { src: im.thumb, alt: '' }) : null, h('span', {}, im.name))))
-            : h('p', { class: 'muted small' }, 'Upload photos in Video Studio → Video → My clips, then pick up to four here.'),
+          h('p', { class: 'muted small' }, 'Pick up to four. Manage, caption and credit them on the ', h('button', { type: 'button', class: 'link', onclick: () => ctx.go('photos') }, 'Photos'), ' page.'),
+          ranked.length
+            ? h('div', { class: 'mgr-photos' }, ranked.map((im) => h('button', { type: 'button', class: `mgr-photo${ui.photos.includes(im.id) ? ' on' : ''}`, 'aria-pressed': ui.photos.includes(im.id) ? 'true' : 'false', onclick: () => togglePhoto(im.id) }, im.thumb ? h('img', { src: im.thumb, alt: '' }) : null, h('span', {}, im.name))))
+            : h('p', { class: 'muted small' }, 'No photos yet. Add them on the Photos page.'),
           h('p', { class: 'muted tiny' }, 'Picked photos are embedded in the downloaded file (resized to 1400 px). The preview leaves them out.'),
         ),
       ),
