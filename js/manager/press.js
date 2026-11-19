@@ -4,6 +4,7 @@
 import { niceDate, daysBetween, addDays } from './model.js';
 import { hookLines } from './ideas.js';
 import { soundOf, lyricThemes, MOODS } from './playlists.js';
+import { linkLabel } from './isrc.js';
 
 export const SPOTIFY_PITCH_MAX = 500;
 export const PITCH_STATUSES = [['todo', 'To send'], ['sent', 'Sent'], ['replied', 'Replied'], ['added', 'Added'], ['declined', 'Declined']];
@@ -42,7 +43,7 @@ function facts(song, m, today) {
   const when = date ? (out ? `out now` : `out ${niceDate(date, { weekday: false })}`) : 'out soon';
   const hook = hookLines(song.lyrics, 1)[0] || '';
   const shows = (m.shows || []).filter((s) => s.status === 'confirmed' && s.date && (!today || s.date >= today)).sort((x, y) => x.date.localeCompare(y.date)).slice(0, 4);
-  const links = Object.entries(song.links || {}).filter(([, v]) => v).map(([k, v]) => [{ spotify: 'Spotify', apple: 'Apple Music', youtube: 'YouTube', bandcamp: 'Bandcamp' }[k] || k, v]);
+  const links = Object.entries(song.links || {}).filter(([, v]) => v).map(([k, v]) => [linkLabel(k), v]);
   const press = { ...newPress(), ...(song.press || {}) };
   return { b, snd, name, genres, themes, date, out, when, hook, shows, links, press, city: b.city || '' };
 }
