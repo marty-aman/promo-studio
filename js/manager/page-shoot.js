@@ -3,6 +3,7 @@
 import { h, icon, button, iconButton, toast } from '../dom.js';
 import { shootIdeas, hookLines } from './ideas.js';
 import { niceDate, mid } from './model.js';
+import { exportPDF } from './pdf.js';
 
 // clips worth grabbing on the same day, for the short-form plan
 const SHORT_FORM_GRABS = [
@@ -97,11 +98,8 @@ export function buildShootTab(ctx, song, S) {
   );
 
   const print = () => {
-    const w = window.open('', '_blank');
-    if (!w) return toast('Allow pop-ups to open the call sheet.', 'error');
-    w.document.write(callSheetHTML(ctx.store.get().band, song));
-    w.document.close();
-    w.focus();
+    exportPDF(callSheetHTML(ctx.store.get().band, song), `${song.title} call sheet`);
+    toast('Pick “Save as PDF” as the printer to get a PDF.');
   };
 
   return h(
@@ -143,7 +141,7 @@ export function buildShootTab(ctx, song, S) {
         list('crew', sh.crew, [['role', 'Role'], ['name', 'Name'], ['contact', 'Phone / email']], { role: 'Camera', name: '', contact: '' }, 'a person'),
         h('div', { class: 'mgr-two' }, f.text(`ward-${song.id}`, 'Wardrobe', sh.wardrobe, Sh((x, v) => (x.wardrobe = v)), { rows: 2 }), f.text(`props-${song.id}`, 'Props and gear', sh.props, Sh((x, v) => (x.props = v)), { rows: 2 })),
         h('div', { class: 'mgr-two' }, f.text(`budget-${song.id}`, 'Budget', sh.budget, Sh((x, v) => (x.budget = v)), { placeholder: 'e.g. $400' }), f.text(`snotes-${song.id}`, 'Notes', sh.notes, Sh((x, v) => (x.notes = v)), { rows: 2 })),
-        button('Print the call sheet', print, { iconName: 'print', variant: 'sm' }),
+        button('Export call sheet PDF', print, { iconName: 'print', variant: 'sm' }),
       ),
       h(
         'section',

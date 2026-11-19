@@ -118,9 +118,9 @@ export function parseTemplateFile(text) {
   try {
     raw = JSON.parse(text);
   } catch {
-    throw new Error('That file isn’t a Promo Studio template.');
+    throw new Error('That file isn’t a Band Manager template.');
   }
-  if (!isObj(raw) || !(raw.promoStudioTemplate || raw.v) || !isObj(raw.lyricStyle)) throw new Error('That file isn’t a Promo Studio template.');
+  if (!isObj(raw) || !(raw.promoStudioTemplate || raw.v) || !isObj(raw.lyricStyle)) throw new Error('That file isn’t a Band Manager template.');
   const t = {
     v: MY_TEMPLATE_VERSION,
     name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 80) : 'Imported template',

@@ -154,8 +154,8 @@ const icsDate = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2,
 const icsText = (s) => String(s).replace(/[\\;,]/g, (m) => `\\${m}`).replace(/\n/g, '\\n');
 
 /** events: [{ date, title, note }] -> .ics text (floating local times, 30-minute slots). */
-export function toICS(events, calName = 'Promo Studio posting plan') {
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Promo Studio//Posting plan//EN', `X-WR-CALNAME:${icsText(calName)}`];
+export function toICS(events, calName = 'Band Manager posting plan') {
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Band Manager//Posting plan//EN', `X-WR-CALNAME:${icsText(calName)}`];
   events.forEach((e, i) => {
     const end = new Date(e.date.getTime() + 30 * 60000);
     lines.push('BEGIN:VEVENT', `UID:promo-${icsDate(e.date)}-${i}@promo-studio`, `DTSTAMP:${icsDate(new Date())}`, `DTSTART:${icsDate(e.date)}`, `DTEND:${icsDate(end)}`, `SUMMARY:${icsText(e.title)}`, `DESCRIPTION:${icsText(e.note || '')}`, 'END:VEVENT');

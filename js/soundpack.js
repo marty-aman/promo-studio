@@ -65,5 +65,5 @@ export const packResult = (s) => ({
   pageUrl: s.page,
   license: 'CC0',
   needsCredit: false,
-  provider: 'Promo Studio pack',
+  provider: 'Band Manager pack',
 });

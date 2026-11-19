@@ -1,6 +1,8 @@
 // Money: what came in and went out (the ledger plus every show's settlement), by category and
 // month, and each release's spend against its budget.
-import { h, button, iconButton, download } from '../dom.js';
+import { h, button, iconButton, download, toast } from '../dom.js';
+import { exportPDF } from './pdf.js';
+import { moneyHTML } from './docs.js';
 import { niceDate } from './model.js';
 import { MONEY_CATS, newEntry, moneyLines, moneySummary, releaseSpend } from './extras.js';
 
@@ -28,6 +30,11 @@ export function buildMoney(ctx) {
     const rows = [['Date', 'In/Out', 'Category', 'Amount', 'Note', 'From'], ...lines.map((e) => [e.date, e.kind === 'income' ? 'in' : 'out', catLabel(e.category), e.amount, e.note || '', e.from])];
     download(new Blob([rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv' }), `band-money-${ui.year}.csv`);
   };
+  const pdf = () => {
+    const inYear = lines.filter((e) => ui.year === 'all' || (e.date || '').startsWith(ui.year)).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    exportPDF(moneyHTML({ band: m.band, year: ui.year, lines: inYear, sum, catLabel }), `${m.band.name || 'Band'} money ${ui.year}`);
+    toast('Pick “Save as PDF” as the printer to get a PDF.');
+  };
   const maxMonth = Math.max(1, ...sum.byMonth.map(([, i, x]) => Math.max(i, x)));
   const ledger = m.money.filter((e) => ui.year === 'all' || (e.date || '').startsWith(ui.year));
   const shows = lines.filter((e) => e.from === 'show' && (ui.year === 'all' || (e.date || '').startsWith(ui.year)));
@@ -40,7 +47,7 @@ export function buildMoney(ctx) {
       'header',
       { class: 'mgr-head' },
       h('div', {}, h('h1', {}, 'Money'), h('p', { class: 'muted' }, 'Show pay, merch, streaming and what you spend, so you know what the band can afford next.')),
-      h('div', { class: 'row' }, yearSel, button('Download CSV', csv, { iconName: 'download', variant: 'sm' }), button('Money in', () => add('income'), { iconName: 'plus', variant: 'sm' }), button('Money out', () => add('expense'), { iconName: 'plus', variant: 'sm primary' })),
+      h('div', { class: 'row' }, yearSel, button('Download CSV', csv, { iconName: 'download', variant: 'sm' }), button('Export PDF', pdf, { iconName: 'print', variant: 'sm' }), button('Money in', () => add('income'), { iconName: 'plus', variant: 'sm' }), button('Money out', () => add('expense'), { iconName: 'plus', variant: 'sm primary' })),
     ),
     h(
       'div',

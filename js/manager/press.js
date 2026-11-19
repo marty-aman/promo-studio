@@ -8,11 +8,30 @@ import { linkLabel } from './isrc.js';
 
 export const SPOTIFY_PITCH_MAX = 500;
 export const PITCH_STATUSES = [['todo', 'To send'], ['sent', 'Sent'], ['replied', 'Replied'], ['added', 'Added'], ['declined', 'Declined']];
-export const PITCH_SERVICES = ['Spotify', 'Apple Music', 'Amazon Music', 'Deezer', 'YouTube', 'SoundCloud', 'Blog', 'Radio', 'Other'];
+export const PITCH_SERVICES = ['Spotify', 'Apple Music', 'Amazon Music', 'Deezer', 'YouTube', 'SoundCloud', 'SubmitHub', 'Groover', 'Blog', 'Radio', 'Other'];
+
+/**
+ * Paid submission services. Neither has a public API for artists, so the app can't send or read
+ * campaigns for you: it opens the site, gives you the pitch text, and logs what you sent and spent.
+ */
+export const SUBMIT_SERVICES = [
+  { id: 'SubmitHub', url: 'https://www.submithub.com/', how: 'Upload the track, pick curators, blogs, labels or radio, and spend credits. With a premium credit the curator has 72 hours to listen for at least a minute and approve or say why not, or the credit comes back.', credit: 'Premium credits are about $1 each (less in bulk). You also get 2 free standard credits every 4 hours, but only some curators take them and none have to reply.' },
+  { id: 'Groover', url: 'https://groover.co/en/', how: 'Upload the track, pick curators, radios, labels and media, and pay in Grooviz. Each one has 7 days to give feedback, or the Grooviz come back.', credit: 'A Grooviz is €1; most contacts cost 2, a few top ones 4. Packs are a little cheaper.' },
+];
+
+/** A short pitch for submission forms (both sites ask for a few lines about the track). */
+export function submitPitch(song, m, { today = '' } = {}) {
+  const f = facts(song, m, today);
+  const moods = moodWords(f.snd);
+  const sound = [moods.length ? list(moods.slice(0, 2)) : '', f.genres.slice(0, 2).join(' / ') || 'heavy music'].filter(Boolean).join(' ');
+  const fans = f.snd.similar ? ` For fans of ${f.snd.similar.split(',').slice(0, 3).map((x) => x.trim()).join(', ')}.` : '';
+  const story = f.press.story ? ` ${f.press.story.trim().split(/(?<=[.!?])\s+/)[0]}` : f.themes.length ? ` It’s about ${list(f.themes.slice(0, 2))}.` : '';
+  return `“${song.title}” by ${f.name}, ${f.when}: ${sound}${f.city ? ` from ${f.city}` : ''}.${fans}${story}`.replace(/\s+/g, ' ').trim();
+}
 
 /** The press-release details a song keeps (everything optional). */
 export const newPress = () => ({ headline: '', story: '', quote: '', quoteBy: '', credits: '', label: '', edits: {} });
-export const newPitch = (fields = {}) => ({ id: '', curator: '', playlist: '', service: 'Spotify', contact: '', sent: '', status: 'todo', followUp: '', followedUp: false, notes: '', ...fields });
+export const newPitch = (fields = {}) => ({ id: '', curator: '', playlist: '', service: 'Spotify', contact: '', sent: '', status: 'todo', followUp: '', followedUp: false, notes: '', cost: '', ...fields });
 
 const list = (xs) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 const a = (w) => (/^[aeiou]/i.test(w) ? 'an' : 'a');

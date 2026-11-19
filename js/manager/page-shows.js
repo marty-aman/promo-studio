@@ -3,6 +3,8 @@
 import { h, icon, button, iconButton, toast } from '../dom.js';
 import { SHOW_STATUSES, newShow, niceDate, daysBetween, addDays, mid } from './model.js';
 import { showTodo, todoDue } from './planner.js';
+import { exportPDF } from './pdf.js';
+import { showSheetHTML } from './docs.js';
 
 const BILLING = [['headline', 'Headliner'], ['support', 'Support'], ['opener', 'Opener'], ['festival', 'Festival'], ['other', 'Other']];
 const label = (list, k) => (list.find(([v]) => v === k) || [k, k])[1];
@@ -134,7 +136,7 @@ function showPage(ctx, show) {
       'header',
       { class: 'mgr-head' },
       h('div', {}, h('h1', {}, show.venue || 'New show'), h('p', { class: 'muted' }, show.date ? `${niceDate(show.date)}${show.date >= ctx.today() ? ` · in ${daysBetween(ctx.today(), show.date)} days` : ''}` : 'No date yet')),
-      h('div', { class: 'row' }, button('Copy for the band chat', copy, { iconName: 'copy', variant: 'sm' }), iconButton('trash', 'Delete this show', remove, 'ghost danger')),
+      h('div', { class: 'row' }, button('Copy for the band chat', copy, { iconName: 'copy', variant: 'sm' }), button('Export show sheet PDF', () => (exportPDF(showSheetHTML({ ...show, billing: label(BILLING, show.billing), status: label(SHOW_STATUSES, show.status) }, m.band), `${show.venue || 'Show'} ${show.date || ''}`.trim()), toast('Pick “Save as PDF” as the printer to get a PDF.')), { iconName: 'print', variant: 'sm' }), button(show.plan ? 'Show plan' : 'Plan the night', () => ctx.go('planner', show.id, 'plan'), { iconName: 'clipboard', variant: 'sm ghost', title: 'Run of show: set times, changeovers and the setlist with timings' }), iconButton('trash', 'Delete this show', remove, 'ghost danger')),
     ),
     bandNames,
     venueNames,

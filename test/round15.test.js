@@ -94,8 +94,8 @@ test('template files round-trip, and bad files are rejected or cleaned', () => {
   const back = parseTemplateFile(templateFile(t));
   assert.equal(back.name, 'Share me');
   assert.equal(back.layers.length, 2);
-  assert.throws(() => parseTemplateFile('not json'), /isn’t a Promo Studio template/);
-  assert.throws(() => parseTemplateFile('{"hello":1}'), /isn’t a Promo Studio template/);
+  assert.throws(() => parseTemplateFile('not json'), /isn’t a Band Manager template/);
+  assert.throws(() => parseTemplateFile('{"hello":1}'), /isn’t a Band Manager template/);
   const evil = parseTemplateFile(JSON.stringify({ promoStudioTemplate: 2, name: 'x', lyricStyle: {}, thumb: 'javascript:alert(1)', background: 'url(x)', aspect: 'weird', layers: [{ type: 'tab', mediaId: 'steal', id: 'z' }, { type: 'script' }], look: { watermark: { mediaId: 'm' } } }));
   assert.equal(evil.thumb, null);
   assert.equal(evil.background, undefined);

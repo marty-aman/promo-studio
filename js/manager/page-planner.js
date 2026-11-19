@@ -5,8 +5,9 @@ import { niceDate } from './model.js';
 import { VENUE_STATUSES, venueFromSeed, bandFromSeed, newVenue, mergeSeed, filterVenues, venueFit, pitchEmail, mailtoLink } from './planner.js';
 import { SEED_VENUES, SEED_BANDS, SEED_VENUES_ON, SEED_BANDS_ON } from './seed.js';
 import { bandsTab, contactsTab, buildTab } from './planner-tabs.js';
+import { showPlanTab, stagePlotTab } from './planner-stage.js';
 
-const TABS = [['venues', 'Venues'], ['bands', 'Bands'], ['build', 'Build a show'], ['contacts', 'Contacts']];
+const TABS = [['venues', 'Venues'], ['bands', 'Bands'], ['build', 'Build a show'], ['plan', 'Show plan'], ['stage', 'Stage plot'], ['contacts', 'Contacts']];
 export const plannerUI = { q: '', size: '', ages: '', city: '', draw: '', open: null, pitch: null, pitchDates: '', pitchSimilar: '', venueForBuild: null };
 const label = (list, k) => (list.find(([v]) => v === k) || [k, k])[1];
 
@@ -33,12 +34,12 @@ function seedOnce(ctx) {
 export function buildPlanner(ctx) {
   seedOnce(ctx);
   const tab = TABS.some(([k]) => k === ctx.view.tab) ? ctx.view.tab : 'venues';
-  const body = { venues: venuesTab, bands: bandsTab, contacts: contactsTab, build: buildTab }[tab](ctx);
+  const body = { venues: venuesTab, bands: bandsTab, contacts: contactsTab, build: buildTab, plan: showPlanTab, stage: stagePlotTab }[tab](ctx);
   return h(
     'div',
     { class: 'mgr-page' },
-    h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, 'Show planner'), h('p', { class: 'muted' }, 'Find a room, line up the bands, pitch it and turn it into a show.'))),
-    h('div', { class: 'mgr-tabs', role: 'tablist' }, TABS.map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': k === tab ? 'true' : 'false', class: `mgr-tab${k === tab ? ' on' : ''}`, onclick: () => ctx.setTab(k) }, l))),
+    h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, 'Show planner'), h('p', { class: 'muted' }, 'Find a room, line up the bands, pitch it, plan the night and send the stage plot.'))),
+    h('div', { class: 'mgr-tabs', role: 'tablist' }, TABS.map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': k === tab ? 'true' : 'false', class: `mgr-tab${k === tab ? ' on' : ''}`, onclick: () => ctx.go('planner', k === 'plan' ? ctx.view.id : null, k) }, l))),
     h('div', { role: 'tabpanel' }, body),
   );
 }
