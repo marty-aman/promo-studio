@@ -3,6 +3,7 @@
 import { h, button, iconButton, toast, download } from '../dom.js';
 import { mid } from './model.js';
 import { EPK_LINKS, epkHTML, shortBio } from './extras.js';
+import { THEMES } from '../themes.js';
 
 export const epkUI = { photos: [] };
 
@@ -95,6 +96,18 @@ export function buildEPK(ctx) {
         h(
           'section',
           { class: 'mgr-sect' },
+          h('h2', {}, 'Branding for promos'),
+          h('p', { class: 'muted small' }, 'When you pick this artist in the Video Studio, the promo takes its name, this theme and this logo.'),
+          h(
+            'div',
+            { class: 'mgr-two' },
+            f.select('epk-theme', 'Theme', b.theme || '', [['', 'No theme (keep the edit’s look)'], ...THEMES.map((t) => [t.id, t.name])], B((x, v) => (x.theme = v))),
+            f.select('epk-logo', 'Logo', b.logoId || '', [['', images.length ? 'No logo' : 'Upload a logo in Video Studio → Video'], ...images.map((im) => [im.id, im.name])], B((x, v) => (x.logoId = v || null))),
+          ),
+        ),
+        h(
+          'section',
+          { class: 'mgr-sect' },
           h('h2', {}, 'Press photos'),
           images.length
             ? h('div', { class: 'mgr-photos' }, images.map((im) => h('button', { type: 'button', class: `mgr-photo${ui.photos.includes(im.id) ? ' on' : ''}`, 'aria-pressed': ui.photos.includes(im.id) ? 'true' : 'false', onclick: () => togglePhoto(im.id) }, im.thumb ? h('img', { src: im.thumb, alt: '' }) : null, h('span', {}, im.name))))
@@ -102,7 +115,9 @@ export function buildEPK(ctx) {
           h('p', { class: 'muted tiny' }, 'Picked photos are embedded in the downloaded file (resized to 1400 px). The preview leaves them out.'),
         ),
       ),
-      h('section', { class: 'mgr-sect mgr-epk-prev' }, h('h2', {}, 'Preview'), preview, h('p', { class: 'muted tiny' }, 'Music lists songs with a release date; shows list confirmed upcoming dates and venues you’ve played (marked Played).')),
+      h('div', {}, h('section', { class: 'mgr-sect mgr-epk-prev' }, h('h2', {}, 'Preview'), preview, h('p', { class: 'muted tiny' }, 'Music lists songs with a release date; shows list confirmed upcoming dates and venues you’ve played (marked Played).')),
+        ctx.artists().length > 1 ? h('section', { class: 'mgr-sect' }, h('h2', {}, 'This artist'), h('p', { class: 'muted small' }, `Deletes ${b.name || 'this artist'} with its songs, shows, posts and money. Venues, bands and contacts are shared and stay.`), button(`Delete ${b.name || 'this artist'}`, () => ctx.deleteArtist(m.artistId), { iconName: 'trash', variant: 'sm danger' })) : null,
+      ),
     ),
   );
 }

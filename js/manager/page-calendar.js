@@ -3,6 +3,8 @@
 import { h, icon, button, iconButton, download } from '../dom.js';
 import { agenda, addDays, niceDate } from './model.js';
 import { monthGrid, monthStart, managerICS } from './extras.js';
+import { combinedAgenda } from './artists.js';
+import { scopeChips, openItem } from './page-home.js';
 
 export const calUI = { month: '' };
 const KIND = { show: ['ticket', 'Show'], release: ['disc', 'Release'], shoot: ['film', 'Shoot'], post: ['share', 'Post'], task: ['check', 'To do'] };
@@ -14,13 +16,15 @@ export function buildCalendar(ctx) {
   if (!ui.month) ui.month = monthStart(today);
   const weeks = monthGrid(ui.month);
   const first = weeks[0][0];
-  const items = agenda(m, first, weeks.length * 7);
+  const all = ctx.combined && ctx.artists().length > 1;
+  const ws = all ? ctx.workspace() : null;
+  const items = all ? combinedAgenda(ws, first, weeks.length * 7) : agenda(m, first, weeks.length * 7);
   const byDay = new Map();
   for (const it of items) (byDay.get(it.date) || byDay.set(it.date, []).get(it.date)).push(it);
   const monthName = new Date(`${ui.month}T12:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   const go = (delta) => ((ui.month = delta === 0 ? monthStart(today) : monthStart(ui.month, delta)), ctx.go('calendar'));
   const exportICS = () => {
-    download(new Blob([managerICS(m)], { type: 'text/calendar' }), `${(m.band.name || 'band').replace(/[^\w-]+/g, '-').toLowerCase()}-calendar.ics`);
+    download(new Blob([managerICS(m, { ws })], { type: 'text/calendar' }), `${(all ? 'all-artists' : m.band.name || 'band').replace(/[^\w-]+/g, '-').toLowerCase()}-calendar.ics`);
   };
   const counts = Object.fromEntries(Object.keys(KIND).map((k) => [k, items.filter((x) => x.kind === k && x.date.slice(0, 7) === ui.month.slice(0, 7)).length]));
   return h(
@@ -29,7 +33,7 @@ export function buildCalendar(ctx) {
     h(
       'header',
       { class: 'mgr-head' },
-      h('div', {}, h('h1', {}, 'Calendar'), h('p', { class: 'muted' }, 'Shows, releases, shoots, posts and to-dos in one place.')),
+      h('div', {}, h('h1', {}, all ? 'Calendar · all artists' : 'Calendar'), h('p', { class: 'muted' }, 'Shows, releases, shoots, posts and to-dos in one place.'), scopeChips(ctx)),
       h('div', { class: 'row' }, button('Download for my calendar (.ics)', exportICS, { iconName: 'calendar', variant: 'sm', title: 'Import into Google Calendar, Apple Calendar or Outlook' })),
     ),
     h(
@@ -49,7 +53,7 @@ export function buildCalendar(ctx) {
           'div',
           { class: `mgr-cal-d${out ? ' out' : ''}${d === today ? ' today' : ''}`, role: 'gridcell', 'aria-label': niceDate(d) },
           h('span', { class: 'mgr-cal-n' }, String(+d.slice(8))),
-          list.slice(0, 4).map((it) => h('button', { type: 'button', class: `mgr-cal-item ${it.kind}`, title: `${KIND[it.kind][1]}: ${it.title}${it.sub ? ` · ${it.sub}` : ''}`, onclick: () => ctx.go(it.ref.page, it.ref.id, it.ref.tab) }, icon(KIND[it.kind][0], 11), h('span', {}, it.title))),
+          list.slice(0, 4).map((it) => h('button', { type: 'button', class: `mgr-cal-item ${it.kind}`, title: `${all ? `${it.artist} · ` : ''}${KIND[it.kind][1]}: ${it.title}${it.sub ? ` · ${it.sub}` : ''}`, onclick: () => openItem(ctx, it) }, all ? h('b', { class: 'mgr-cal-who', 'aria-hidden': 'true' }, (it.artist || '?')[0].toUpperCase()) : null, icon(KIND[it.kind][0], 11), h('span', {}, all ? `${it.artist}: ${it.title}` : it.title))),
           list.length > 4 ? h('span', { class: 'muted tiny' }, `+${list.length - 4} more`) : null,
         );
       }),

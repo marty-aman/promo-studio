@@ -1,5 +1,6 @@
 // Calendar export, the press kit (EPK) and the money ledger. Pure functions, unit tested.
 import { agenda, addDays, parseDate, isoDate, niceDate, mid } from './model.js';
+import { combinedAgenda, viewOf } from './artists.js';
 
 // ---- calendar
 
@@ -45,22 +46,25 @@ const fold = (line) => {
  * Everything in the manager as an .ics calendar (Google, Apple and Outlook calendars import it):
  * shows at their set time, shoots at call time, everything else as all-day items.
  */
-export function managerICS(m, { from = '', days = 400, stamp = new Date() } = {}) {
+export function managerICS(m, { from = '', days = 400, stamp = new Date(), ws = null } = {}) {
   const start = from || addDays(isoDate(new Date()), -30);
-  const items = agenda(m, start, days);
+  // with a workspace: every artist, each title prefixed with the artist's name
+  const items = ws ? combinedAgenda(ws, start, days) : agenda(m, start, days);
+  const views = ws ? Object.fromEntries(ws.artists.map((a) => [a.id, viewOf(ws, a.id)])) : null;
   const dt = `${stamp.toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Promo Studio//Band manager//EN', `X-WR-CALNAME:${icsEsc(`${m.band.name || 'Band'} · manager`)}`, 'CALSCALE:GREGORIAN'];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Promo Studio//Band manager//EN', `X-WR-CALNAME:${icsEsc(ws ? 'All artists · manager' : `${m.band.name || 'Band'} · manager`)}`, 'CALSCALE:GREGORIAN'];
   items.forEach((it, i) => {
-    const show = it.kind === 'show' && m.shows.find((s) => s.id === it.ref.id);
-    const song = it.kind === 'shoot' && m.songs.find((s) => s.id === it.ref.id);
+    const src = views ? views[it.artistId] : m;
+    const show = it.kind === 'show' && src.shows.find((s) => s.id === it.ref.id);
+    const song = it.kind === 'shoot' && src.songs.find((s) => s.id === it.ref.id);
     const time = show ? show.setTime || show.doors : song ? song.shoot.callTime : '';
-    lines.push('BEGIN:VEVENT', `UID:${it.kind}-${it.ref.id}-${icsDay(it.date)}-${i}@promo-studio`, `DTSTAMP:${dt}`);
+    lines.push('BEGIN:VEVENT', `UID:${it.kind}-${it.ref.id}-${icsDay(it.date)}-${i}${it.artistId ? `-${it.artistId}` : ''}@promo-studio`, `DTSTAMP:${dt}`);
     if (time && /^\d{2}:\d{2}$/.test(time)) {
       const [hh, mm] = time.split(':').map(Number);
       const endH = Math.min(23, hh + (show ? 1 : 8));
       lines.push(`DTSTART:${icsLocal(it.date, time)}`, `DTEND:${icsLocal(it.date, `${String(endH).padStart(2, '0')}:${String(mm).padStart(2, '0')}`)}`);
     } else lines.push(`DTSTART;VALUE=DATE:${icsDay(it.date)}`, `DTEND;VALUE=DATE:${icsDay(addDays(it.date, 1))}`);
-    const title = { show: `Show: ${it.title}`, release: it.title, shoot: it.title, post: `Post: ${it.title}`, task: `To do: ${it.title}` }[it.kind];
+    const title = `${views ? `${it.artist}: ` : ''}${{ show: `Show: ${it.title}`, release: it.title, shoot: it.title, post: `Post: ${it.title}`, task: `To do: ${it.title}` }[it.kind]}`;
     lines.push(fold(`SUMMARY:${icsEsc(title)}`), fold(`DESCRIPTION:${icsEsc(it.sub)}`));
     if (show && show.venue) lines.push(fold(`LOCATION:${icsEsc([show.venue, show.city].filter(Boolean).join(', '))}`));
     lines.push('END:VEVENT');
