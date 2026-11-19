@@ -807,6 +807,17 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .mgr-photo span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mgr-photo.on { border-color: var(--accent); }
 .mgr-mini .mgr-two { grid-template-columns: 1fr 1fr auto; align-items: start; }
+/* Song promotion: playlists, press release, pitching */
+.mgr-sect-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.mgr-sect-head h2 { margin-bottom: 8px; }
+.mgr-plays { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; }
+.mgr-play { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); display: grid; gap: 4px; }
+.mgr-play > div:first-child { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mgr-play p { margin: 0; }
+.mgr-table tr.late td { background: rgba(251, 146, 60, 0.08); }
+.mgr-tracker { margin-top: 16px; }
+.mgr-tracker .mgr-table { width: 100%; }
+.mgr-sect textarea { width: 100%; }
 
 /* ---- money */
 .mgr-card.stat { cursor: default; }

@@ -1,9 +1,11 @@
-// Songs: one page per song with tabs for the overview, lyrics, video shoot, release checklist and
-// its content plan. "Make a promo" hands the song to the video studio.
+// Songs: one page per song with tabs for the overview, lyrics, video shoot, release checklist, its
+// content plan, suggested playlists, the press release and playlist pitching. "Make a promo" hands the song to the video studio.
 import { h, icon, button, iconButton, toast } from '../dom.js';
 import { SONG_STATUSES, TASK_CATS, newSong, taskDue, releaseProgress, releaseChecklist, niceDate, daysBetween, mid } from './model.js';
 import { hookLines, planPosts } from './ideas.js';
 import { buildShootTab } from './page-shoot.js';
+import { pressTab, playlistsTab, pitchTab } from './page-press.js';
+import { pitchStats } from './press.js';
 
 const TABS = [
   ['overview', 'Overview'],
@@ -11,6 +13,9 @@ const TABS = [
   ['shoot', 'Video shoot'],
   ['release', 'Release'],
   ['content', 'Content'],
+  ['playlists', 'Playlists'],
+  ['press', 'Press release'],
+  ['pitch', 'Pitching'],
 ];
 export const POST_STATUSES = [['idea', 'Idea'], ['filmed', 'Filmed'], ['edited', 'Edited'], ['scheduled', 'Scheduled'], ['posted', 'Posted']];
 const statusLabel = (k) => (SONG_STATUSES.find(([v]) => v === k) || [k, k])[1];
@@ -71,7 +76,7 @@ function songPage(ctx, song) {
     });
     ctx.go('songs');
   };
-  const body = { overview: overviewTab, lyrics: lyricsTab, shoot: buildShootTab, release: releaseTab, content: contentTab }[tab](ctx, song, S);
+  const body = { overview: overviewTab, lyrics: lyricsTab, shoot: buildShootTab, release: releaseTab, content: contentTab, playlists: playlistsTab, press: pressTab, pitch: pitchTab }[tab](ctx, song, S);
   return h(
     'div',
     { class: 'mgr-page' },
@@ -106,6 +111,7 @@ function overviewTab(ctx, song, S) {
         h('li', {}, h('span', {}, 'Release checklist'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('release') }, `${p.done} of ${p.total} done`)),
         h('li', {}, h('span', {}, 'Video shoot'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('shoot') }, song.shoot.date ? niceDate(song.shoot.date) : song.shoot.concept ? 'Concept picked, no date' : 'Not planned')),
         h('li', {}, h('span', {}, 'Planned posts'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('content') }, `${posts.length} (${posts.filter((x) => x.status === 'posted').length} posted)`)),
+        h('li', {}, h('span', {}, 'Playlist pitches'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('pitch') }, (({ total, sent, added }) => (total ? `${sent} sent · ${added} added` : 'None yet'))(pitchStats(song)))),
         h('li', {}, h('span', {}, 'Lyrics'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('lyrics') }, song.lyrics.trim() ? `${song.lyrics.trim().split(/\n+/).length} lines` : 'None yet')),
       ),
       h('div', { class: 'mgr-two' }, f.text(`bpm-${song.id}`, 'BPM', song.bpm, S((s, v) => (s.bpm = v)), { type: 'number' }), f.text(`key-${song.id}`, 'Key', song.key, S((s, v) => (s.key = v)), { placeholder: 'e.g. Drop C, D minor' })),
