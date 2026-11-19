@@ -1,9 +1,10 @@
 // Song tabs for getting a song heard: the press release, suggested playlists, and the playlist
 // pitch helper with a tracker of who you pitched.
 import { h, button, iconButton, toast, download } from '../dom.js';
+import { exportPDF } from './pdf.js';
 import { mid, niceDate, addDays } from './model.js';
 import { MOODS, ENERGIES, VOCALS, lyricThemes, soundOf, suggestPlaylists, playlistTypes, playlistSearchURL, PLAYLISTS } from './playlists.js';
-import { pressRelease, pressHTML, wordCount, spotifyPitch, spotifyFormHints, pitchDeadline, curatorPitch, SPOTIFY_PITCH_MAX, PITCH_STATUSES, PITCH_SERVICES, newPitch } from './press.js';
+import { pressRelease, pressHTML, wordCount, spotifyPitch, spotifyFormHints, pitchDeadline, curatorPitch, SPOTIFY_PITCH_MAX, PITCH_STATUSES, PITCH_SERVICES, SUBMIT_SERVICES, submitPitch, newPitch } from './press.js';
 
 export const pitchUI = { curator: '', playlist: '', contact: '' };
 
@@ -37,19 +38,15 @@ function draftBox(ctx, song, S, key, label, text, drafts, { rows = 10, filename 
       { class: 'row' },
       button('Copy', () => copy(text, `${label} copied`), { iconName: 'copy', variant: 'sm primary' }),
       filename ? button('Download .txt', () => download(new Blob([text], { type: 'text/plain' }), `${filename}.txt`), { iconName: 'download', variant: 'sm' }) : null,
-      filename ? button('Print / save as PDF', () => printPage(text, filename), { iconName: 'print', variant: 'sm' }) : null,
+      filename ? button('Export PDF', () => printPage(text, filename), { iconName: 'print', variant: 'sm', title: 'Print it, or pick “Save as PDF” as the printer' }) : null,
       edited ? button('Back to the draft', () => ctx.update(S((s) => delete s.press.edits[key])), { variant: 'sm ghost' }) : null,
     ),
   );
 }
 
 function printPage(text, title) {
-  const w = window.open('', '_blank');
-  if (!w) return toast('Allow pop-ups to print.', 'error');
-  w.document.write(pressHTML(text, { title }));
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 250);
+  exportPDF(pressHTML(text, { title }), title);
+  toast('Pick “Save as PDF” as the printer to get a PDF.');
 }
 
 export function pressTab(ctx, song, S) {
@@ -201,6 +198,45 @@ export function playlistsTab(ctx, song, S) {
   );
 }
 
+/** SubmitHub and Groover: no public API, so open the site, copy the pitch, and log the campaign. */
+export const submitUI = { service: 'SubmitHub', count: '', cost: '' };
+function submitBox(ctx, song, S, add, today) {
+  const m = ctx.store.get();
+  const ui = submitUI;
+  const svc = SUBMIT_SERVICES.find((x) => x.id === ui.service) || SUBMIT_SERVICES[0];
+  const text = submitPitch(song, m, { today });
+  const link = song.links.spotify || song.links.youtube || song.links.bandcamp || song.links.soundcloud || '';
+  const inp = (k, label, ph) => {
+    const el = h('input', { type: 'number', min: 0, value: ui[k], placeholder: ph, 'data-k': `sub-${k}` });
+    el.addEventListener('change', () => ((ui[k] = el.value), ctx.setTab('pitch')));
+    return h('label', { class: 'mf' }, h('span', { class: 'mf-l' }, label), el);
+  };
+  const log = () => {
+    add({ service: svc.id, playlist: `${svc.id} campaign`, curator: ui.count ? `${ui.count} curators` : '', status: 'sent', sent: today, followUp: addDays(today, svc.id === 'Groover' ? 7 : 3), cost: ui.cost, notes: '' });
+    Object.assign(ui, { count: '', cost: '' });
+    toast(`Logged the ${svc.id} campaign. Answers come in on ${svc.id}; mark them here.`);
+  };
+  return h(
+    'section',
+    { class: 'mgr-sect mgr-submit' },
+    h('h2', {}, 'SubmitHub and Groover'),
+    h('div', { class: 'chips' }, SUBMIT_SERVICES.map((x) => button(x.id, () => ((ui.service = x.id), ctx.setTab('pitch')), { variant: `chip${x.id === svc.id ? ' on' : ''}` }))),
+    h('p', { class: 'small' }, svc.how),
+    h('p', { class: 'muted tiny' }, `${svc.credit} Prices change, so check the site.`),
+    h('p', { class: 'muted tiny' }, `${svc.id} has no public API for artists, so the app can’t send the campaign or read the answers. Copy the pitch, send it on ${svc.id}, then log it here to track replies and spend.`),
+    h('textarea', { rows: 4, readonly: true, class: 'mgr-pitch-text', 'aria-label': `Pitch for ${svc.id}` }, text),
+    link ? null : h('p', { class: 'warn-list small' }, 'Both sites want the song as an upload or a streaming link. Add a Spotify, YouTube or Bandcamp link on the Overview tab first.'),
+    h('div', { class: 'mgr-two' }, inp('count', 'Curators picked', 'e.g. 10'), inp('cost', 'Spent ($)', 'e.g. 20')),
+    h(
+      'div',
+      { class: 'row' },
+      h('a', { class: 'btn sm primary', href: svc.url, target: '_blank', rel: 'noopener noreferrer' }, h('span', {}, `Open ${svc.id}`)),
+      button('Copy pitch', () => copy(text, 'Pitch copied'), { iconName: 'copy', variant: 'sm' }),
+      button('Log the campaign', log, { iconName: 'check', variant: 'sm', title: 'Add it to the tracker with what you spent' }),
+    ),
+  );
+}
+
 export function pitchTab(ctx, song, S) {
   const f = ctx.form;
   const m = ctx.store.get();
@@ -227,6 +263,7 @@ export function pitchTab(ctx, song, S) {
     toast('Logged as sent, follow-up in 7 days');
   };
   const mail = looksEmail(pitchUI.contact) ? `mailto:${pitchUI.contact.trim()}?subject=${encodeURIComponent(cp.subject)}&body=${encodeURIComponent(cp.body)}` : '';
+  const spent = pitches.reduce((a, p) => a + (+p.cost || 0), 0);
   const stats = { sent: pitches.filter((p) => p.status !== 'todo').length, added: pitches.filter((p) => p.status === 'added').length, replied: pitches.filter((p) => p.status === 'replied').length };
   const input = (label, k, ph) => h('label', { class: 'mf' }, h('span', { class: 'mf-l' }, label), h('input', { type: 'text', value: pitchUI[k], placeholder: ph, 'data-k': `pitch-ui-${k}`, onchange: ui(k) }));
   const spField = f.text(`sp-pitch-${song.id}`, 'Song description', sp, S((s, v) => ((s.press.edits ||= {}).spotify = v)), { rows: 7 });
@@ -274,18 +311,19 @@ export function pitchTab(ctx, song, S) {
         ),
         h('p', { class: 'muted tiny' }, 'Edit the message after copying if you like. Follow up once, a week later, and never twice. Some curators charge for submissions; you never have to pay for a playlist add.'),
       ),
+      submitBox(ctx, song, S, add, today),
     ),
   );
   const tracker = h(
     'section',
     { class: 'mgr-sect mgr-tracker' },
     h('h2', {}, `Pitch tracker · ${pitches.length}`),
-    pitches.length ? h('p', { class: 'muted small' }, `${stats.sent} sent · ${stats.replied} replied · ${stats.added} added`) : null,
+    pitches.length ? h('p', { class: 'muted small' }, `${stats.sent} sent · ${stats.replied} replied · ${stats.added} added${spent ? ` · $${spent.toFixed(2).replace(/\.00$/, '')} spent` : ''}`) : null,
     pitches.length
       ? h(
           'table',
           { class: 'mgr-table' },
-          h('thead', {}, h('tr', {}, ['Playlist', 'Where', 'Curator', 'Contact', 'Status', 'Sent', 'Follow up', 'Notes', ''].map((c) => h('th', {}, c)))),
+          h('thead', {}, h('tr', {}, ['Playlist', 'Where', 'Curator', 'Contact', 'Status', 'Sent', 'Follow up', 'Cost', 'Notes', ''].map((c) => h('th', {}, c)))),
           h(
             'tbody',
             {},
@@ -307,6 +345,7 @@ export function pitchTab(ctx, song, S) {
                 }))),
                 h('td', {}, f.text(`pt-d-${p.id}`, '', p.sent, Pt(p.id, (x, v) => (x.sent = v)), { type: 'date' })),
                 h('td', {}, f.text(`pt-f-${p.id}`, '', p.followUp, Pt(p.id, (x, v) => ((x.followUp = v), (x.followedUp = false))), { type: 'date' }), due ? h('button', { type: 'button', class: 'link', onclick: () => ctx.update(Pt(p.id, (x) => (x.followedUp = true))) }, 'Followed up') : null),
+                h('td', { class: 'mgr-cost' }, f.text(`pt-$-${p.id}`, '', p.cost ?? '', Pt(p.id, (x, v) => (x.cost = v)), { type: 'number', placeholder: '$' })),
                 h('td', {}, f.text(`pt-n-${p.id}`, '', p.notes, Pt(p.id, (x, v) => (x.notes = v)))),
                 h('td', {}, iconButton('trash', `Delete pitch to ${p.playlist || 'playlist'}`, () => ctx.update(S((s) => (s.pitches = s.pitches.filter((x) => x.id !== p.id)))), 'ghost')),
               );

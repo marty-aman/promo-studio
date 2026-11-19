@@ -24,6 +24,7 @@ import {
 } from './core.js';
 import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSettings, saveSettings, loadTemplates, saveTemplates, findClip, findLayer, LAYER_TYPES } from './state.js';
 import { buildLayersPanel, makeLayer, TAB_ACCEPT } from './panel-layers.js';
+import { driveButton } from './gdrive.js';
 import { lyricIdeas, applyLyricIdea } from './lyricideas.js';
 import { tipSettings, saveTipSettings } from './panel-tips.js';
 import { createKeyframeUI } from './panel-kf.js';
@@ -1204,6 +1205,7 @@ export function createPanels({ store, engine, ui }) {
     const open = async () => importFiles(await pickFiles(`video/*,image/*,audio/*,.ttf,.otf,.woff,.woff2,${TAB_ACCEPT}`));
     drop.addEventListener('click', open);
     drop.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), open()));
+    const fromDrive = driveButton(`video/*,image/*,audio/*,${TAB_ACCEPT}`, true, (files) => importFiles(files));
 
     const items = media.all();
     const grid = h('div', { class: 'media-grid' });
@@ -1288,7 +1290,7 @@ export function createPanels({ store, engine, ui }) {
     return h(
       'div',
       {},
-      section('Upload', drop),
+      section('Upload', drop, h('div', { class: 'row gdrive-row' }, fromDrive)),
       section('Library', grid),
       visual.length
         ? section(

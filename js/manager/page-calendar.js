@@ -1,6 +1,8 @@
 // Calendar: shows, releases, shoots, posts and to-dos on a month grid, plus an .ics export for
 // Google, Apple or Outlook calendars.
-import { h, icon, button, iconButton, download } from '../dom.js';
+import { h, icon, button, iconButton, download, toast } from '../dom.js';
+import { exportPDF } from './pdf.js';
+import { calendarHTML } from './docs.js';
 import { agenda, addDays, niceDate } from './model.js';
 import { monthGrid, monthStart, managerICS } from './extras.js';
 import { combinedAgenda } from './artists.js';
@@ -26,6 +28,12 @@ export function buildCalendar(ctx) {
   const exportICS = () => {
     download(new Blob([managerICS(m, { ws })], { type: 'text/calendar' }), `${(all ? 'all-artists' : m.band.name || 'band').replace(/[^\w-]+/g, '-').toLowerCase()}-calendar.ics`);
   };
+  const pdf = () => {
+    const inMonth = items.filter((x) => x.date.slice(0, 7) === ui.month.slice(0, 7));
+    const title = `${all ? 'All artists' : m.band.name || 'Band'} · calendar`;
+    exportPDF(calendarHTML({ title, monthName, items: inMonth }), `${title} ${ui.month.slice(0, 7)}`);
+    toast('Pick “Save as PDF” as the printer to get a PDF.');
+  };
   const counts = Object.fromEntries(Object.keys(KIND).map((k) => [k, items.filter((x) => x.kind === k && x.date.slice(0, 7) === ui.month.slice(0, 7)).length]));
   return h(
     'div',
@@ -34,7 +42,7 @@ export function buildCalendar(ctx) {
       'header',
       { class: 'mgr-head' },
       h('div', {}, h('h1', {}, all ? 'Calendar · all artists' : 'Calendar'), h('p', { class: 'muted' }, 'Shows, releases, shoots, posts and to-dos in one place.'), scopeChips(ctx)),
-      h('div', { class: 'row' }, button('Download for my calendar (.ics)', exportICS, { iconName: 'calendar', variant: 'sm', title: 'Import into Google Calendar, Apple Calendar or Outlook' })),
+      h('div', { class: 'row' }, button('Export PDF', pdf, { iconName: 'print', variant: 'sm', title: 'This month as a printable list' }), button('Download for my calendar (.ics)', exportICS, { iconName: 'calendar', variant: 'sm', title: 'Import into Google Calendar, Apple Calendar or Outlook' })),
     ),
     h(
       'div',

@@ -82,7 +82,7 @@ export function buildSuggestPanel({ store, engine, ui }) {
       {},
       section(
         'Suggested edits',
-        h('p', { class: 'small' }, 'Add a song and a few clips, and Promo Studio builds three ready-to-post edits for you: the hook, cuts on the beat, a fitting look and, if you add one, your Guitar Pro tab lined up with the song.'),
+        h('p', { class: 'small' }, 'Add a song and a few clips, and Band Manager builds three ready-to-post edits for you: the hook, cuts on the beat, a fitting look and, if you add one, your Guitar Pro tab lined up with the song.'),
         have,
         h('div', { class: 'row' },
           button('Add media', () => ui.openTab('media'), { iconName: 'upload', variant: 'primary' }),

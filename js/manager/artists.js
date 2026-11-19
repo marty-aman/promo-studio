@@ -5,7 +5,7 @@
 import { MANAGER_KEY, normalizeManager, newManager, agenda, nextUp, mid } from './model.js';
 
 export const WORKSPACE_VERSION = 2;
-export const ARTIST_KEYS = ['band', 'songs', 'shows', 'posts', 'money', 'photos'];
+export const ARTIST_KEYS = ['band', 'songs', 'shows', 'posts', 'money', 'photos', 'tours'];
 export const SHARED_KEYS = ['venues', 'bands', 'contacts', 'playlists', 'playlistsOff', 'seeded'];
 
 const pick = (o, keys) => Object.fromEntries(keys.map((k) => [k, o[k]]));

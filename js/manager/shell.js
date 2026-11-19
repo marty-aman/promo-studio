@@ -2,6 +2,7 @@
 // browser and backed up to a file. The video studio stays as it was; "Make a promo" hands a song over.
 import { h, icon, button, toast, download, pickFiles } from '../dom.js';
 import { createStore } from '../state.js';
+import { openDriveSetup } from '../gdrive.js';
 import { todayISO } from './model.js';
 import { loadWorkspace, saveWorkspace, viewOf, mergeView, addArtist, removeArtist, artistList, workspaceBackup, parseWorkspaceBackup } from './artists.js';
 import { buildHome } from './page-home.js';
@@ -13,6 +14,7 @@ import { buildCalendar } from './page-calendar.js';
 import { buildEPK } from './page-epk.js';
 import { buildPhotos } from './page-photos.js';
 import { buildMoney } from './page-money.js';
+import { buildTours } from './page-tours.js';
 
 const VIEW_KEY = 'pvm.manager.view.v1';
 export const MANAGER_PAGES = [
@@ -20,6 +22,7 @@ export const MANAGER_PAGES = [
   { id: 'songs', label: 'Songs', icon: 'music', build: buildSongs },
   { id: 'shows', label: 'Shows', icon: 'ticket', build: buildShows },
   { id: 'planner', label: 'Show planner', icon: 'mapPin', build: buildPlanner },
+  { id: 'tours', label: 'Tours', icon: 'route', build: buildTours },
   { id: 'content', label: 'Content', icon: 'chart', build: buildContent },
   { id: 'calendar', label: 'Calendar', icon: 'calendar', build: buildCalendar },
   { id: 'photos', label: 'Photos', icon: 'image', build: buildPhotos },
@@ -85,6 +88,7 @@ export function createManager({ root, studio }) {
         toast(e.message, 'error', 5000);
       }
     }, { iconName: 'upload', variant: 'sm ghost', title: 'Load a backup file' }),
+    button('Google Drive', () => openDriveSetup(), { iconName: 'cloud', variant: 'sm ghost', title: 'Connect Google Drive so you can pick files from it' }),
   );
   const switcher = h('div', { class: 'mgr-artist' });
   /** The artist's profile photo, or its first letter when it has none. */
@@ -148,6 +152,7 @@ export function createManager({ root, studio }) {
 
   const go = (page, id = null, tab = null) => {
     view = { ...view, page, id, tab: tab || (page === view.page && id === view.id ? view.tab : 'overview') };
+    if (page === 'songs' && id) view.songId = id; // the song shown in the header
     localStorage.setItem(VIEW_KEY, JSON.stringify(view));
     render(true);
   };
@@ -187,6 +192,7 @@ export function createManager({ root, studio }) {
   }
 
   function render(scrollTop = false) {
+    studio.contextChanged && studio.contextChanged();
     renderNav();
     renderSwitcher();
     // keep the focused field (and caret) through the rebuild
@@ -228,6 +234,19 @@ export function createManager({ root, studio }) {
     /** For the video studio: every artist's id, name, theme and logo, and the open artist. */
     artists: () => artistList(current()),
     currentArtist: () => ws.current,
+    /** The song you last opened in the Manager (for the open artist), or null. */
+    currentSong: () => {
+      const s = view.songId && store.get().songs.find((x) => x.id === view.songId);
+      return s ? { id: s.id, title: s.title, artistId: ws.current } : null;
+    },
+    /** A song by id from any artist, with the artist's id. */
+    findSong: (id) => {
+      for (const a of current().artists) {
+        const s = (a.songs || []).find((x) => x.id === id);
+        if (s) return { id: s.id, title: s.title, artistId: a.id };
+      }
+      return null;
+    },
     artistBand: (id) => (current().artists.find((a) => a.id === id) || {}).band || null,
     switchArtist,
     show: () => render(),

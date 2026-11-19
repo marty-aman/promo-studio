@@ -4,6 +4,7 @@
 
 import { newFiles, normalizeFiles } from './files.js';
 import { normalizePhotos } from './photos.js';
+import { normalizeTours } from './tours.js';
 
 export const MANAGER_KEY = 'pvm.manager.v1';
 export const MANAGER_VERSION = 1;
@@ -125,6 +126,7 @@ export function newManager() {
     contacts: [],
     posts: [],
     money: [],
+    tours: [], // this artist's tours: { id, name, stops: [{ city, date, status, picks, money… }] } (see tours.js)
     photos: [], // this artist's photos: { id, mediaId, caption, credit, tags, favorite, addedAt }
     playlists: [], // your own playlists and curators (shared by every artist)
     playlistsOff: [], // built-in playlist ids you hid
@@ -144,6 +146,7 @@ export function normalizeManager(raw) {
     return { ...d, ...s, sound: { ...d.sound, ...(s.sound || {}), moods: Array.isArray(s.sound?.moods) ? s.sound.moods : [] }, press: { ...d.press, ...(s.press || {}), edits: { ...(s.press?.edits || {}) } }, pitches: list(s.pitches), files: normalizeFiles(s.files), links: { ...d.links, ...(s.links || {}) }, shoot: { ...d.shoot, ...(s.shoot || {}) }, release: Array.isArray(s.release) ? s.release : d.release };
   });
   m.photos = normalizePhotos(raw.photos);
+  m.tours = normalizeTours(raw.tours);
   m.band.epkPhotos = Array.isArray(m.band.epkPhotos) ? m.band.epkPhotos.filter((x) => typeof x === 'string').slice(0, 4) : [];
   m.playlists = list(raw.playlists);
   m.playlistsOff = Array.isArray(raw.playlistsOff) ? raw.playlistsOff.filter((x) => typeof x === 'string') : [];

@@ -77,11 +77,14 @@ const studioOnly = (...els) => h('div', { class: 'studio-only' }, ...els);
 // which artist this promo is for (from the Manager): its name, theme and logo go on the edit
 const artistSel = h('select', { class: 'artist-sel', 'aria-label': 'Artist for this promo', title: 'Artist: the promo takes their name, theme and logo (set them in Manager → Press kit)' });
 artistSel.addEventListener('change', () => applyArtist(artistSel.value));
+// what you're working on: the band and the song, in both workspaces
+const nowOn = h('button', { type: 'button', class: 'now-on', title: 'The band and song you are working on' });
 const header = h(
   'header',
   { class: 'topbar' },
-  h('div', { class: 'brand' }, icon('disc', 22), h('span', {}, 'Promo Studio')),
+  h('div', { class: 'brand' }, icon('disc', 22), h('span', {}, 'Band Manager')),
   modeSwitch,
+  nowOn,
   studioOnly(nameInput, artistSel, aspectSel, undoBtn, redoBtn, saveState),
   h('div', { class: 'spacer' }),
   studioOnly(
@@ -396,6 +399,33 @@ function syncHeader() {
   undoBtn.disabled = !store.canUndo();
   redoBtn.disabled = !store.canRedo();
   fitStage();
+  syncNowOn();
+}
+
+/**
+ * The header's "now on" badge: the band and song you are working on. In the Manager it is the
+ * open artist and the song you last opened; in the Video Studio it is the promo's artist and song.
+ */
+function syncNowOn() {
+  if (!manager) return;
+  let artistId = manager.currentArtist();
+  let song = manager.currentSong();
+  if (mode === 'studio') {
+    const p = store.get();
+    if (p.artistId && manager.artists().some((a) => a.id === p.artistId)) artistId = p.artistId;
+    song = p.managerSongId ? manager.findSong(p.managerSongId) : null;
+  }
+  const a = manager.artists().find((x) => x.id === artistId) || { name: 'No band yet' };
+  const ph = a.photoId && media.get(a.photoId);
+  const dot = ph && ph.url ? h('span', { class: 'now-dot photo', 'aria-hidden': 'true' }, h('img', { src: ph.url, alt: '' })) : h('span', { class: 'now-dot', 'aria-hidden': 'true' }, (a.name[0] || '?').toUpperCase());
+  nowOn.replaceChildren(dot, h('span', { class: 'now-band' }, a.name), h('span', { class: 'now-sep', 'aria-hidden': 'true' }, '·'), h('span', { class: `now-song${song ? '' : ' none'}` }, song ? song.title : 'No song selected'));
+  nowOn.setAttribute('aria-label', `Working on ${a.name}${song ? `, song “${song.title}”` : ', no song selected'}. Open it in the Manager.`);
+  nowOn.onclick = () => {
+    setMode('manager');
+    if (song && song.artistId && song.artistId !== manager.currentArtist()) manager.switchArtist(song.artistId);
+    if (song) manager.go('songs', song.id);
+    else manager.go('songs');
+  };
 }
 
 media.onChange(() => {
@@ -605,7 +635,9 @@ manager = createManager({
         if (how === 'clip' || how === 'overlay') ui.openTab('video');
       }
     },
-    artistsChanged: () => syncArtistSel(),
+    artistsChanged: () => (syncArtistSel(), syncNowOn()),
+    /** The Manager's page, artist or song changed: update the header badge. */
+    contextChanged: () => syncNowOn(),
     imageFiles: () => media.all().filter((m) => m.kind === 'image').map((m) => ({ id: m.id, name: m.name, thumb: m.thumb || null })),
     /** A library image as a JPEG data URL no larger than `max` px on its long side (for the press kit). */
     async imageDataUrl(id, max = 1400) {
@@ -713,7 +745,8 @@ function syncArtistSel() {
   artistSel.hidden = list.length < 2 && !cur;
 }
 
-let mode = localStorage.getItem(MODE_KEY) === 'manager' ? 'manager' : 'studio';
+// The app always opens on the Manager. A link ending in #studio (or ?studio) opens the Video Studio instead.
+let mode = location.hash === '#studio' || new URLSearchParams(location.search).has('studio') ? 'studio' : 'manager';
 function setMode(m) {
   mode = m;
   localStorage.setItem(MODE_KEY, m);
@@ -730,6 +763,7 @@ function setMode(m) {
     timeline.render();
     engine.render();
   }
+  syncNowOn();
 }
 
 // ------------------------------------------------------------ boot

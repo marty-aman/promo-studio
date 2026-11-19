@@ -2,6 +2,7 @@
 // Each file can be sent to the Video Studio: footage and the music video as clips or picture-in-
 // picture, stems as a drum chart, a visualizer or an extra audio track.
 import { h, button, iconButton, toast, pickFiles } from '../dom.js';
+import { driveButton } from '../gdrive.js';
 import { STEM_ROLES, newFiles, addStems, addFootage, addTabs, setVideo, fileCounts } from './files.js';
 
 /** Which upload is running (not saved). */
@@ -22,8 +23,8 @@ export function filesTab(ctx, song, S) {
   const busy = (key) => filesUI.busy === `${song.id}:${key}`;
 
   /** Upload from the computer, then attach with `attach(song, added)`. */
-  const upload = async (key, accept, kinds, multiple, attach, label) => {
-    const picked = await pickFiles(accept, multiple);
+  const upload = async (key, accept, kinds, multiple, attach, label, files = null) => {
+    const picked = files || (await pickFiles(accept, multiple));
     if (!picked.length) return;
     filesUI.busy = `${song.id}:${key}`;
     rerender();
@@ -81,6 +82,7 @@ export function filesTab(ctx, song, S) {
       'div',
       { class: 'row' },
       button(busy('tabs') ? 'Uploading…' : 'Upload a Guitar Pro file', () => upload('tabs', TAB_ACCEPT, ['tab'], true, (s, added) => addTabs(s, added), 'Guitar Pro or MusicXML files'), { iconName: 'upload', variant: 'sm primary', disabled: busy('tabs') }),
+      driveButton(TAB_ACCEPT, true, (fs) => upload('tabs', TAB_ACCEPT, ['tab'], true, (s, added) => addTabs(s, added), 'Guitar Pro or MusicXML files', fs)),
       fromLibrary('tabs', ['tab'], (files.tabs || []).map((t) => t.mediaId), (s, added) => addTabs(s, added), 'Or pick a tab from the library'),
     ),
   );
@@ -120,6 +122,7 @@ export function filesTab(ctx, song, S) {
       'div',
       { class: 'row' },
       button(busy('stems') ? 'Uploading…' : 'Upload stems', () => upload('stems', AUDIO_ACCEPT, ['audio'], true, (s, added) => addStems(s, added), 'audio files'), { iconName: 'upload', variant: 'sm primary', disabled: busy('stems') }),
+      driveButton(AUDIO_ACCEPT, true, (fs) => upload('stems', AUDIO_ACCEPT, ['audio'], true, (s, added) => addStems(s, added), 'audio files', fs)),
       fromLibrary('stems', ['audio'], [...stemIds, song.audioId].filter(Boolean), (s, added) => addStems(s, added), 'Or pick audio from the library'),
     ),
   );
@@ -155,6 +158,7 @@ export function filesTab(ctx, song, S) {
           'div',
           { class: 'row' },
           button(busy('video') ? 'Uploading…' : 'Upload the music video', pickVideo, { iconName: 'upload', variant: 'sm primary', disabled: busy('video') }),
+          driveButton(VIDEO_ACCEPT, false, (fs) => upload('video', VIDEO_ACCEPT, ['video'], false, (s, added) => setVideo(s, added[0]), 'video files', fs)),
           fromLibrary('video', ['video'], [], (s, added) => setVideo(s, added[0]), 'Or pick a video from the library'),
         ),
     song.links.youtube ? h('p', { class: 'muted tiny' }, 'Its YouTube link is on the Overview tab.') : null,
@@ -196,6 +200,7 @@ export function filesTab(ctx, song, S) {
       'div',
       { class: 'row' },
       button(busy('footage') ? 'Uploading…' : 'Upload footage', () => upload('footage', FOOTAGE_ACCEPT, ['video', 'image'], true, (s, added) => addFootage(s, added), 'videos or photos'), { iconName: 'upload', variant: 'sm primary', disabled: busy('footage') }),
+      driveButton(FOOTAGE_ACCEPT, true, (fs) => upload('footage', FOOTAGE_ACCEPT, ['video', 'image'], true, (s, added) => addFootage(s, added), 'videos or photos', fs)),
       fromLibrary('footage', ['video', 'image'], [...files.footage.map((c) => c.mediaId), files.video?.mediaId].filter(Boolean), (s, added) => addFootage(s, added), 'Or pick from the library'),
     ),
   );

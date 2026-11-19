@@ -2,6 +2,7 @@
 // single HTML file (photos embedded) to email to venues, press and curators or host anywhere.
 import { h, button, iconButton, toast, download, pickFiles } from '../dom.js';
 import { mid } from './model.js';
+import { exportPDF } from './pdf.js';
 import { EPK_LINKS, epkHTML, shortBio } from './extras.js';
 import { epkCredits, addPhotos } from './photos.js';
 import { THEMES } from '../themes.js';
@@ -53,6 +54,10 @@ export function buildEPK(ctx) {
     const html = await build();
     download(new Blob([html], { type: 'text/html' }), `${(b.name || 'band').replace(/[^\w-]+/g, '-').toLowerCase()}-press-kit.html`);
   };
+  const pdf = async () => {
+    exportPDF(await build(), `${b.name || 'Band'} press kit`);
+    toast('Pick “Save as PDF” as the printer to get a PDF.');
+  };
   const copyBio = async () => {
     try {
       await navigator.clipboard.writeText(shortBio(b.bio));
@@ -70,7 +75,7 @@ export function buildEPK(ctx) {
       'header',
       { class: 'mgr-head' },
       h('div', {}, h('h1', {}, 'Press kit (EPK)'), h('p', { class: 'muted' }, 'Your band’s profile, bio and links. Download it as a one-page press kit for venues, blogs and playlist curators.')),
-      h('div', { class: 'row' }, button('Copy short bio', copyBio, { iconName: 'copy', variant: 'sm', disabled: !b.bio }), button('Download press kit', save, { iconName: 'download', variant: 'sm primary' })),
+      h('div', { class: 'row' }, button('Copy short bio', copyBio, { iconName: 'copy', variant: 'sm', disabled: !b.bio }), button('Export PDF', pdf, { iconName: 'print', variant: 'sm', title: 'Print it, or pick “Save as PDF” as the printer' }), button('Download press kit', save, { iconName: 'download', variant: 'sm primary' })),
     ),
     h(
       'div',

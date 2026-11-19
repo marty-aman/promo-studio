@@ -1,6 +1,7 @@
 // Photos: the open artist's photo library. Upload in bulk, caption, credit and tag each photo, star
 // favorites, pick up to four for the press kit, set the logo, and send photos to the Video Studio.
 import { h, icon, button, iconButton, toast, pickFiles, download } from '../dom.js';
+import { driveButton } from '../gdrive.js';
 import { addPhotos, filterPhotos, photoTags, toggleEpkPhoto, parseTags, EPK_PHOTO_MAX } from './photos.js';
 
 export const photosUI = { q: '', tag: '', starred: false, epkOnly: false, busy: false, open: null, limit: 48 };
@@ -142,7 +143,7 @@ export function buildPhotos(ctx) {
   return h(
     'div',
     { class: 'mgr-page wide' },
-    h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, 'Photos'), h('p', { class: 'muted' }, `${band.name || 'This artist'} · ${m.photos.length} photo${m.photos.length === 1 ? '' : 's'}${epk.length ? ` · ${epk.length} in the press kit` : ''}`)), button(ui.busy ? 'Adding…' : 'Upload photos', () => upload(), { iconName: 'upload', variant: 'primary', disabled: ui.busy })),
+    h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, 'Photos'), h('p', { class: 'muted' }, `${band.name || 'This artist'} · ${m.photos.length} photo${m.photos.length === 1 ? '' : 's'}${epk.length ? ` · ${epk.length} in the press kit` : ''}`)), h('div', { class: 'row' }, driveButton(IMAGE_ACCEPT, true, (fs) => upload(fs), { variant: 'ghost' }), button(ui.busy ? 'Adding…' : 'Upload photos', () => upload(), { iconName: 'upload', variant: 'primary', disabled: ui.busy }))),
     h('section', { class: 'mgr-sect' }, drop, libSel ? h('div', { class: 'row' }, libSel) : null),
     m.photos.length
       ? h(

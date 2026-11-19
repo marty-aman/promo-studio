@@ -52,7 +52,7 @@ export function managerICS(m, { from = '', days = 400, stamp = new Date(), ws = 
   const items = ws ? combinedAgenda(ws, start, days) : agenda(m, start, days);
   const views = ws ? Object.fromEntries(ws.artists.map((a) => [a.id, viewOf(ws, a.id)])) : null;
   const dt = `${stamp.toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Promo Studio//Band manager//EN', `X-WR-CALNAME:${icsEsc(ws ? 'All artists · manager' : `${m.band.name || 'Band'} · manager`)}`, 'CALSCALE:GREGORIAN'];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Band Manager//Band manager//EN', `X-WR-CALNAME:${icsEsc(ws ? 'All artists · manager' : `${m.band.name || 'Band'} · manager`)}`, 'CALSCALE:GREGORIAN'];
   items.forEach((it, i) => {
     const src = views ? views[it.artistId] : m;
     const show = it.kind === 'show' && src.shows.find((s) => s.id === it.ref.id);

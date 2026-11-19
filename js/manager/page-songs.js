@@ -1,6 +1,7 @@
 // Songs: one page per song with tabs for the overview, lyrics, video shoot, release checklist, its
 // content plan, suggested playlists, the press release and playlist pitching. "Make a promo" hands the song to the video studio.
 import { h, icon, button, iconButton, toast, pickFiles } from '../dom.js';
+import { driveButton } from '../gdrive.js';
 import { SONG_STATUSES, TASK_CATS, newSong, taskDue, releaseProgress, releaseChecklist, niceDate, daysBetween, mid } from './model.js';
 import { hookLines, planPosts } from './ideas.js';
 import { buildShootTab } from './page-shoot.js';
@@ -100,8 +101,9 @@ function songPage(ctx, song) {
 export const uploadUI = { busy: null };
 
 /** Pick a song file from the computer, add it to the media library and attach it to the song. */
-async function uploadSong(ctx, song, S) {
-  const [file] = await pickFiles('audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.aif,.aiff', false);
+const SONG_ACCEPT = 'audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.aif,.aiff';
+async function uploadSong(ctx, song, S, files = null) {
+  const [file] = files || (await pickFiles(SONG_ACCEPT, false));
   if (!file) return;
   uploadUI.busy = song.id;
   ctx.setTab('overview');
@@ -145,6 +147,7 @@ function overviewTab(ctx, song, S) {
         { class: 'mgr-upload' },
         f.select(`audio-${song.id}`, 'Song file (for promos)', song.audioId || '', [['', audio.length ? '— pick a file —' : 'No file yet: upload one'], ...audio.map((a) => [a.id, a.name])], S((s, v) => (s.audioId = v || null))),
         button(uploadUI.busy === song.id ? 'Uploading…' : 'Upload from computer', () => uploadSong(ctx, song, S), { iconName: 'upload', variant: 'sm', disabled: uploadUI.busy === song.id, title: 'Pick an MP3, WAV, M4A, OGG or FLAC file. It goes into the Video Studio’s media library too.' }),
+        driveButton(SONG_ACCEPT, false, (fs) => uploadSong(ctx, song, S, fs)),
       ),
       f.text(`notes-${song.id}`, 'Notes', song.notes, S((s, v) => (s.notes = v)), { rows: 4, placeholder: 'Story behind the song, who wrote what, studio notes…' }),
     ),

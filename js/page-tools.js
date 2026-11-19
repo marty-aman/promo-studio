@@ -113,7 +113,7 @@ export function calendarTool({ store }) {
     return postingSchedule(new Date(y, m - 1, d), Number(per.value), Number(weeks.value), Number(hour.value)).map((date, i) => {
       const t = order[i % order.length];
       const w = Math.floor(i / Number(per.value)) + 1;
-      return { date, title: `Post: ${t.title.replace(/[“”"]/g, '')}`, note: `${t.why}\n\nWeek ${w}. In Promo Studio: Inspiration → “${t.title.replace(/[“”"]/g, '')}” → Build this.${w === 4 ? '\n\nWeek 4: compare views, shares and saves; keep the formats that work.' : ''}` };
+      return { date, title: `Post: ${t.title.replace(/[“”"]/g, '')}`, note: `${t.why}\n\nWeek ${w}. In Band Manager: Inspiration → “${t.title.replace(/[“”"]/g, '')}” → Build this.${w === 4 ? '\n\nWeek 4: compare views, shares and saves; keep the formats that work.' : ''}` };
     });
   };
   const draw = () => list.replaceChildren(...events().map((e) => h('li', {}, h('strong', {}, e.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })), ` · ${e.title.replace(/^Post: /, '')}`)));
