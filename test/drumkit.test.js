@@ -76,3 +76,38 @@ test('blackout is all black and grey', () => {
   for (const c of [look.wrap.base, look.wrap.reso, look.wrap.ink, look.light, look.rug, look.glow]) assert.ok(grey(c), c);
   assert.equal(kitDoubleKick({ kitFinish: 'blackout' }), true);
 });
+
+test('kit pieces: turned-off pieces hand their hits to the closest piece that is on', async () => {
+  const { kitLane, withKit, chartLanes, pieceOn, KIT_PRESETS } = await import('../js/drums.js');
+  const off = (...ids) => ({ kitPieces: Object.fromEntries(ids.map((i) => [i, false])) });
+  assert.equal(kitLane({}, 'china'), 'china');
+  assert.equal(kitLane(off('china'), 'china'), 'crash2');
+  assert.equal(kitLane(off('china', 'crash2'), 'china'), 'crash');
+  assert.equal(kitLane(off('china', 'crash', 'crash2'), 'china'), 'ride');
+  assert.equal(kitLane(off('tom2'), 'tom2'), 'tom1');
+  assert.equal(kitLane(off('tom1', 'tom2'), 'tom1'), 'floor');
+  assert.equal(kitLane(off('snare'), 'snare'), null);
+  assert.equal(pieceOn({ kitPieces: { kick: false } }, 'kick'), true, 'the kick stays');
+
+  const data = { hits: [{ time: 0, lane: 'china' }, { time: 0.5, lane: 'tom2' }, { time: 1, lane: 'snare' }, { time: 1.5, lane: 'kick' }], lanes: ['china', 'tom2', 'snare', 'kick'] };
+  assert.equal(withKit({}, data), data, 'nothing off: same chart');
+  const layer = off('china', 'tom2', 'snare');
+  const k = withKit(layer, data);
+  assert.deepEqual(k.hits.map((h) => h.lane), ['crash2', 'tom1', 'kick']);
+  assert.deepEqual(k.lanes, ['crash2', 'tom1', 'kick']);
+  assert.equal(withKit(layer, data), k, 'cached');
+  assert.equal(data.hits[0].lane, 'china', 'the original chart is untouched');
+  assert.ok(!chartLanes({ source: 'gp', ...layer }, k).includes('china'));
+  assert.equal(chartLanes({ source: 'gp', ...layer }, k).length, 7);
+  // presets only name real pieces, never the kick
+  for (const [, [label, offs]] of Object.entries(KIT_PRESETS)) {
+    assert.ok(label && offs.every((p) => p !== 'kick'));
+  }
+});
+
+test('one rack tom sits in the middle over the kick', () => {
+  const both = kitLayout(0, 0, 1600, 900);
+  const one = kitLayout(0, 0, 1600, 900, { has: (id) => id !== 'tom2' });
+  assert.ok(Math.abs(one.toms[0].x - one.cx) < 1e-6);
+  assert.ok(both.toms[0].x < both.cx);
+});

@@ -4,7 +4,7 @@ import { uid, timelineToSong, songToTimeline, formatTime } from './core.js';
 import { LAYER_TYPES, isVisible, findLayer } from './state.js';
 import { media, tabTimeline, drumTimeline, drumHitsFromStem, vizFeatures } from './media.js';
 import { defaultTabLayer } from './tab.js';
-import { defaultDrumLayer, LANES, DRUM_STYLES, STYLE_PLACEMENT } from './drums.js';
+import { defaultDrumLayer, LANES, DRUM_STYLES, STYLE_PLACEMENT, FIXED_PIECES, KIT_PRESETS, pieceOn, laneColorOf } from './drums.js';
 import { TAB_STYLES, TAB_PLACEMENT, stringColor } from './tabviz.js';
 import { REAL_PLACEMENT } from './vizreal.js';
 import { themeById, themeLayer } from './themes.js';
@@ -500,11 +500,23 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         rec ? syncTools(tl, isStem) : null,
         visibleRange(),
         section(
+          'Kit pieces',
+          h('p', { class: 'hint' }, 'Turn off what your drummer doesn’t play. A piece that’s off isn’t drawn, and its hits move to the closest piece that’s on (a china to a crash, a mid tom to a high tom).'),
+          h(
+            'div',
+            { class: 'row wrap' },
+            Object.entries(KIT_PRESETS).map(([id, [label, off]]) =>
+              button(label, () => store.update(set((x) => (x.kitPieces = Object.fromEntries(off.map((p) => [p, false]))))), { variant: 'sm' }),
+            ),
+          ),
+          h('div', { class: 'grid2' }, LANES.filter((ln) => !FIXED_PIECES.includes(ln.id)).map((ln) => b.toggle(ln.label, get((x) => pieceOn(x, ln.id)), set((x, v) => (x.kitPieces = { ...(x.kitPieces || {}), [ln.id]: v }))))),
+        ),
+        section(
           'Look',
           ['circle', 'kit'].includes(L.style) ? null : b.range('Seconds on screen', g('window', 2.2), set((x, v) => (x.window = v)), { min: 1, max: 6, step: 0.1, fmt: (v) => `${v.toFixed(1)}s` }),
           ['lanes', 'glass'].includes(L.style) ? b.range('Hit line', g('playhead', 22), set((x, v) => (x.playhead = v)), { min: 5, max: 70, step: 1, fmt: (v) => `${v}%` }) : null,
           placement({ y: 24 }),
-          h('div', { class: 'grid3' }, LANES.map((ln) => b.color(ln.label, get((x) => (x.colors || {})[ln.id] || ln.color), set((x, v) => (x.colors = { ...(x.colors || {}), [ln.id]: v }))))),
+          h('div', { class: 'grid3' }, LANES.filter((ln) => pieceOn(L, ln.id)).map((ln) => b.color(ln.label, get((x) => laneColorOf(x, ln.id)), set((x, v) => (x.colors = { ...(x.colors || {}), [ln.id]: v }))))),
           h('div', { class: 'grid2' }, b.color('Background', g('bg'), set((x, v) => (x.bg = v))), b.range('Background opacity', g('bgOpacity', 0.55), set((x, v) => (x.bgOpacity = v)), { min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` })),
           b.toggle('Show drum names', g('showLabels', true), set((x, v) => (x.showLabels = v))),
         ),

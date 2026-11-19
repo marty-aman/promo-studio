@@ -306,7 +306,12 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
   hi-hat). Every style charts the whole kit: kick, snare, hi-hat, high tom, mid tom, floor tom, crash 1,
   crash 2, china and ride (GM 50/48 high tom, 47/45 mid tom, 43/41 floor tom, 49 crash 1, 57 and the
   55 splash crash 2, 52 china). Lane styles show every drum and cymbal for a Guitar Pro part, and only the
-  found ones for a stem; *Show every drum and cymbal* changes that. Pick one of six styles from the style grid:
+  found ones for a stem; *Show every drum and cymbal* changes that. **Kit pieces** (in the layer's
+  settings, for every style) turns each drum and cymbal on or off, with quick setups (*Full kit*,
+  *5-piece, crash and ride*, *4-piece*, *Full kit, no china*). A piece that's off isn't drawn and its hits
+  move to the closest piece that's on (a china to crash 2, then crash 1, then the ride; a mid tom to the high
+  tom, then the floor tom; the hi-hat to the ride). The kick always stays; a lone rack tom moves to the
+  middle. Pick one of six styles from the style grid:
   - **Scrolling lanes**, a falling **highway**, or a **circle** that sweeps once per bar with hits on rings.
   - **Neon highway:** a 3D glowing road with gem notes, shockwaves and sparks at the strike line, and an
     optional combo counter.

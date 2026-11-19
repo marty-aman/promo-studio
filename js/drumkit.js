@@ -62,7 +62,7 @@ export const mixHex = (a, b, k) => {
  * kick hoop(s). With `doubleKick` there are two smaller kicks side by side and the snare and floor
  * tom move out a little.
  */
-export function kitLayout(bx, by, bw, bh, { doubleKick = false } = {}) {
+export function kitLayout(bx, by, bw, bh, { doubleKick = false, has = () => true } = {}) {
   const U = Math.min(bw * 0.75, bh * 1.6);
   const cx = bx + bw / 2;
   const P = (fx, fy) => [cx + (fx - 0.5) * U * 1.25, by + bh * fy];
@@ -72,15 +72,19 @@ export function kitLayout(bx, by, bw, bh, { doubleKick = false } = {}) {
   const kTop = kicks[0].top;
   const tomY = Math.max(by + bh * 0.2, Math.min(by + bh * 0.3, kTop - U * (0.09 + 0.032 + 0.012)));
   const piece = (x, y, rx, ry, depth) => ({ x, y, rx, ry, depth });
+  // with only one rack tom it sits in the middle, over the kick(s)
+  const oneRack = has('tom1') !== has('tom2');
+  const rackX = (fx) => (oneRack ? cx : P(fx, 0)[0]);
   return {
     U,
     cx,
     bw,
     doubleKick,
+    has,
     floor: by + bh * 0.95,
     kicks,
     kick: { x: cx, y: ky, r: kr, top: kTop },
-    toms: [piece(P(0.38, 0)[0], tomY, U * 0.075, U * 0.03, U * 0.085), piece(P(0.62, 0)[0], tomY, U * 0.08, U * 0.032, U * 0.09), piece(...P(doubleKick ? 0.85 : 0.8, 0.56), U * 0.1, U * 0.04, U * 0.17)],
+    toms: [piece(rackX(0.38), tomY, U * 0.075, U * 0.03, U * 0.085), piece(rackX(0.62), tomY, U * 0.08, U * 0.032, U * 0.09), piece(...P(doubleKick ? 0.85 : 0.8, 0.56), U * 0.1, U * 0.04, U * 0.17)],
     snare: piece(...P(doubleKick ? 0.18 : 0.22, 0.58), U * 0.095, U * 0.036, U * 0.06),
     hihat: { x: P(0.05, 0.42)[0], y: P(0.05, 0.42)[1], r: U * 0.1 },
     crash: { x: P(0.14, 0.2)[0], y: P(0.14, 0.2)[1], r: U * 0.15, tilt: -12 },
@@ -494,20 +498,24 @@ export function drawStageKit(ctx, L, layer, hit, t, colors) {
     ctx.stroke();
   };
   tripod(L.crash.x, L.crash.y, U * 0.07);
-  tripod(L.crash2.x, L.crash2.y, U * 0.06);
-  tripod(L.china.x, L.china.y, U * 0.06);
-  tripod(L.ride.x, L.ride.y, U * 0.07);
-  tripod(L.hihat.x, L.hihat.y, U * 0.06);
-  ctx.fillStyle = '#2a2c33';
-  ctx.beginPath();
-  ctx.moveTo(L.hihat.x - U * 0.02, L.floor);
-  ctx.lineTo(L.hihat.x + U * 0.06, L.floor - U * 0.02);
-  ctx.lineTo(L.hihat.x + U * 0.065, L.floor);
-  ctx.closePath();
-  ctx.fill();
-  if (L.doubleKick) {
+  const has = L.has;
+  if (has('crash')) tripod(L.crash.x, L.crash.y, U * 0.07);
+  if (has('crash2')) tripod(L.crash2.x, L.crash2.y, U * 0.06);
+  if (has('china')) tripod(L.china.x, L.china.y, U * 0.06);
+  if (has('ride')) tripod(L.ride.x, L.ride.y, U * 0.07);
+  if (has('hihat')) {
+    tripod(L.hihat.x, L.hihat.y, U * 0.06);
+    ctx.fillStyle = '#2a2c33';
+    ctx.beginPath();
+    ctx.moveTo(L.hihat.x - U * 0.02, L.floor);
+    ctx.lineTo(L.hihat.x + U * 0.06, L.floor - U * 0.02);
+    ctx.lineTo(L.hihat.x + U * 0.065, L.floor);
+    ctx.closePath();
+    ctx.fill();
+  }
+  if (L.doubleKick && (has('tom1') || has('tom2'))) {
     // a centre stand carries the rack toms between the two kicks
-    tripod(L.cx, L.toms[0].y + L.toms[0].depth, U * 0.05);
+    tripod(L.cx, L.toms[has('tom1') ? 0 : 1].y + L.toms[0].depth, U * 0.05);
   }
 
   // kick drums, front view
@@ -684,27 +692,28 @@ export function drawStageKit(ctx, L, layer, hit, t, colors) {
     }
   };
   const tomE = (i) => hit(KIT_TOMS[i]).e;
-  if (!L.doubleKick) {
-    ctx.strokeStyle = metal(ctx, hw, L.kick.x - 3, 0, L.kick.x + 3, 0);
+  // tom mounts: arms from the kick (or the centre stand) to each rack tom that's in the kit
+  const racks = [0, 1].filter((i) => has(KIT_TOMS[i]));
+  if (racks.length) {
+    const hubX = L.doubleKick ? L.cx : L.kick.x;
+    const hubY = L.doubleKick ? L.toms[racks[0]].y + L.toms[racks[0]].depth + U * 0.02 : L.kick.top - U * 0.03;
+    ctx.strokeStyle = metal(ctx, hw, hubX - 3, 0, hubX + 3, 0);
     ctx.lineWidth = lw(0.011);
     ctx.beginPath();
-    ctx.moveTo(L.kick.x, L.kick.top + U * 0.01);
-    ctx.lineTo(L.kick.x, L.kick.top - U * 0.03);
-    ctx.lineTo(L.toms[0].x + U * 0.02, L.toms[0].y + L.toms[0].depth);
-    ctx.moveTo(L.kick.x, L.kick.top - U * 0.03);
-    ctx.lineTo(L.toms[1].x - U * 0.02, L.toms[1].y + L.toms[1].depth);
-    ctx.stroke();
-  } else {
-    ctx.strokeStyle = metal(ctx, hw, L.cx - 3, 0, L.cx + 3, 0);
-    ctx.lineWidth = lw(0.011);
-    ctx.beginPath();
-    ctx.moveTo(L.toms[0].x + U * 0.02, L.toms[0].y + L.toms[0].depth);
-    ctx.lineTo(L.cx, L.toms[0].y + L.toms[0].depth + U * 0.02);
-    ctx.lineTo(L.toms[1].x - U * 0.02, L.toms[1].y + L.toms[1].depth);
+    if (!L.doubleKick) {
+      ctx.moveTo(hubX, L.kick.top + U * 0.01);
+      ctx.lineTo(hubX, hubY);
+    }
+    for (const i of racks) {
+      const tm = L.toms[i];
+      const side = tm.x < hubX - 1 ? 1 : tm.x > hubX + 1 ? -1 : 0;
+      ctx.moveTo(hubX, hubY);
+      ctx.lineTo(tm.x + side * U * 0.02, tm.y + tm.depth);
+    }
     ctx.stroke();
   }
-  drum(L.toms[0], 'tom1', tomE(0), 11);
-  drum(L.toms[1], 'tom2', tomE(1), 23);
+  if (has('tom1')) drum(L.toms[0], 'tom1', tomE(0), 11);
+  if (has('tom2')) drum(L.toms[1], 'tom2', tomE(1), 23);
   const legs = (x, yTop, spread) => {
     ctx.strokeStyle = hw === 'black' ? '#5a5e68' : '#9aa0ad';
     ctx.lineWidth = lw(0.007);
@@ -716,17 +725,21 @@ export function drawStageKit(ctx, L, layer, hit, t, colors) {
     ctx.stroke();
   };
   const ft = L.toms[2];
-  legs(ft.x, ft.y + ft.depth * 0.6, U * 0.11);
-  drum(ft, 'floor', tomE(2), 37);
+  if (has('floor')) {
+    legs(ft.x, ft.y + ft.depth * 0.6, U * 0.11);
+    drum(ft, 'floor', tomE(2), 37);
+  }
   const sn = L.snare;
-  legs(sn.x, sn.y + sn.depth + U * 0.05, U * 0.08);
-  ctx.strokeStyle = metal(ctx, hw, sn.x - 3, 0, sn.x + 3, 0);
-  ctx.lineWidth = lw(0.008);
-  ctx.beginPath();
-  ctx.moveTo(sn.x, sn.y + sn.depth + U * 0.05);
-  ctx.lineTo(sn.x, sn.y + sn.depth);
-  ctx.stroke();
-  drum(sn, 'snare', hit('snare').e, 53);
+  if (has('snare')) {
+    legs(sn.x, sn.y + sn.depth + U * 0.05, U * 0.08);
+    ctx.strokeStyle = metal(ctx, hw, sn.x - 3, 0, sn.x + 3, 0);
+    ctx.lineWidth = lw(0.008);
+    ctx.beginPath();
+    ctx.moveTo(sn.x, sn.y + sn.depth + U * 0.05);
+    ctx.lineTo(sn.x, sn.y + sn.depth);
+    ctx.stroke();
+    drum(sn, 'snare', hit('snare').e, 53);
+  }
 
   // cymbals: lathe rings, a bell and a moving glint
   const cymbal = (c, lane, ryK = 0.17) => {
@@ -795,16 +808,16 @@ export function drawStageKit(ctx, L, layer, hit, t, colors) {
       });
     }
   };
-  {
+  if (has('hihat')) {
     const { e } = hit('hihat');
     const gap = U * (0.03 - 0.024 * e);
     cymbal({ x: L.hihat.x, y: L.hihat.y + gap / 2, r: L.hihat.r, tilt: 0 }, 'hihat', 0.14);
     cymbal({ x: L.hihat.x, y: L.hihat.y - gap / 2, r: L.hihat.r, tilt: 0 }, 'hihat', 0.14);
   }
-  cymbal(L.china, 'china', 0.15);
-  cymbal(L.crash2, 'crash2');
-  cymbal(L.crash, 'crash');
-  cymbal(L.ride, 'ride', 0.16);
+  if (has('china')) cymbal(L.china, 'china', 0.15);
+  if (has('crash2')) cymbal(L.crash2, 'crash2');
+  if (has('crash')) cymbal(L.crash, 'crash');
+  if (has('ride')) cymbal(L.ride, 'ride', 0.16);
   G.flush(look.fx === 'fire' ? 1 : 0.8);
 
   // effects in front of the kit

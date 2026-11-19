@@ -40,12 +40,62 @@ export function midiToLane(m) {
 /**
  * The lanes a lane-based style draws: the whole kit (so every drum and cymbal has its place) for a
  * Guitar Pro chart, or only the lanes that have hits for a drum stem (which only finds kick, snare
- * and hi-hat). `layer.allLanes` overrides.
+ * and hi-hat). `layer.allLanes` overrides. Pieces turned off in the kit are left out either way.
  */
 export function chartLanes(layer, data) {
   const all = layer.allLanes ?? layer.source !== 'audio';
-  if (all) return LANES.map((l) => l.id);
-  return data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat'];
+  const on = (id) => pieceOn(layer, id);
+  if (all) return LANES.map((l) => l.id).filter(on);
+  const found = (data.lanes.length ? data.lanes : ['kick', 'snare', 'hihat']).filter(on);
+  return found.length ? found : ['kick'];
+}
+
+// ---- which pieces are in the kit (layer.kitPieces: { id: false } turns one off)
+
+/** The kick is always in the kit; everything else can be turned off. */
+export const FIXED_PIECES = ['kick'];
+/** Quick kit setups: [label, pieces that are off]. */
+export const KIT_PRESETS = {
+  full: ['Full kit', []],
+  five: ['5-piece, crash and ride', ['china', 'crash2']],
+  four: ['4-piece', ['china', 'crash2', 'tom2']],
+  nochina: ['Full kit, no china', ['china']],
+};
+export const pieceOn = (layer, id) => FIXED_PIECES.includes(id) || (layer.kitPieces || {})[id] !== false;
+/** Where a turned-off piece's hits go, closest first. */
+export const PIECE_STANDINS = {
+  china: ['crash2', 'crash', 'ride'],
+  crash: ['crash2', 'china', 'ride'],
+  crash2: ['crash', 'china', 'ride'],
+  ride: ['crash', 'crash2', 'hihat'],
+  hihat: ['ride', 'crash'],
+  tom1: ['tom2', 'floor'],
+  tom2: ['tom1', 'floor'],
+  floor: ['tom2', 'tom1'],
+  snare: [],
+};
+/** The lane a hit is drawn on with this kit, or null when it has nowhere to go. */
+export function kitLane(layer, lane) {
+  if (pieceOn(layer, lane)) return lane;
+  return (PIECE_STANDINS[lane] || []).find((x) => pieceOn(layer, x)) || null;
+}
+const kitCache = new WeakMap();
+/** The chart with hits moved to the pieces that are in the kit (cached per chart and kit). */
+export function withKit(layer, data) {
+  const pieces = layer.kitPieces || {};
+  if (!Object.values(pieces).includes(false)) return data;
+  const key = JSON.stringify(pieces);
+  const hit = kitCache.get(data);
+  if (hit && hit.key === key) return hit.out;
+  const hits = [];
+  for (const h of data.hits) {
+    const lane = kitLane(layer, h.lane);
+    if (lane) hits.push(lane === h.lane ? h : { ...h, lane });
+  }
+  const present = new Set(hits.map((h) => h.lane));
+  const out = { ...data, hits, lanes: LANES.filter((l) => present.has(l.id)).map((l) => l.id) };
+  kitCache.set(data, { key, out });
+  return out;
 }
 
 export function laneColorOf(layer, id) {
@@ -237,6 +287,8 @@ function barAt(data, t, beatPeriod) {
 
 export function drawDrums(ctx, W, H, layer, data, t, songTime, visibleEnd, beatPeriod) {
   if (!data || !data.hits.length) return;
+  data = withKit(layer, data);
+  if (!data.hits.length) return;
   const end = layer.end ?? visibleEnd;
   if (t < (layer.start || 0) || t >= end) return;
   if (FANCY[layer.style]) {
@@ -851,7 +903,9 @@ function drawKit(ctx, W, H, layer, data, dt) {
     const h = recent.get(lane);
     return h ? { e: Math.max(0, Math.exp(-(dt - h.time) * 7)), age: dt - h.time, hit: h } : { e: 0, age: 9, hit: null };
   };
-  const L = kitLayout(bx, by, bw, bh, { doubleKick: kitDoubleKick(layer) });
+  const neonKit = !layer.kitFinish || layer.kitFinish === 'neon';
+  const has = (id) => pieceOn(layer, id);
+  const L = kitLayout(bx, by, bw, bh, { doubleKick: !neonKit && kitDoubleKick(layer), has });
   const colors = Object.fromEntries(LANES.map((l) => [l.id, laneColor(layer, l.id)]));
   if (layer.kitFinish && layer.kitFinish !== 'neon') {
     // double bass: kick hits alternate between the two kicks
@@ -876,11 +930,11 @@ function drawKit(ctx, W, H, layer, data, dt) {
     const [crx, cry] = [L.crash.x, L.crash.y];
     const [rdx, rdy] = [L.ride.x, L.ride.y];
     const [hhx, hhy] = [L.hihat.x, L.hihat.y];
-    stand(crx, cry, by + bh * 0.95);
-    stand(rdx, rdy, by + bh * 0.95);
-    stand(hhx, hhy, by + bh * 0.95);
-    stand(L.crash2.x, L.crash2.y, by + bh * 0.95);
-    stand(L.china.x, L.china.y, by + bh * 0.95);
+    if (has('crash')) stand(crx, cry, by + bh * 0.95);
+    if (has('ride')) stand(rdx, rdy, by + bh * 0.95);
+    if (has('hihat')) stand(hhx, hhy, by + bh * 0.95);
+    if (has('crash2')) stand(L.crash2.x, L.crash2.y, by + bh * 0.95);
+    if (has('china')) stand(L.china.x, L.china.y, by + bh * 0.95);
 
     const G = glowPass(ctx, bx, by, bw, bh, U * 0.04);
     const glowEllipse = (x, y, rx, ry, rot, col, e) =>
@@ -1022,7 +1076,7 @@ function drawKit(ctx, W, H, layer, data, dt) {
     };
 
     // hi-hat: two plates that clap shut on a hit
-    {
+    if (has('hihat')) {
       const { e, age } = energy('hihat');
       const col = laneColor(layer, 'hihat');
       const gap = U * (0.03 - 0.022 * e);
@@ -1038,10 +1092,10 @@ function drawKit(ctx, W, H, layer, data, dt) {
       }
       ripple(hhx, hhy, U * 0.1, U * 0.016, col, age);
     }
-    cymbal('china', L.china.x, L.china.y, L.china.r, L.china.tilt);
-    cymbal('crash2', L.crash2.x, L.crash2.y, L.crash2.r, L.crash2.tilt);
-    cymbal('crash', crx, cry, L.crash.r, L.crash.tilt);
-    cymbal('ride', rdx, rdy, L.ride.r, L.ride.tilt);
+    if (has('china')) cymbal('china', L.china.x, L.china.y, L.china.r, L.china.tilt);
+    if (has('crash2')) cymbal('crash2', L.crash2.x, L.crash2.y, L.crash2.r, L.crash2.tilt);
+    if (has('crash')) cymbal('crash', crx, cry, L.crash.r, L.crash.tilt);
+    if (has('ride')) cymbal('ride', rdx, rdy, L.ride.r, L.ride.tilt);
 
 
     // kick: front-facing bass drum with the band name
@@ -1149,39 +1203,43 @@ function drawKit(ctx, W, H, layer, data, dt) {
     const kTop = ky0 - U * 0.2 * 1.06;
     // just above the kick's hoop, never higher than the cymbals
     const tomY = Math.max(by + bh * 0.2, Math.min(by + bh * 0.3, kTop - U * (0.09 + 0.032 + 0.012)));
-    const [t1x] = P(0.38, 0);
-    const [t2x] = P(0.62, 0);
+    const [t1x] = [L.toms[0].x];
+    const [t2x] = [L.toms[1].x];
     const t1y = tomY;
     const t2y = tomY;
-    {
+    if (has('tom1') || has('tom2')) {
       const kx = kx0;
       ctx.strokeStyle = rgba(METAL, 0.6);
       ctx.lineWidth = Math.max(1.5, U * 0.009);
       ctx.beginPath();
       ctx.moveTo(kx, kTop + U * 0.01);
       ctx.lineTo(kx, kTop - U * 0.03);
-      ctx.lineTo(t1x, t1y + U * 0.1);
+      if (has('tom1')) ctx.lineTo(t1x, t1y + U * 0.1);
       ctx.moveTo(kx, kTop - U * 0.03);
-      ctx.lineTo(t2x, t2y + U * 0.1);
+      if (has('tom2')) ctx.lineTo(t2x, t2y + U * 0.1);
       ctx.stroke();
     }
-    drum('tom1', t1x, t1y, U * 0.075, U * 0.03, U * 0.085, tomE(0), tomAge(0));
-    drum('tom2', t2x, t2y, U * 0.08, U * 0.032, U * 0.09, tomE(1), tomAge(1));
+    if (has('tom1')) drum('tom1', t1x, t1y, U * 0.075, U * 0.03, U * 0.085, tomE(0), tomAge(0));
+    if (has('tom2')) drum('tom2', t2x, t2y, U * 0.08, U * 0.032, U * 0.09, tomE(1), tomAge(1));
     const [ftx, fty] = P(0.8, 0.56);
     const ftD = U * 0.17;
-    legs(ftx, fty + ftD, floor, U * 0.09);
-    drum('floor', ftx, fty, U * 0.1, U * 0.04, ftD, tomE(2), tomAge(2), layer.showLabels ? 'TOMS' : '');
+    if (has('floor')) {
+      legs(ftx, fty + ftD, floor, U * 0.09);
+      drum('floor', ftx, fty, U * 0.1, U * 0.04, ftD, tomE(2), tomAge(2), layer.showLabels ? 'TOMS' : '');
+    }
     const sn = energy('snare');
     const [snx, sny] = P(0.22, 0.58);
     const snD = U * 0.06;
-    legs(snx, sny + snD + U * 0.04, floor, U * 0.08);
-    ctx.strokeStyle = rgba(METAL, 0.45);
-    ctx.lineWidth = Math.max(1, U * 0.006);
-    ctx.beginPath();
-    ctx.moveTo(snx, sny + snD + U * 0.04);
-    ctx.lineTo(snx, sny + snD);
-    ctx.stroke();
-    drum('snare', snx, sny, U * 0.095, U * 0.036, snD, sn.e, sn.age, layer.showLabels ? 'SNARE' : '');
+    if (has('snare')) {
+      legs(snx, sny + snD + U * 0.04, floor, U * 0.08);
+      ctx.strokeStyle = rgba(METAL, 0.45);
+      ctx.lineWidth = Math.max(1, U * 0.006);
+      ctx.beginPath();
+      ctx.moveTo(snx, sny + snD + U * 0.04);
+      ctx.lineTo(snx, sny + snD);
+      ctx.stroke();
+      drum('snare', snx, sny, U * 0.095, U * 0.036, snD, sn.e, sn.age, layer.showLabels ? 'SNARE' : '');
+    }
 
     G.flush(0.9);
   }
