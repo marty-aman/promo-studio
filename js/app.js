@@ -524,6 +524,17 @@ const manager = createManager({
   root: managerRoot,
   studio: {
     audioFiles: () => media.all().filter((m) => m.kind === 'audio').map((m) => ({ id: m.id, name: m.name })),
+    imageFiles: () => media.all().filter((m) => m.kind === 'image').map((m) => ({ id: m.id, name: m.name, thumb: m.thumb || null })),
+    /** A library image as a JPEG data URL no larger than `max` px on its long side (for the press kit). */
+    async imageDataUrl(id, max = 1400) {
+      const rec = media.get(id);
+      const img = rec && rec.el;
+      if (!img || !img.naturalWidth) return null;
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = h('canvas', { width: Math.round(img.naturalWidth * k), height: Math.round(img.naturalHeight * k) });
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      return c.toDataURL('image/jpeg', 0.85);
+    },
     /** Put a song's title, lyrics and audio into the video edit, then switch to the studio. */
     openPromo(song) {
       const p = store.get();

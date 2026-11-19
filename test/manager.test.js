@@ -257,3 +257,68 @@ test('analytics CSV: quoted cells, k/M numbers, columns by name, matched to post
   const ig = importRows('Permalink;Publish time;Views;Likes;Comments;Shares;Saves\nhttps://www.instagram.com/reel/AbC/;2026-11-05T19:00:00;4300;210;12;30;44\n');
   assert.equal(ig[0].stats.saves, 44);
 });
+
+// ---- calendar, press kit, money
+import { monthGrid, monthStart, managerICS, epkHTML, shortBio, moneyLines, moneySummary, releaseSpend, newEntry } from '../js/manager/extras.js';
+
+test('month grid starts on Monday and covers the whole month', () => {
+  const w = monthGrid('2026-11-18');
+  assert.equal(w[0][0], '2026-10-26'); // Nov 1 2026 is a Sunday
+  assert.ok(w.flat().includes('2026-11-30'));
+  assert.ok(w.every((x) => x.length === 7));
+  assert.equal(monthStart('2026-11-18', 1), '2026-12-01');
+  assert.equal(monthStart('2026-01-05', -1), '2025-12-01');
+});
+
+test('ics export: timed shows and shoots, all-day items, escaped text', () => {
+  const m = newManager();
+  m.band.name = 'Arc Flash';
+  const s = { ...newSong('Static; Part 1'), releaseDate: '2026-12-04' };
+  s.shoot.date = '2026-11-22';
+  s.shoot.callTime = '09:30';
+  m.songs.push(s);
+  m.shows.push({ ...newShow('2026-11-28'), venue: 'The Funhouse', city: 'Seattle', setTime: '21:30', status: 'confirmed' });
+  const ics = managerICS(m, { from: '2026-11-18', days: 30, stamp: new Date('2026-11-18T12:00:00Z') });
+  assert.ok(ics.startsWith('BEGIN:VCALENDAR\r\n') && ics.endsWith('END:VCALENDAR\r\n'));
+  assert.ok(ics.includes('DTSTART:20261128T213000') && ics.includes('DTEND:20261128T223000'));
+  assert.ok(ics.includes('LOCATION:The Funhouse\\, Seattle'));
+  assert.ok(ics.includes('DTSTART:20261122T093000'));
+  assert.ok(ics.includes('DTSTART;VALUE=DATE:20261204') && ics.includes('DTEND;VALUE=DATE:20261205'));
+  assert.ok(ics.includes('Static\\; Part 1'));
+  assert.ok(ics.split('\r\n').every((l) => l.length <= 75));
+});
+
+test('press kit escapes everything and only links safe URLs', () => {
+  const m = newManager();
+  Object.assign(m.band, { name: 'Arc <Flash>', bio: 'We are loud.\n\nSecond para.', links: { spotify: 'https://open.spotify.com/artist/x', website: 'javascript:alert(1)' }, press: [{ id: 'p', quote: 'Huge <b>riffs</b>', source: 'The Stranger' }], contactEmail: 'band@example.com' });
+  m.songs.push({ ...newSong('Static'), releaseDate: '2026-12-04', links: { spotify: 'https://open.spotify.com/track/y', youtube: '', bandcamp: '', apple: '' } });
+  m.shows.push({ ...newShow('2026-12-12'), venue: 'El Corazon', status: 'confirmed' }, { ...newShow('2026-10-01'), venue: 'Funhouse', status: 'played' });
+  const html = epkHTML(m, { today: '2026-11-18', photos: ['data:image/jpeg;base64,AAAA', 'javascript:x'] });
+  assert.ok(html.includes('<h1>Arc &lt;Flash&gt;</h1>'));
+  assert.ok(html.includes('Huge &lt;b&gt;riffs&lt;/b&gt;'));
+  assert.ok(!html.includes('javascript:'));
+  assert.ok(html.includes('href="https://open.spotify.com/artist/x"') && html.includes('href="https://open.spotify.com/track/y"'));
+  assert.ok(html.includes('El Corazon') && html.includes('<h2>Has played</h2><p>Funhouse</p>'));
+  assert.equal((html.match(/<img /g) || []).length, 1);
+  assert.equal(shortBio('One. Two.'), 'One. Two.');
+  assert.ok(shortBio('A'.repeat(100) + '. ' + 'B'.repeat(300), 280).endsWith('.'));
+});
+
+test('money: ledger plus show settlements, totals by category and month, release spend', () => {
+  const m = newManager();
+  const s = newSong('Static');
+  s.shoot.budget = '$400';
+  m.songs.push(s);
+  m.money.push({ ...newEntry('expense', '2026-11-02'), amount: '250', category: 'video', songId: s.id }, { ...newEntry('income', '2026-11-20'), amount: '42.5', category: 'streaming' });
+  m.shows.push({ ...newShow('2026-11-28'), venue: 'Funhouse', settlement: { gross: '', pay: 150, merch: '90', costs: '40' } });
+  const lines = moneyLines(m);
+  assert.equal(lines.length, 5);
+  const sum = moneySummary(lines, { from: '2026-01-01', to: '2026-12-31' });
+  assert.equal(sum.income, 282.5);
+  assert.equal(sum.expense, 290);
+  assert.equal(sum.net, -7.5);
+  assert.deepEqual(sum.byMonth.map((x) => x[0]), ['2026-11']);
+  assert.ok(sum.byCat.some(([k, i]) => k === 'merch' && i === 90));
+  assert.deepEqual(releaseSpend(m, s), { spent: 250, budget: 400, left: 150 });
+  assert.equal(moneySummary(lines, { from: '2027-01-01', to: '2027-12-31' }).net, 0);
+});
