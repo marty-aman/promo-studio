@@ -96,6 +96,9 @@ export function newSong(title = 'New song') {
     bpm: '',
     key: '',
     audioId: null, // a song file in the video studio's media library
+    sound: { genres: '', moods: [], energy: '', vocals: '', similar: '' }, // blank genres and similar fall back to the band's
+    press: { headline: '', story: '', quote: '', quoteBy: '', credits: '', label: '', edits: {} },
+    pitches: [], // playlist pitches sent: { id, curator, playlist, service, contact, sent, status, followUp, ... }
     links: { spotify: '', youtube: '', bandcamp: '', apple: '' },
     shoot: { concept: '', date: '', callTime: '', locations: [], crew: [], shots: [], wardrobe: '', props: '', budget: '', notes: '' },
     release: releaseChecklist(),
@@ -117,6 +120,8 @@ export function newManager() {
     contacts: [],
     posts: [],
     money: [],
+    playlists: [], // your own playlists and curators (shared by every artist)
+    playlistsOff: [], // built-in playlist ids you hid
     seeded: {},
   };
 }
@@ -130,8 +135,10 @@ export function normalizeManager(raw) {
   for (const k of ['songs', 'shows', 'venues', 'bands', 'contacts', 'posts', 'money']) m[k] = list(raw[k]);
   m.songs = m.songs.map((s) => {
     const d = newSong(s.title);
-    return { ...d, ...s, links: { ...d.links, ...(s.links || {}) }, shoot: { ...d.shoot, ...(s.shoot || {}) }, release: Array.isArray(s.release) ? s.release : d.release };
+    return { ...d, ...s, sound: { ...d.sound, ...(s.sound || {}), moods: Array.isArray(s.sound?.moods) ? s.sound.moods : [] }, press: { ...d.press, ...(s.press || {}), edits: { ...(s.press?.edits || {}) } }, pitches: list(s.pitches), links: { ...d.links, ...(s.links || {}) }, shoot: { ...d.shoot, ...(s.shoot || {}) }, release: Array.isArray(s.release) ? s.release : d.release };
   });
+  m.playlists = list(raw.playlists);
+  m.playlistsOff = Array.isArray(raw.playlistsOff) ? raw.playlistsOff.filter((x) => typeof x === 'string') : [];
   m.shows = m.shows.map((s) => ({ ...newShow(), ...s, settlement: { ...newShow().settlement, ...(s.settlement || {}) } }));
   m.seeded = raw.seeded && typeof raw.seeded === 'object' ? raw.seeded : {};
   return m;
@@ -192,6 +199,9 @@ export function agenda(m, from, days = 14) {
       const due = taskDue(song, t);
       if (!t.done && inRange(due)) out.push({ date: due, kind: 'task', title: t.text, sub: `“${song.title}” · ${TASK_CATS[t.cat] || 'Task'}`, ref: { page: 'songs', id: song.id, tab: 'release' } });
     }
+    for (const p of song.pitches || []) {
+      if (p.status === 'sent' && !p.followedUp && inRange(p.followUp)) out.push({ date: p.followUp, kind: 'task', title: `Follow up: ${p.curator || p.playlist || 'curator'}`, sub: `“${song.title}” · Pitch${p.playlist ? ` to ${p.playlist}` : ''}`, ref: { page: 'songs', id: song.id, tab: 'pitch' } });
+    }
   }
   for (const p of m.posts) {
     const song = m.songs.find((s) => s.id === p.songId);
@@ -209,6 +219,9 @@ export function overdueTasks(m, today) {
     for (const t of song.release) {
       const due = taskDue(song, t);
       if (!t.done && due && due < today) out.push({ song, task: t, due });
+    }
+    for (const p of song.pitches || []) {
+      if (p.status === 'sent' && !p.followedUp && p.followUp && p.followUp < today) out.push({ song, pitch: p, task: { id: p.id, text: `Follow up with ${p.curator || p.playlist || 'the curator'}` }, due: p.followUp });
     }
   }
   for (const show of m.shows) {

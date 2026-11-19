@@ -100,15 +100,20 @@ export function buildHome(ctx) {
         h(
           'ul',
           { class: 'mgr-list' },
-          late.slice(0, 8).map(({ song, show, task, due, artistId, artist }) =>
+          late.slice(0, 8).map(({ song, show, pitch, task, due, artistId, artist }) =>
             h(
               'li',
               { class: 'mgr-row' },
               all && artistId !== m.artistId ? h('span', { class: 'mgr-artist-dot small', title: artist, 'aria-hidden': 'true' }, (artist || '?')[0].toUpperCase()) : ctx.form.check(`late-${task.id}`, false, (d) => {
+                if (pitch) {
+                  const x = d.songs.find((s) => s.id === song.id)?.pitches.find((y) => y.id === pitch.id);
+                  if (x) x.followedUp = true;
+                  return;
+                }
                 const t = song ? d.songs.find((s) => s.id === song.id)?.release.find((x) => x.id === task.id) : d.shows.find((s) => s.id === show.id)?.todo.find((x) => x.id === task.id);
                 if (t) t.done = true;
               }, `Mark “${task.text}” done`),
-              h('button', { type: 'button', class: 'link', onclick: () => (song ? open(artistId, 'songs', song.id, 'release') : open(artistId, 'shows', show.id)) }, task.text),
+              h('button', { type: 'button', class: 'link', onclick: () => (song ? open(artistId, 'songs', song.id, pitch ? 'pitch' : 'release') : open(artistId, 'shows', show.id)) }, task.text),
               h('span', { class: 'muted tiny' }, `${all ? `${artist} · ` : ''}${song ? `“${song.title}”` : `Show: ${show.venue || 'venue TBD'}`} · due ${niceDate(due, { weekday: false })}`),
             ),
           ),
