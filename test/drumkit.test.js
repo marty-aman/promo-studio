@@ -1,40 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { kitLayout, strikePoint, stickPose, REST, KIT_WRAPS, wrapOf, mixHex } from '../js/drumkit.js';
+import { kitLayout, strikePoint, KIT_WRAPS, KIT_FINISHES, METAL_FINISHES, kitDoubleKick, lookOf, wrapOf, mixHex } from '../js/drumkit.js';
 
-const L = kitLayout(0, 0, 1600, 900);
-const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
-
-test('rack toms sit above the kick hoop at any box shape', () => {
-  for (const [w, hh] of [[1600, 900], [600, 300], [400, 900], [1000, 200]]) {
-    const k = kitLayout(0, 0, w, hh);
-    for (const t of k.toms.slice(0, 2)) assert.ok(t.y + t.depth + t.ry <= k.kick.top + 1e-6 || t.y <= hh * 0.2 + 1e-6, `${w}x${hh}`);
+test('rack toms sit above the kick hoop(s) at any box shape, with one kick or two', () => {
+  for (const doubleKick of [false, true]) {
+    for (const [w, hh] of [[1600, 900], [600, 300], [400, 900], [1000, 200]]) {
+      const k = kitLayout(0, 0, w, hh, { doubleKick });
+      for (const t of k.toms.slice(0, 2)) assert.ok(t.y + t.depth + t.ry <= k.kick.top + 1e-6 || t.y <= hh * 0.2 + 1e-6, `${w}x${hh} ${doubleKick}`);
+    }
   }
 });
 
-test('a stick is down on the piece at a hit and lifts after it', () => {
-  const hit = { lane: 'snare', time: 1, index: 0 };
-  const T = strikePoint(L, 'snare');
-  const at = stickPose(L, hit, null, 1, REST.left);
-  assert.ok(near(at.tip[0], T[0]) && near(at.tip[1], T[1]));
-  const later = stickPose(L, hit, null, 1.3, REST.left);
-  assert.ok(later.tip[1] < T[1] - L.U * 0.05, 'tip is raised');
-  // stick length stays the same while it turns around the grip
-  const len = (p) => Math.hypot(p.tip[0] - p.grip[0], p.tip[1] - p.grip[1]);
-  assert.ok(near(len(at), len(later), 1e-6));
+test('a double bass kit has two kicks side by side, mirrored about the centre', () => {
+  const one = kitLayout(0, 0, 1600, 900);
+  const two = kitLayout(0, 0, 1600, 900, { doubleKick: true });
+  assert.equal(one.kicks.length, 1);
+  assert.equal(two.kicks.length, 2);
+  assert.ok(Math.abs(two.kicks[0].x + two.kicks[1].x - 2 * two.cx) < 1e-6);
+  assert.ok(two.kicks[1].x - two.kicks[0].x >= two.kicks[0].r * 2, 'they do not overlap');
+  assert.ok(two.snare.x < one.snare.x && two.toms[2].x > one.toms[2].x, 'snare and floor tom move out');
+  assert.deepEqual(strikePoint(two, 'kick', 1), [two.kicks[1].x, two.kicks[1].y]);
+  assert.deepEqual(strikePoint(two, 'kick', 5), [two.kicks[1].x, two.kicks[1].y]);
 });
 
-test('a stick comes down just before the next hit and rests when idle', () => {
-  const next = { lane: 'tom', time: 2, index: 1 };
-  const T = strikePoint(L, 'tom', 1);
-  const just = stickPose(L, null, next, 2 - 1e-4, REST.right);
-  assert.ok(Math.hypot(just.tip[0] - T[0], just.tip[1] - T[1]) < L.U * 0.01);
-  const idle = stickPose(L, null, null, 5, REST.right);
-  const F = strikePoint(L, 'tom', 2);
-  assert.ok(idle.tip[1] < F[1], 'resting above the floor tom');
-  // cymbal grips stay low enough to keep the stick inside the kit
-  const cy = stickPose(L, { lane: 'ride', time: 1, index: 0 }, null, 1.3, REST.right);
-  assert.ok(cy.grip[1] > L.ride.y - L.U * 0.15);
+test('metal finishes default to double bass; the layer can turn it off', () => {
+  for (const f of ['inferno', 'thunder', 'frostbite', 'steel']) {
+    assert.ok(METAL_FINISHES.has(f));
+    assert.ok(KIT_FINISHES.some(([k]) => k === f));
+    assert.equal(kitDoubleKick({ kitFinish: f }), true);
+    assert.equal(kitDoubleKick({ kitFinish: f, doubleKick: false }), false);
+    assert.ok(lookOf(f).wrap && lookOf(f).fx, f);
+  }
+  assert.equal(kitDoubleKick({ kitFinish: 'stage' }), false);
+  assert.equal(kitDoubleKick({ kitFinish: 'stage', doubleKick: true }), true);
+  assert.equal(lookOf('nope'), lookOf('stage'));
 });
 
 test('wraps and colour mixing', () => {

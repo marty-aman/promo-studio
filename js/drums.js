@@ -3,7 +3,7 @@
 import { timedBeats } from './tab.js';
 import { glowPass, frost } from './canvasfx.js';
 import { energyEnvelope } from './core.js';
-import { kitLayout, drawStageKit, drawSticks, stickPose, HANDS, REST } from './drumkit.js';
+import { kitLayout, drawStageKit, kitDoubleKick } from './drumkit.js';
 
 export const LANES = [
   { id: 'crash', label: 'Crash', color: '#ff8c42' },
@@ -827,30 +827,19 @@ function drawKit(ctx, W, H, layer, data, dt) {
   const tomHit = recent.get('tom');
   const tomPiece = tomHit ? tomHit.index % 3 : -1;
 
-  const L = kitLayout(bx, by, bw, bh);
+  const L = kitLayout(bx, by, bw, bh, { doubleKick: kitDoubleKick(layer) });
   const colors = Object.fromEntries(['kick', 'snare', 'hihat', 'tom', 'crash', 'ride'].map((k) => [k, laneColor(layer, k)]));
-  // each hand's last and next hit, for the sticks
-  const tips = {};
-  if (layer.sticks !== false) {
-    for (const [hand, lanes] of Object.entries(HANDS)) {
-      let last = null;
-      for (const ln of lanes) {
-        const r = recent.get(ln);
-        if (r && (!last || r.time > last.time)) last = { lane: ln, time: r.time, index: r.index };
-      }
-      let next = null;
-      for (let i = first(data.hits, dt + 1e-6); i < data.hits.length && data.hits[i].time < dt + 0.2; i++) {
-        if (lanes.includes(data.hits[i].lane)) {
-          next = { lane: data.hits[i].lane, time: data.hits[i].time, index: i };
-          break;
-        }
-      }
-      tips[hand] = stickPose(L, last, next, dt, REST[hand]);
-    }
-  }
-  if (layer.kitFinish === 'stage') {
-    const hitOf = (lane, piece) => (lane === 'tom' ? (piece === tomPiece ? energy('tom') : { e: 0, age: 9 }) : energy(lane));
-    drawStageKit(ctx, L, layer, hitOf, dt, tips, colors);
+  if (layer.kitFinish && layer.kitFinish !== 'neon') {
+    // double bass: kick hits alternate between the two kicks
+    const kickHit = recent.get('kick');
+    const kickPiece = kickHit ? kickHit.index % 2 : -1;
+    const none = { e: 0, age: 9, hit: null };
+    const hitOf = (lane, piece) => {
+      if (lane === 'tom') return piece === tomPiece ? energy('tom') : none;
+      if (lane === 'kick' && L.kicks.length > 1 && piece != null) return piece === kickPiece ? energy('kick') : none;
+      return energy(lane);
+    };
+    drawStageKit(ctx, L, layer, hitOf, dt, colors);
   } else {
     // stands
     ctx.strokeStyle = 'rgba(200,200,220,0.35)';
@@ -1168,7 +1157,6 @@ function drawKit(ctx, W, H, layer, data, dt) {
     drum('snare', snx, sny, U * 0.095, U * 0.036, snD, sn.e, sn.age, layer.showLabels ? 'SNARE' : '');
 
     G.flush(0.9);
-    if (layer.sticks !== false) drawSticks(ctx, L, tips, { neon: true, color: chromeOf(layer).edge });
   }
 
   // what's coming: a thin strip along the top

@@ -201,7 +201,10 @@ export async function lookupISRC(raw, { fetchFn = fetch, deezer = deezerByISRC, 
     return res.json();
   };
   const [mb, dz, sp] = await Promise.all([
-    getJSON(musicBrainzURL(isrc), { headers: { Accept: 'application/json' } }).then(parseMusicBrainz).catch(() => (notes.push('MusicBrainz didn’t answer.'), null)),
+    getJSON(musicBrainzURL(isrc), { headers: { Accept: 'application/json' } })
+      .catch(() => new Promise((r) => setTimeout(r, 1200)).then(() => getJSON(musicBrainzURL(isrc), { headers: { Accept: 'application/json' } }))) // MusicBrainz rate-limits: one retry
+      .then(parseMusicBrainz)
+      .catch(() => (notes.push('MusicBrainz didn’t answer. Try again in a moment.'), null)),
     deezer(isrc).then(parseDeezer).catch(() => null),
     spotifyByISRC(isrc, { ...spotify, fetchFn }).catch((e) => (notes.push(e.message), null)),
   ]);

@@ -11,7 +11,7 @@ import { themeById, themeLayer } from './themes.js';
 import { defaultVizLayer, VIZ_STYLES, BLENDS, setVizStyle } from './viz.js';
 import { tabIntoLayout } from './templates.js';
 import { EXITS, ENTRANCES } from './exits.js';
-import { KIT_FINISHES, KIT_WRAPS } from './drumkit.js';
+import { KIT_FINISHES, KIT_WRAPS, kitDoubleKick } from './drumkit.js';
 import { h, icon, button, iconButton, toast, field, section, fold, pickFiles } from './dom.js';
 
 export const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.gp7,.gp8,.musicxml,.mxl,.xml';
@@ -494,7 +494,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         L.style === 'kit' ? b.text('Text on the kick drum', g('kickText', ''), set((x, v) => (x.kickText = v)), { placeholder: 'Your band name' }) : null,
         L.style === 'kit' ? b.select('Finish', g('kitFinish', 'neon'), set((x, v) => (x.kitFinish = v)), KIT_FINISHES) : null,
         L.style === 'kit' && L.kitFinish === 'stage' ? b.select('Shells', g('kitWrap', 'black'), set((x, v) => (x.kitWrap = v)), KIT_WRAPS.map(([k, l]) => [k, l])) : null,
-        L.style === 'kit' ? b.toggle('Show drumsticks', g('sticks', true), set((x, v) => (x.sticks = v))) : null,
+        L.style === 'kit' && (L.kitFinish || 'neon') !== 'neon' ? b.toggle('Double bass drums', get((x) => kitDoubleKick(x)), set((x, v) => (x.doubleKick = v))) : null,
         L.style === 'neon' ? b.toggle('Show the combo counter', g('showCombo', true), set((x, v) => (x.showCombo = v))) : null,
         rec ? syncTools(tl, isStem) : null,
         visibleRange(),

@@ -308,12 +308,20 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
   - **Neon highway:** a 3D glowing road with gem notes, shockwaves and sparks at the strike line, and an
     optional combo counter.
   - **Light-up drum kit:** a drawn kit (kick, snare, two rack toms, floor tom, hi-hat, crash, ride) with
-    your band name on the kick drum and a strip of upcoming hits along the top. Two drumsticks swing down
-    onto each piece in time with the hits (turn them off with *Show drumsticks*). *Finish*: **Neon glow**
-    (lit shells and heads that glow, bounce and ripple) or **Stage (realistic)**: wrapped shells with chrome
-    hoops and lugs, coated heads that flex on a hit, bronze cymbals with lathe rings that wobble, a hi-hat
-    stand with its pedal, tripod stands, a rug and a spotlight. *Shells* picks the wrap: black, wine red or
-    ocean blue sparkle, natural maple, dark walnut or white pearl.
+    your band name on the kick drum and a strip of upcoming hits along the top. *Finish*:
+    - **Neon glow:** lit shells and heads that glow, bounce and ripple.
+    - **Stage (realistic):** wrapped shells with chrome hoops and lugs, coated heads that flex on a hit,
+      bronze cymbals with lathe rings that wobble, a hi-hat stand with its pedal, tripod stands, a rug and
+      a spotlight. *Shells* picks the wrap: black, wine red or ocean blue sparkle, natural maple, dark
+      walnut or white pearl.
+    - **Inferno:** charred shells with glowing cracks, black hardware and heads, flames behind the kit that
+      leap on every kick, embers drifting up.
+    - **Thunder:** midnight sparkle shells under storm clouds; lightning strikes the crash, ride and snare.
+    - **Frostbite:** black shells covered in frost crystals, white heads, silver cymbals, fog and snow.
+    - **Steel & spikes:** brushed steel shells with rivets, spiked kick hoops, black hardware, and welding
+      sparks off every hit.
+    The realistic and metal finishes can use **Double bass drums** (two kicks that take turns; on by default
+    for the metal finishes), with the band name split across both.
   - **Glass lanes:** a frosted panel over your video with gradient capsules, trails and hit bursts.
 
   Choosing a style also moves the chart to a spot that suits it.
@@ -409,7 +417,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/soundlib.js` | Personal sound library stored in IndexedDB |
 | `js/tab.js` | Guitar Pro tab parsing (via alphaTab), timing and drawing |
 | `js/drums.js` | Drum chart: GP drum tracks, drum-stem hit detection, lanes / highway / circle drawing |
-| `js/drumkit.js` | The drum kit's layout, the Stage (realistic) finish, shell wraps and the drumsticks (unit tested) |
+| `js/drumkit.js` | The drum kit's layout (single or double bass), the Stage and metal finishes, shell wraps and effects (unit tested) |
 | `js/viz.js` | Audio visualizers: FFT analysis and the styles |
 | `js/vizreal.js` | Realistic visualizers: VU meters, LED rack, oscilloscope, speaker, fire, spectrogram |
 | `js/vizgear.js` | More realistic visualizers: tape reels, mixing desk, lightning, vibrating strings |
