@@ -10,6 +10,7 @@ import { REAL_PLACEMENT } from './vizreal.js';
 import { themeById, themeLayer } from './themes.js';
 import { defaultVizLayer, VIZ_STYLES, BLENDS, setVizStyle } from './viz.js';
 import { tabIntoLayout } from './templates.js';
+import { EXITS, ENTRANCES } from './exits.js';
 import { h, icon, button, iconButton, toast, field, section, fold, pickFiles } from './dom.js';
 
 export const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.gp7,.gp8,.musicxml,.mxl,.xml';
@@ -224,6 +225,14 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       {},
       h('div', { class: 'insp-title' }, icon(LAYER_TYPES[L.type].icon, 16), h('span', {}, `${LAYER_TYPES[L.type].label} settings`)),
       b.text('Layer name', get((x) => x.name), set((x, v) => (x.name = v))),
+      h('div', { class: 'grid2' },
+        b.select('Entrance', get((x) => (x.enter && x.enter.type) || ''), set((x, v) => (x.enter = v ? { type: v, duration: (x.enter && x.enter.duration) || 0.4 } : null)), [['', 'Quick fade (default)'], ...ENTRANCES]),
+        b.select('Exit', get((x) => (x.exit && x.exit.type) || ''), set((x, v) => (x.exit = v ? { type: v, duration: (x.exit && x.exit.duration) || 0.4 } : null)), [['', 'Quick fade (default)'], ...EXITS]),
+      ),
+      h('div', { class: 'grid2' },
+        b.range('Entrance length', get((x) => (x.enter && x.enter.duration) || 0.4), set((x, v) => (x.enter = { type: (x.enter && x.enter.type) || 'fade', duration: v })), { min: 0.1, max: 2, step: 0.05, fmt: (v) => `${v.toFixed(2)}s` }),
+        b.range('Exit length', get((x) => (x.exit && x.exit.duration) || 0.4), set((x, v) => (x.exit = { type: (x.exit && x.exit.type) || 'fade', duration: v })), { min: 0.1, max: 2, step: 0.05, fmt: (v) => `${v.toFixed(2)}s` }),
+      ),
     );
     const visibleRange = () =>
       section(

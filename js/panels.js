@@ -27,6 +27,7 @@ import { buildLayersPanel, makeLayer, TAB_ACCEPT } from './panel-layers.js';
 import { lyricIdeas, applyLyricIdea } from './lyricideas.js';
 import { tipSettings, saveTipSettings } from './panel-tips.js';
 import { createKeyframeUI } from './panel-kf.js';
+import { EXITS } from './exits.js';
 import { templateFromProject, applyMyTemplate, templateFile, parseTemplateFile, describeTemplate } from './mytemplates.js';
 import { bgRemoveSection } from './panel-bgremove.js';
 import { buildSuggestPanel, hasNewSuggestions } from './panel-suggest.js';
@@ -61,6 +62,20 @@ const fontOptions = () => [
 ];
 
 const ANIMATIONS = TEXT_ANIMATIONS;
+// '' keeps the original quick fade at the end
+const TEXT_EXITS = [['', 'Quick fade (default)'], ...EXITS];
+
+/** Exit for a clip (or anything with .exit = { type, duration }): get() returns the item, M wraps a mutator. */
+function exitSection(b, get, M, note) {
+  return section(
+    'Exit',
+    h('p', { class: 'muted tiny' }, note),
+    h('div', { class: 'grid2' },
+      b.select('Type', () => (get()?.exit && get().exit.type) || '', M((x, v) => (x.exit = v ? { duration: (x.exit && x.exit.duration) || 0.5, type: v } : null)), [['', 'None'], ...EXITS.filter(([k]) => k !== 'cut')]),
+      b.range('Length', () => (get()?.exit && get().exit.duration) || 0.5, M((x, v) => (x.exit = { type: (x.exit && x.exit.type) || 'fade', duration: v })), { min: 0.1, max: 2, step: 0.05, fmt: (v) => `${v.toFixed(2)}s` }),
+    ),
+  );
+}
 
 const LYRIC_PRESETS = {
   'Bold pop': { font: 'Bebas Neue', size: 10, color: '#ffffff', outline: '#000000', outlineWidth: 0.6, shadow: true, box: false, animation: 'pop', uppercase: true },
@@ -1396,7 +1411,13 @@ export function createPanels({ store, engine, ui }) {
         displayGrid,
         presetRow,
         b.select('Font', (p) => p.lyricStyle.font, s((o, v) => (o.font = v)), fontOptions()),
-        display === 'line' ? b.select('Animation', (p) => p.lyricStyle.animation, s((o, v) => (o.animation = v)), ANIMATIONS) : null,
+        display === 'line' ? b.select('Entrance', (p) => p.lyricStyle.animation, s((o, v) => (o.animation = v)), ANIMATIONS) : null,
+        display === 'line'
+          ? h('div', { class: 'grid2' },
+              b.select('Exit', (p) => p.lyricStyle.outAnimation || '', s((o, v) => (o.outAnimation = v)), TEXT_EXITS),
+              b.range('Exit length', (p) => p.lyricStyle.outDuration ?? 0.35, s((o, v) => (o.outDuration = v)), { min: 0.1, max: 1.5, step: 0.05, fmt: (v) => `${v.toFixed(2)}s` }),
+            )
+          : null,
         b.range('Size', (p) => p.lyricStyle.size, s((o, v) => (o.size = v)), { min: 2.5, max: 14, step: 0.1, fmt: (v) => v.toFixed(1) }),
         b.range('Vertical position', (p) => p.lyricStyle.y, s((o, v) => (o.y = v)), { min: 5, max: 95, step: 1, fmt: (v) => `${v}%` }),
         b.range('Horizontal position', (p) => p.lyricStyle.x ?? 50, s((o, v) => (o.x = v)), { min: 10, max: 90, step: 0.5, fmt: (v) => `${v}%` }),
@@ -2047,7 +2068,8 @@ export function createPanels({ store, engine, ui }) {
             b.range('Size', () => cur().size, edit('size'), { min: 2.5, max: 18, step: 0.1, fmt: (v) => Number(v).toFixed(1) }),
             h('div', { class: 'grid2' }, b.color('Text', () => cur().color, edit('color')), b.color('Highlight', () => cur().highlight, edit('highlight'))),
             h('div', { class: 'grid2' }, b.color('Outline', () => cur().outline, edit('outline')), b.range('Outline width', () => cur().outlineWidth || 0, edit('outlineWidth'), { min: 0, max: 2, step: 0.05, fmt: (v) => Number(v).toFixed(2) })),
-            b.select('Animation', () => cur().animation, edit('animation'), ANIMATIONS),
+            b.select('Entrance', () => cur().animation, edit('animation'), ANIMATIONS),
+            b.select('Exit', () => cur().outAnimation || '', edit('outAnimation'), TEXT_EXITS),
             h('div', { class: 'grid2' }, b.toggle('ALL CAPS', () => !!cur().uppercase, edit('uppercase')), b.toggle('Background box', () => !!cur().box, edit('box'))),
             cur().box ? b.color('Box color', () => cur().boxColor, edit('boxColor')) : null,
             h('p', { class: 'muted tiny' }, store.get().lyricStyle.display && store.get().lyricStyle.display !== 'line' ? 'In the lyric sheet, poster and tunnel displays this line keeps its font, colours and case; size and animation follow the display.' : 'Changes here only affect this line.'),
@@ -2231,6 +2253,7 @@ export function createPanels({ store, engine, ui }) {
             return f.adjust?.blur ?? (FILTER_PRESETS[f.preset] || FILTER_PRESETS.none).blur;
           }, c((x, v) => ((x.filter = x.filter || { preset: 'none', adjust: {} }), (x.filter.adjust = { ...x.filter.adjust, blur: v }))), { min: 0, max: 10, step: 0.1, fmt: (v) => `${v.toFixed(1)}px` }),
         ),
+        exitSection(b, () => findClip(store.get(), sel.id).clip, c, ovl ? 'Plays at the end of this clip.' : 'Plays when this is the last clip, as the video ends or the end card starts. Between clips, the next clip’s transition in is used.'),
         section(
           'Transition in',
           b.select('Type', () => findClip(store.get(), sel.id).clip?.transition?.type || 'none', c((x, v) => (x.transition = { ...(x.transition || { duration: 0.4 }), type: v })), TRANSITIONS),
@@ -2321,7 +2344,11 @@ export function createPanels({ store, engine, ui }) {
         b.text('Text', () => get().text, T((x, v) => (x.text = v)), { multiline: true, rows: 2 }),
         h('div', { class: 'grid2' }, b.number('Start (s)', () => get().start, T((x, v) => ((x.start = v), x.end <= v && (x.end = v + 0.5))), { min: 0, step: 0.05 }), b.number('End (s)', () => get().end, T((x, v) => (x.end = Math.max(x.start + 0.1, v))), { min: 0, step: 0.05 })),
         b.select('Font', () => get().font, T((x, v) => (x.font = v)), fontOptions()),
-        b.select('Animation', () => get().animation, T((x, v) => (x.animation = v)), ANIMATIONS.filter(([k]) => k !== 'karaoke')),
+        b.select('Entrance', () => get().animation, T((x, v) => (x.animation = v)), ANIMATIONS.filter(([k]) => k !== 'karaoke')),
+        h('div', { class: 'grid2' },
+          b.select('Exit', () => get().outAnimation || '', T((x, v) => (x.outAnimation = v)), TEXT_EXITS),
+          b.range('Exit length', () => get().outDuration ?? 0.35, T((x, v) => (x.outDuration = v)), { min: 0.1, max: 1.5, step: 0.05, fmt: (v) => `${v.toFixed(2)}s` }),
+        ),
         kf.range(b, sel, 'size', { label: 'Size', min: 2 }),
         kf.range(b, sel, 'x', { label: 'Left/right' }),
         kf.range(b, sel, 'y', { label: 'Up/down' }),

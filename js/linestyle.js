@@ -13,7 +13,7 @@ export const LINE_PRESETS = [
 ];
 
 /** The fields a line can override (anything else comes from the shared lyric style). */
-export const LINE_FIELDS = ['font', 'size', 'color', 'highlight', 'outline', 'outlineWidth', 'animation', 'uppercase', 'box', 'boxColor', 'boxOpacity', 'shadow'];
+export const LINE_FIELDS = ['font', 'size', 'color', 'highlight', 'outline', 'outlineWidth', 'animation', 'outAnimation', 'outDuration', 'uppercase', 'box', 'boxColor', 'boxOpacity', 'shadow'];
 
 function hexRgb(hex) {
   const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || '');
