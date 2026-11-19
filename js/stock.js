@@ -27,6 +27,7 @@ export const PROVIDERS = {
 const orientationOf = (aspect) => (aspect === '16:9' ? 'landscape' : aspect === '1:1' ? 'square' : 'portrait');
 
 function stripHtml(html) {
+  if (typeof DOMParser === 'undefined') return String(html || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
   const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
   return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
 }
@@ -152,6 +153,68 @@ async function wikimedia(query, { page }) {
       };
     })
     .filter(Boolean);
+}
+
+// ---------------------------------------------------------------- photos (for the Photo Studio)
+// Same three sources and keys as the videos. Results: { id, provider, thumb, url, width, height,
+// author, pageUrl, license, title, kind: 'image' }.
+
+export function parsePexelsPhotos(data) {
+  return ((data && data.photos) || [])
+    .filter((p) => p && p.src)
+    .map((p) => ({ id: `pexels-p${p.id}`, provider: 'pexels', kind: 'image', thumb: p.src.medium || p.src.small, url: p.src.large2x || p.src.original, width: p.width, height: p.height, author: p.photographer || 'Pexels', pageUrl: p.url, license: PROVIDERS.pexels.license, title: p.alt || '' }));
+}
+export function parsePixabayPhotos(data) {
+  return ((data && data.hits) || []).map((p) => ({ id: `pixabay-p${p.id}`, provider: 'pixabay', kind: 'image', thumb: p.webformatURL || p.previewURL, url: p.largeImageURL || p.webformatURL, width: p.imageWidth, height: p.imageHeight, author: p.user || 'Pixabay', pageUrl: p.pageURL, license: PROVIDERS.pixabay.license, title: p.tags || '' }));
+}
+export function parseWikimediaPhotos(data) {
+  const pages = Object.values((data && data.query && data.query.pages) || {}).sort((a, b) => (a.index || 0) - (b.index || 0));
+  return pages
+    .map((p) => {
+      const ii = p.imageinfo && p.imageinfo[0];
+      if (!ii || !ii.url || !/^image\/(jpeg|png|webp)$/.test(ii.mime || '')) return null;
+      const meta = ii.extmetadata || {};
+      return { id: `wikimedia-p${p.pageid}`, provider: 'wikimedia', kind: 'image', thumb: ii.thumburl, url: ii.width > 2400 && ii.thumburl ? ii.thumburl.replace(/\/\d+px-/, '/2400px-') : ii.url, width: ii.width, height: ii.height, author: stripHtml(meta.Artist && meta.Artist.value) || 'Wikimedia Commons contributor', pageUrl: ii.descriptionurl, license: (meta.LicenseShortName && meta.LicenseShortName.value) || 'See file page', title: p.title.replace(/^File:/, '') };
+    })
+    .filter(Boolean);
+}
+
+/** Search stock photos. `orientation`: 'portrait' | 'landscape' | 'square' | ''. */
+export async function searchStockPhotos(provider, query, { key = '', orientation = '', page = 1 } = {}) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  if (provider === 'pexels') {
+    const u = new URL('https://api.pexels.com/v1/search');
+    u.searchParams.set('query', q);
+    if (orientation) u.searchParams.set('orientation', orientation);
+    u.searchParams.set('per_page', '30');
+    u.searchParams.set('page', String(page));
+    const res = await fetch(u, { headers: { Authorization: key } });
+    if (res.status === 401 || res.status === 403) throw new Error('Pexels rejected the API key.');
+    if (!res.ok) throw new Error(`Pexels search failed (${res.status})`);
+    return parsePexelsPhotos(await res.json());
+  }
+  if (provider === 'pixabay') {
+    const u = new URL('https://pixabay.com/api/');
+    u.searchParams.set('key', key);
+    u.searchParams.set('q', q.slice(0, 100));
+    u.searchParams.set('image_type', 'photo');
+    if (orientation === 'portrait') u.searchParams.set('orientation', 'vertical');
+    if (orientation === 'landscape') u.searchParams.set('orientation', 'horizontal');
+    u.searchParams.set('per_page', '30');
+    u.searchParams.set('page', String(page));
+    u.searchParams.set('safesearch', 'true');
+    const res = await fetch(u);
+    if (res.status === 400 || res.status === 401) throw new Error('Pixabay rejected the request. Check the API key.');
+    if (!res.ok) throw new Error(`Pixabay search failed (${res.status})`);
+    return parsePixabayPhotos(await res.json());
+  }
+  const u = new URL('https://commons.wikimedia.org/w/api.php');
+  const params = { action: 'query', format: 'json', origin: '*', generator: 'search', gsrnamespace: '6', gsrlimit: '30', gsroffset: String((page - 1) * 30), gsrsearch: `${q} filetype:bitmap`, prop: 'imageinfo', iiprop: 'url|size|mime|extmetadata', iiurlwidth: '400', iiextmetadatafilter: 'LicenseShortName|Artist' };
+  Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
+  const res = await fetch(u);
+  if (!res.ok) throw new Error(`Wikimedia search failed (${res.status})`);
+  return parseWikimediaPhotos(await res.json());
 }
 
 export async function searchStock(provider, query, opts) {

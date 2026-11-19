@@ -90,7 +90,7 @@ function songPage(ctx, song) {
       'header',
       { class: 'mgr-head song' },
       h('div', { class: 'mgr-title' }, f.text(`title-${song.id}`, '', song.title, S((s, v) => (s.title = v.trim() || 'Untitled'))), h('div', { class: 'row' }, f.select(`status-${song.id}`, '', song.status, SONG_STATUSES, S((s, v) => (s.status = v))), h('label', { class: 'mf inline' }, h('span', { class: 'mf-l' }, 'Release date'), f.text(`rel-${song.id}`, '', song.releaseDate, S((s, v) => (s.releaseDate = v)), { type: 'date' })))),
-      h('div', { class: 'row' }, button('Make a promo', () => ctx.studio.openPromo(song), { iconName: 'film', variant: 'primary', title: 'Open the video studio with this song’s title, lyrics and audio' }), iconButton('trash', `Delete “${song.title}”`, remove, 'ghost danger')),
+      h('div', { class: 'row' }, button('Design a post', () => ctx.studio.openPhoto(song.releaseDate && song.releaseDate > ctx.today() ? 'release' : 'promo', { songId: song.id }), { iconName: 'image', variant: '', title: 'Open the Photo Studio with a release image for this song (more templates there: countdown, lyric card, carousel…)' }), button('Make a promo', () => ctx.studio.openPromo(song), { iconName: 'film', variant: 'primary', title: 'Open the video studio with this song’s title, lyrics and audio' }), iconButton('trash', `Delete “${song.title}”`, remove, 'ghost danger')),
     ),
     h('div', { class: 'mgr-tabs', role: 'tablist' }, TABS.map(([k, label]) => h('button', { type: 'button', role: 'tab', 'aria-selected': k === tab ? 'true' : 'false', class: `mgr-tab${k === tab ? ' on' : ''}`, onclick: () => ctx.setTab(k) }, label))),
     h('div', { class: 'mgr-tabbody', role: 'tabpanel' }, body),

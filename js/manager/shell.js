@@ -15,6 +15,7 @@ import { buildEPK } from './page-epk.js';
 import { buildPhotos } from './page-photos.js';
 import { buildMoney } from './page-money.js';
 import { buildTours } from './page-tours.js';
+import { buildStats } from './page-stats.js';
 
 const VIEW_KEY = 'pvm.manager.view.v1';
 export const MANAGER_PAGES = [
@@ -23,6 +24,7 @@ export const MANAGER_PAGES = [
   { id: 'shows', label: 'Shows', icon: 'ticket', build: buildShows },
   { id: 'planner', label: 'Show planner', icon: 'mapPin', build: buildPlanner },
   { id: 'tours', label: 'Tours', icon: 'route', build: buildTours },
+  { id: 'stats', label: 'Streaming stats', icon: 'activity', build: buildStats },
   { id: 'content', label: 'Content', icon: 'chart', build: buildContent },
   { id: 'calendar', label: 'Calendar', icon: 'calendar', build: buildCalendar },
   { id: 'photos', label: 'Photos', icon: 'image', build: buildPhotos },

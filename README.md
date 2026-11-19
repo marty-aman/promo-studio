@@ -46,6 +46,36 @@ theme and logo (set under Press kit → Branding for promos) on the edit. Older 
 | **Press kit** | The band profile (bio, highlights, genres, "for fans of", links, members, press quotes, booking contact, up to four photos picked here or on the Photos page and remembered) with a live preview, **Download press kit** (one self-contained HTML page) and **Copy short bio** |
 | **Money** | A ledger of money in and out plus every show's settlement, totals for the year, by category and by month, each release's spend against its budget, and a CSV download |
 
+**Streaming stats** (Manager page). Every song's streams, Spotify listeners and saves, YouTube views,
+Last.fm scrobbles, Deezer rank and earnings in one table, plus totals by store and a monthly trend. No
+service gives artists a stream-count API (Spotify's Web API has no plays, and since February 2026 no
+popularity or followers for new apps), so streams come from files you download:
+- **Spotify for Artists:** Music → Songs → the download arrow (a song's own timeline CSV works too).
+- **Your distributor's report** for every other store (Apple Music, Amazon, TikTok, Tidal, YouTube Music…):
+  DistroKid's Bank → See Excruciating Detail → download, or TuneCore, CD Baby and Amuse sales exports.
+  Rows match your songs by ISRC, then by title; pick the song for any title that doesn't match.
+  Importing the same file again replaces it.
+- **Refresh live numbers** gets YouTube views (the Content page's key and each song's YouTube link),
+  Last.fm listeners and scrobbles (free key) and Deezer's rank (by ISRC, no key).
+
+**Photo Studio** (third workspace, next to the Video Studio). Make posters, promo images, stories,
+thumbnails and carousels from layers: photos, text, shapes and gradients. Each layer has position, size,
+rotation, opacity, a blend mode, a drop shadow, photo adjustments (brightness, contrast, saturation, hue,
+black and white, sepia, blur, invert, plus ready looks) and a **mask**: rectangle, ellipse, fades in any
+direction, a soft spotlight, **cut out the person** (the same on-device person finder as the video
+background remover) or **clip to the layer below** (text filled with a photo). Drag to move (snaps to
+the centre), pull the handles to resize, the knob to rotate; arrow keys nudge, Ctrl+D duplicates, Ctrl+Z
+undoes; drag rows in the layer list to reorder, hide or lock them.
+- **Templates** from the artist's theme, logo and details: continuous carousel (one wide photo across
+  2–10 slides, worked out from the photo's shape), promotional image, release notification ("Out Friday"
+  story), countdown to release (or the whole set: 7, 3 and 1 days and release day), show poster, tour
+  dates, lyric card and YouTube thumbnail. Songs and shows have **Design a post** / **Make a poster**, tours
+  **Tour poster**.
+- **Photos** from the shared media library, an upload, Google Drive, or **Stock** (Pexels, Pixabay or
+  Wikimedia Commons; the same keys as stock video; the credit is kept with the photo).
+- **Export** PNG or JPG at full size (a carousel downloads one image per slide), or **Save to media** to
+  use it in the Video Studio and on the artist's Photos page. Designs are saved in this browser.
+
 **Export PDF.** The press release, press kit, call sheet, show sheet, show plan, stage plot, tour sheet,
 money report and the month's calendar each have **Export PDF**. It opens the print dialog with a clean
 black-on-white page; pick **Save as PDF** as the printer.
