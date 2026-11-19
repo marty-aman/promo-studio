@@ -103,7 +103,7 @@ export function newSong(title = 'New song') {
 }
 
 export function newShow(date = '') {
-  return { id: mid('show'), date, doors: '', setTime: '', loadIn: '', venueId: null, venue: '', city: 'Seattle', billing: 'support', lineup: [], status: 'idea', tickets: '', price: '', deal: '', contact: '', setlist: '', notes: '', settlement: { gross: '', pay: '', merch: '', costs: '' } };
+  return { id: mid('show'), date, doors: '', setTime: '', loadIn: '', venueId: null, venue: '', city: 'Seattle', billing: 'support', lineup: [], status: 'idea', tickets: '', price: '', deal: '', contact: '', setlist: '', notes: '', todo: [], settlement: { gross: '', pay: '', merch: '', costs: '' } };
 }
 
 export function newManager() {
@@ -177,6 +177,12 @@ export function agenda(m, from, days = 14) {
   const inRange = (d) => d && d >= from && d < to;
   const out = [];
   for (const s of m.shows) {
+    if (s.status !== 'cancelled' && s.date) {
+      for (const t of s.todo || []) {
+        const due = addDays(s.date, t.offset || 0);
+        if (!t.done && t.offset !== 0 && inRange(due)) out.push({ date: due, kind: 'task', title: t.text, sub: `Show: ${s.venue || 'venue TBD'}`, ref: { page: 'shows', id: s.id } });
+      }
+    }
     if (inRange(s.date) && s.status !== 'cancelled') out.push({ date: s.date, kind: 'show', title: s.venue || 'Show', sub: [s.status === 'confirmed' ? 'Confirmed' : SHOW_STATUSES.find(([k]) => k === s.status)?.[1], s.setTime && `set ${s.setTime}`].filter(Boolean).join(' · '), ref: { page: 'shows', id: s.id } });
   }
   for (const song of m.songs) {
@@ -203,6 +209,13 @@ export function overdueTasks(m, today) {
     for (const t of song.release) {
       const due = taskDue(song, t);
       if (!t.done && due && due < today) out.push({ song, task: t, due });
+    }
+  }
+  for (const show of m.shows) {
+    if (show.status === 'cancelled' || !show.date || daysBetween(show.date, today) > 14) continue;
+    for (const t of show.todo || []) {
+      const due = addDays(show.date, t.offset || 0);
+      if (!t.done && due < today) out.push({ show, song: null, task: t, due });
     }
   }
   return out.sort((a, b) => a.due.localeCompare(b.due));

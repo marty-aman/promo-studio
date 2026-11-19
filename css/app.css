@@ -722,3 +722,38 @@ body.mode-manager .workspace, body.mode-manager .timeline { display: none; }
 .mgr-task.shot { grid-template-columns: auto minmax(0, 1fr) auto; }
 .mgr-task.lu { grid-template-columns: 22px minmax(0, 1fr) 120px auto auto; }
 input[type='date'], input[type='time'] { color-scheme: dark; }
+.mgr-task.todo { grid-template-columns: auto 70px minmax(0, 1fr) auto; }
+
+/* ---- show planner */
+.mgr-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.mgr-filters input[type=search] { flex: 1 1 260px; }
+.mgr-filters select { width: auto; }
+.mgr-filters .chips { margin: 0; }
+.mgr-venues { display: grid; gap: 6px; }
+.mgr-venue { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.mgr-venue.open { border-color: var(--border-strong); }
+.mgr-venue-head { display: grid; grid-template-columns: 16px minmax(0, 1fr) 60px 150px 110px 120px; gap: 10px; align-items: center; width: 100%; padding: 10px 12px; border: 0; background: transparent; color: var(--text); cursor: pointer; text-align: left; }
+.mgr-venue-head > .icon { color: var(--muted); transition: transform 0.15s; }
+.mgr-venue.open .mgr-venue-head > .icon { transform: rotate(90deg); }
+.mgr-venue-name { display: grid; min-width: 0; }
+.mgr-venue-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgr-cap { font-weight: 700; text-align: right; }
+.mgr-cap small { font-weight: 400; color: var(--muted); margin-left: 3px; font-size: 10px; }
+.mgr-ages { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgr-venue-body { padding: 4px 16px 16px 38px; }
+.mgr-howto { background: var(--panel-2); border-left: 3px solid var(--accent); border-radius: 6px; padding: 8px 12px; margin: 8px 0 12px; }
+.mgr-howto p { margin: 4px 0 0; font-size: 12.5px; }
+.mgr-links { display: inline-flex; flex-wrap: wrap; gap: 10px; }
+.mgr-chip.check { color: #fb923c; border-color: rgba(251, 146, 60, 0.5); }
+.mgr-chip.fit-good, .mgr-chip.vs-booked, .mgr-chip.vs-played { color: var(--ok); border-color: rgba(74, 222, 128, 0.5); }
+.mgr-chip.fit-stretch, .mgr-chip.vs-pitched, .mgr-chip.vs-talking { color: var(--accent); border-color: rgba(255, 212, 0, 0.5); }
+.mgr-chip.fit-toobig, .mgr-chip.vs-no { color: var(--muted); }
+.mgr-pitch { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
+.mgr-pitch-text { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.mgr-bands { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.mgr-band { display: flex; flex-direction: column; gap: 4px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); min-width: 0; }
+.mgr-band p { margin: 0; }
+.mgr-band .mgr-two { gap: 6px; }
+.mgr-band .row { margin: 2px 0; }
+.mgr-band-top { display: grid; }
+@media (max-width: 1100px) { .mgr-venue-head { grid-template-columns: 16px minmax(0, 1fr) 50px 110px; } .mgr-venue-head > .mgr-chip { display: none; } }

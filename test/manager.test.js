@@ -102,3 +102,78 @@ test('call sheet escapes what you typed; show money and summary', () => {
   assert.match(txt, /Doors 19:00 · We play 21:00/);
   assert.match(txt, /Setlist: Static \/ Arc Flash/);
 });
+
+// ---- show planner
+import { venueFromSeed, bandFromSeed, mergeSeed, filterVenues, venueFit, pitchEmail, mailtoLink, showTodo, todoDue, breakEven } from '../js/manager/planner.js';
+import { SEED_VENUES } from '../js/manager/seed.js';
+
+test('starter venues are checked and trimmed; bad links and emails are dropped', () => {
+  const v = venueFromSeed({ id: 'x', name: ' Room ', city: 'Seattle', capacity: 200, size: 'small', ages: '21+', website: 'javascript:alert(1)', instagram: 'https://www.instagram.com/room/', booking: { email: 'not an email', formUrl: 'https://room.example/book', how: 'Email us' }, sources: ['https://a.example/', 'ftp://b'] });
+  assert.equal(v.id, 'seed-v-x');
+  assert.equal(v.name, 'Room');
+  assert.equal(v.website, '');
+  assert.equal(v.instagram, 'https://www.instagram.com/room/');
+  assert.equal(v.bookingEmail, '');
+  assert.equal(v.bookingForm, 'https://room.example/book');
+  assert.deepEqual(v.sources, ['https://a.example/']);
+  assert.equal(v.verified, false);
+  const b = bandFromSeed({ id: 'y', name: 'Band', socials: { instagram: 'https://www.instagram.com/band/', tiktok: 'tiktok.com/@nope' } });
+  assert.equal(b.socials.instagram, 'https://www.instagram.com/band/');
+  assert.equal(b.socials.tiktok, '');
+});
+
+test('the researched venue list loads cleanly', () => {
+  const list = SEED_VENUES.map(venueFromSeed);
+  assert.ok(list.length >= 20);
+  assert.ok(list.every((v) => v.name && v.city && v.sources.length));
+  assert.equal(new Set(list.map((v) => v.id)).size, list.length);
+  assert.ok(list.filter((v) => v.bookingEmail || v.bookingForm).length >= 12);
+});
+
+test('seeding merges once and keeps your edits; filters and room fit', () => {
+  const seeds = [venueFromSeed({ id: 'a', name: 'A', city: 'Seattle', capacity: 100, size: 'small', ages: 'all ages' }), venueFromSeed({ id: 'b', name: 'B', city: 'Tacoma', capacity: 800, size: 'large', ages: '21+', genres: ['metal'] })];
+  const mine = [{ ...seeds[0], myNotes: 'talked to Sam' }];
+  const merged = mergeSeed(mine, seeds);
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].myNotes, 'talked to Sam');
+  assert.deepEqual(filterVenues(merged, { ages: 'all' }).map((v) => v.name), ['A']);
+  assert.deepEqual(filterVenues(merged, { q: 'metal' }).map((v) => v.name), ['B']);
+  assert.deepEqual(filterVenues(merged, { city: 'Tacoma', size: 'large' }).map((v) => v.name), ['B']);
+  assert.equal(venueFit(seeds[0], 70), 'good');
+  assert.equal(venueFit(seeds[1], 70), 'too big');
+  assert.equal(venueFit(seeds[1], 300), 'stretch');
+  assert.equal(venueFit({ capacity: null }, 50), '');
+});
+
+test('pitch email has what bookers ask for, and a working mailto link', () => {
+  const venue = venueFromSeed({ id: 'e', name: 'El Corazon', booking: { email: 'booking@elcorazonseattle.com', person: 'Dana (booking@); Kevin' } });
+  const p = pitchEmail({ band: { name: 'Arc Flash', genres: 'alt-metal, emocore', city: 'Seattle' }, venue, dates: ['Fri Jan 16'], draw: '40', lineup: ['Band B'], links: ['https://open.spotify.com/track/x'], similar: 'Bad Omens' });
+  assert.equal(p.to, 'booking@elcorazonseattle.com');
+  assert.match(p.subject, /Arc Flash · Fri Jan 16/);
+  assert.match(p.body, /^Hi Dana,/);
+  for (const s of ['an alt-metal, emocore band from Seattle', 'For fans of Bad Omens.', 'Fri Jan 16', 'Band B', 'around 40 people', 'https://open.spotify.com/track/x']) assert.ok(p.body.includes(s), s);
+  assert.ok(!/\n\n\n/.test(p.body));
+  const link = mailtoLink(p);
+  assert.ok(link.startsWith('mailto:booking%40elcorazonseattle.com?subject=Booking%20inquiry'));
+  assert.equal(decodeURIComponent(link.split('body=')[1]), p.body);
+});
+
+test('show to-do list counts back from the show; break-even tickets', () => {
+  const t = showTodo();
+  const show = { date: '2026-12-12' };
+  assert.equal(todoDue(show, t[0]), '2026-10-13');
+  assert.equal(todoDue(show, t.find((x) => x.offset === 0)), '2026-12-12');
+  assert.equal(todoDue({ date: '' }, t[0]), '');
+  assert.equal(breakEven({ price: 15, share: 0.7, costs: 210 }), 20);
+  assert.equal(breakEven({ price: 0, share: 1, costs: 50 }), null);
+  assert.equal(breakEven({ price: 10, share: 1, costs: 0 }), 0);
+});
+
+test('show to-dos show up on Home and in the overdue list', () => {
+  const m = newManager();
+  m.shows.push({ ...newShow('2026-11-25'), venue: 'Funhouse', status: 'confirmed', todo: showTodo() });
+  const a = agenda(m, '2026-11-18', 14);
+  assert.ok(a.some((x) => x.kind === 'task' && /Advance the show/.test(x.title)));
+  const late = overdueTasks(m, '2026-11-18');
+  assert.ok(late.some((x) => x.show && /Pitch the venue/.test(x.task.text)));
+});

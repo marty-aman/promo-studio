@@ -1,6 +1,7 @@
 // Home: what's next. The next show and release, the next two weeks, and anything overdue.
 import { h, icon, button } from '../dom.js';
 import { agenda, overdueTasks, nextUp, releaseProgress, daysBetween, niceDate, newSong, newShow, addDays } from './model.js';
+import { showTodo } from './planner.js';
 
 const KIND = { show: ['ticket', 'Show'], release: ['disc', 'Release'], shoot: ['film', 'Shoot'], post: ['share', 'Post'], task: ['check', 'Task'] };
 
@@ -19,7 +20,7 @@ export function buildHome(ctx) {
     ctx.go('songs', s.id, 'overview');
   };
   const addShow = () => {
-    const s = newShow(addDays(today, 30));
+    const s = { ...newShow(addDays(today, 30)), todo: showTodo() };
     ctx.update((d) => d.shows.push(s));
     ctx.go('shows', s.id);
   };
@@ -78,16 +79,16 @@ export function buildHome(ctx) {
         h(
           'ul',
           { class: 'mgr-list' },
-          late.slice(0, 8).map(({ song, task, due }) =>
+          late.slice(0, 8).map(({ song, show, task, due }) =>
             h(
               'li',
               { class: 'mgr-row' },
               ctx.form.check(`late-${task.id}`, false, (d) => {
-                const t = d.songs.find((s) => s.id === song.id)?.release.find((x) => x.id === task.id);
+                const t = song ? d.songs.find((s) => s.id === song.id)?.release.find((x) => x.id === task.id) : d.shows.find((s) => s.id === show.id)?.todo.find((x) => x.id === task.id);
                 if (t) t.done = true;
               }, `Mark “${task.text}” done`),
-              h('button', { type: 'button', class: 'link', onclick: () => ctx.go('songs', song.id, 'release') }, task.text),
-              h('span', { class: 'muted tiny' }, `“${song.title}” · due ${niceDate(due, { weekday: false })}`),
+              h('button', { type: 'button', class: 'link', onclick: () => (song ? ctx.go('songs', song.id, 'release') : ctx.go('shows', show.id)) }, task.text),
+              h('span', { class: 'muted tiny' }, `${song ? `“${song.title}”` : `Show: ${show.venue || 'venue TBD'}`} · due ${niceDate(due, { weekday: false })}`),
             ),
           ),
         ),

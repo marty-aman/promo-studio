@@ -2,6 +2,7 @@
 // a settlement after the show, and a copy-paste summary for the band chat.
 import { h, icon, button, iconButton, toast } from '../dom.js';
 import { SHOW_STATUSES, newShow, niceDate, daysBetween, addDays, mid } from './model.js';
+import { showTodo, todoDue } from './planner.js';
 
 const BILLING = [['headline', 'Headliner'], ['support', 'Support'], ['opener', 'Opener'], ['festival', 'Festival'], ['other', 'Other']];
 const label = (list, k) => (list.find(([v]) => v === k) || [k, k])[1];
@@ -34,7 +35,7 @@ function showList(ctx) {
   const m = ctx.store.get();
   const today = ctx.today();
   const add = () => {
-    const s = newShow(addDays(today, 30));
+    const s = { ...newShow(addDays(today, 30)), todo: showTodo() };
     ctx.update((d) => d.shows.push(s));
     ctx.go('shows', s.id);
   };
@@ -100,6 +101,31 @@ function showPage(ctx, show) {
   const bandNames = h('datalist', { id: 'mgr-bandnames' }, [m.band.name, ...(m.bands || []).map((b) => b.name)].filter(Boolean).map((n) => h('option', { value: n })));
   const venueNames = h('datalist', { id: 'mgr-venuenames' }, venues.map((v) => h('option', { value: v.name })));
   const net = showNet(show);
+  const today = ctx.today();
+  const T = (id, fn) => S((s, v) => {
+    const t = (s.todo || []).find((x) => x.id === id);
+    if (t) fn(t, v);
+  });
+  const todo = [...(show.todo || [])].sort((a, b) => a.offset - b.offset);
+  const todoBox = h(
+    'section',
+    { class: 'mgr-sect' },
+    h('h2', {}, `To do · ${todo.filter((t) => t.done).length}/${todo.length}`),
+    todo.length
+      ? h('ul', { class: 'mgr-tasks' }, todo.map((t) => {
+          const due = todoDue(show, t);
+          return h(
+            'li',
+            { class: `mgr-task todo${t.done ? ' done' : ''}${!t.done && due && due < today ? ' late' : ''}` },
+            f.check(`todo-${t.id}`, t.done, T(t.id, (x, v) => (x.done = v)), `Done: ${t.text}`),
+            h('span', { class: 'mgr-when' }, due ? niceDate(due, { weekday: false }) : t.offset === 0 ? 'Show day' : `${Math.abs(t.offset)} d ${t.offset < 0 ? 'before' : 'after'}`),
+            f.text(`todot-${t.id}`, '', t.text, T(t.id, (x, v) => (x.text = v))),
+            iconButton('trash', `Delete “${t.text}”`, () => ctx.update(S((s) => (s.todo = s.todo.filter((x) => x.id !== t.id)))), 'ghost'),
+          );
+        }))
+      : h('p', { class: 'muted small' }, 'No to-do list for this show.'),
+    h('div', { class: 'row' }, todo.length ? null : button('Add the standard show to-do list', () => ctx.update(S((s) => (s.todo = showTodo()))), { iconName: 'check', variant: 'sm' }), button('Add a to-do', () => ctx.update(S((s) => (s.todo ||= []).push({ id: mid('todo'), offset: -1, text: 'New to-do', done: false }))), { iconName: 'plus', variant: 'sm ghost' })),
+  );
   return h(
     'div',
     { class: 'mgr-page' },
@@ -133,7 +159,7 @@ function showPage(ctx, show) {
         f.text(`scon-${show.id}`, 'Venue contact', show.contact, S((s, v) => (s.contact = v)), { placeholder: 'Booker name, email or phone' }),
         f.text(`snotes-${show.id}`, 'Notes', show.notes, S((s, v) => (s.notes = v)), { rows: 3, placeholder: 'Backline, parking, merch table, guest list…' }),
       ),
-      h(
+      h('div', {}, todoBox, h(
         'section',
         { class: 'mgr-sect' },
         h('h2', {}, 'Lineup'),
@@ -147,7 +173,7 @@ function showPage(ctx, show) {
         show.settlement.pay !== '' || show.settlement.merch !== '' || show.settlement.costs !== '' ? h('p', { class: `mgr-net ${net >= 0 ? 'ok' : 'bad'}` }, `Net: ${net < 0 ? '−' : ''}$${Math.abs(net).toFixed(2)}`) : null,
         h('h3', { class: 'mgr-h3' }, 'Summary for the band chat'),
         h('pre', { class: 'mgr-pre' }, showSummary(show, m.songs)),
-      ),
+      )),
     ),
   );
 }
