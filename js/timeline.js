@@ -3,6 +3,8 @@ import { layoutClips, songToTimeline, timelineToSong, snap, clamp, formatTime, m
 import { media } from './media.js';
 import { isVisible } from './state.js';
 import { h, icon } from './dom.js';
+import { kfTarget } from './panel-kf.js';
+import { allKeys, moveKey, removeKey, EASES, KEY_EPS, snapToBeat, propInfo } from './keyframes.js';
 
 const HEAD_W = 112;
 
@@ -353,8 +355,114 @@ export function createTimeline({ root, store, engine, ui }) {
       );
     }, { vis: 'endcard' });
 
+    drawKeyframes(p, s);
     playhead.style.left = `${engine.t * s}px`;
     content.append(playhead);
+  }
+
+  // ------------------------------------------------------------ keyframe diamonds on the selected block
+  function drawKeyframes(p, s) {
+    const tg = kfTarget(p, ui.selection);
+    const el = content.querySelector('.tl-block.selected');
+    if (!tg || !el) return;
+    // one diamond per moment (several properties can share it)
+    const groups = [];
+    for (const k of allKeys(tg.item)) {
+      const g = groups.find((x) => Math.abs(x.t - k.t) < KEY_EPS);
+      if (g) g.keys.push(k);
+      else groups.push({ t: k.t, keys: [k] });
+    }
+    for (const g of groups) {
+      const names = g.keys.map((k) => (propInfo(tg.kind, k.path) || [k.path, k.path])[1]).join(', ');
+      const d = h('div', { class: 'tl-kf', style: { left: `${g.t * s}px` }, title: `${formatTime(tg.start + g.t)} · ${names}. Drag to move, double-click to delete, right-click for easing.`, role: 'button', 'aria-label': `Keyframe at ${formatTime(tg.start + g.t)}: ${names}` });
+      d.addEventListener('pointerdown', (e) => kfDrag(e, tg, g, d));
+      d.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        store.update((dr) => {
+          const it = kfTarget(dr, ui.selection)?.find(dr);
+          if (it) for (const k of g.keys) removeKey(it, k.path, k.t);
+        });
+      });
+      d.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        easeMenu(e.clientX, e.clientY, g);
+      });
+      el.append(d);
+    }
+  }
+
+  function kfDrag(e, tg, g, el) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const s = pps();
+    const x0 = e.clientX;
+    let to = g.t;
+    let moved = false;
+    const p = store.get();
+    const startSong = timelineToSong(tg.start, p.song);
+    const move = (ev) => {
+      if (Math.abs(ev.clientX - x0) > 3) moved = true;
+      if (!moved) return;
+      to = clamp(g.t + (ev.clientX - x0) / s, 0, tg.dur);
+      if (ui.snap && p.beats) to = snapToBeat(to, p.beats.beats, startSong, 8 / s);
+      el.style.left = `${to * s}px`;
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (!moved) return engine.seek(tg.start + g.t);
+      store.update((dr) => {
+        const it = kfTarget(dr, ui.selection)?.find(dr);
+        if (it) for (const k of g.keys) moveKey(it, k.path, k.t, to);
+      });
+      engine.seek(tg.start + to);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  function easeMenu(x, y, g) {
+    document.querySelector('.kf-menu')?.remove();
+    const close = () => {
+      menu.remove();
+      document.removeEventListener('pointerdown', outside, true);
+    };
+    const outside = (ev) => !menu.contains(ev.target) && close();
+    const cur = g.keys[0].e || 'smooth';
+    const menu = h(
+      'div',
+      { class: 'kf-menu', role: 'menu', style: { left: `${x}px`, top: `${y}px` } },
+      h('div', { class: 'muted tiny' }, 'How it moves to the next keyframe'),
+      EASES.map(([v, label]) =>
+        h('button', { type: 'button', role: 'menuitemradio', 'aria-checked': cur === v ? 'true' : 'false', class: cur === v ? 'on' : '', onclick: () => {
+          store.update((dr) => {
+            const it = kfTarget(dr, ui.selection)?.find(dr);
+            if (!it) return;
+            for (const k of g.keys) {
+              const kk = it.keys[k.path].find((z) => Math.abs(z.t - k.t) < KEY_EPS);
+              if (kk) kk.e = v;
+            }
+          });
+          close();
+        } }, label),
+      ),
+      h('button', { type: 'button', role: 'menuitem', class: 'danger', onclick: () => {
+        store.update((dr) => {
+          const it = kfTarget(dr, ui.selection)?.find(dr);
+          if (it) for (const k of g.keys) removeKey(it, k.path, k.t);
+        });
+        close();
+      } }, 'Delete this keyframe'),
+    );
+    document.body.append(menu);
+    const r = menu.getBoundingClientRect();
+    if (r.bottom > innerHeight) menu.style.top = `${Math.max(4, y - r.height)}px`;
+    if (r.right > innerWidth) menu.style.left = `${Math.max(4, x - r.width)}px`;
+    setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+    menu.addEventListener('keydown', (ev) => ev.key === 'Escape' && close());
+    menu.querySelector('button')?.focus();
   }
 
   function movePlayhead() {

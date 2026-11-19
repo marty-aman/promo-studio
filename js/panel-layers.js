@@ -10,6 +10,7 @@ import { REAL_PLACEMENT } from './vizreal.js';
 import { themeById, themeLayer } from './themes.js';
 import { defaultVizLayer, VIZ_STYLES, BLENDS, setVizStyle } from './viz.js';
 import { tabIntoLayout } from './templates.js';
+import { EXITS, ENTRANCES } from './exits.js';
 import { h, icon, button, iconButton, toast, field, section, fold, pickFiles } from './dom.js';
 
 export const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.gp7,.gp8,.musicxml,.mxl,.xml';
@@ -87,7 +88,7 @@ const FRAMINGS = {
  * their own kind). Without it, the whole stack is shown, as in the "All layers" fold.
  */
 export function buildLayersPanel(b, ctx, opts = {}) {
-  const { store, engine, ui, importFiles, fontOptions } = ctx;
+  const { store, engine, ui, importFiles, fontOptions, kf } = ctx;
   const p = store.get();
   const types = opts.types || null;
   const mine = (L) => !types || types.includes(L.type);
@@ -189,7 +190,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       opts.intro ? h('p', { class: 'muted small' }, opts.intro) : null,
       h('div', { class: 'add-layer' }, types.map((t) => ADD[t]())),
       list,
-      sel ? h('div', { class: 'layer-settings' }, settingsFor(sel)) : (p.layers || []).some(mine) ? h('p', { class: 'muted tiny' }, 'Select one to edit it. You can also click its name on the timeline.') : null,
+      sel ? h('div', { class: 'layer-settings' }, settingsFor(sel), animateFor(sel)) : (p.layers || []).some(mine) ? h('p', { class: 'muted tiny' }, 'Select one to edit it. You can also click its name on the timeline.') : null,
       opts.after || null,
       opts.noAll ? null : allRows(),
     );
@@ -199,9 +200,15 @@ export function buildLayersPanel(b, ctx, opts = {}) {
     {},
     section('Add a layer', h('div', { class: 'add-layer' }, ADD.video(), ADD.tab(), ADD.drums(), ADD.viz())),
     section('Layer stack (top first)', list),
-    selAny ? h('div', { class: 'layer-settings' }, settingsFor(selAny)) : h('p', { class: 'muted tiny' }, 'Select a layer to edit it. You can also click a layer name on the timeline.'),
+    selAny ? h('div', { class: 'layer-settings' }, settingsFor(selAny), animateFor(selAny)) : h('p', { class: 'muted tiny' }, 'Select a layer to edit it. You can also click a layer name on the timeline.'),
     section('Always-there rows', h('p', { class: 'muted tiny' }, 'Hide a row to leave it out of the preview and the export. Hiding audio mutes it.'), fixed),
   );
+
+  // the keyframe list (sliders that animate are in each type's settings)
+  function animateFor(L) {
+    const skip = { viz: ['x', 'y', 'size', 'opacity', 'intensity'], video: ['x', 'y', 'opacity'] }[L.type] || ['x', 'y'];
+    return kf.animateSection(b, { type: 'layer', id: L.id }, { skip });
+  }
 
   // ------------------------------------------------------------ per-type settings
   function settingsFor(L) {
@@ -218,6 +225,14 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       {},
       h('div', { class: 'insp-title' }, icon(LAYER_TYPES[L.type].icon, 16), h('span', {}, `${LAYER_TYPES[L.type].label} settings`)),
       b.text('Layer name', get((x) => x.name), set((x, v) => (x.name = v))),
+      h('div', { class: 'grid2' },
+        b.select('Entrance', get((x) => (x.enter && x.enter.type) || ''), set((x, v) => (x.enter = v ? { type: v, duration: (x.enter && x.enter.duration) || 0.4 } : null)), [['', 'Quick fade (default)'], ...ENTRANCES]),
+        b.select('Exit', get((x) => (x.exit && x.exit.type) || ''), set((x, v) => (x.exit = v ? { type: v, duration: (x.exit && x.exit.duration) || 0.4 } : null)), [['', 'Quick fade (default)'], ...EXITS]),
+      ),
+      h('div', { class: 'grid2' },
+        b.range('Entrance length', get((x) => (x.enter && x.enter.duration) || 0.4), set((x, v) => (x.enter = { type: (x.enter && x.enter.type) || 'fade', duration: v })), { min: 0.1, max: 2, step: 0.05, fmt: (v) => `${v.toFixed(2)}s` }),
+        b.range('Exit length', get((x) => (x.exit && x.exit.duration) || 0.4), set((x, v) => (x.exit = { type: (x.exit && x.exit.type) || 'fade', duration: v })), { min: 0.1, max: 2, step: 0.05, fmt: (v) => `${v.toFixed(2)}s` }),
+      ),
     );
     const visibleRange = () =>
       section(
@@ -237,11 +252,11 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         'div',
         {},
         h('div', { class: 'grid2' },
-          b.range('Up/down', get((x) => x.y ?? defaults.y), set((x, v) => (x.y = v)), { min: 5, max: 95, step: 0.5, fmt: (v) => `${v}%` }),
-          b.range('Left/right', get((x) => x.x ?? 50), set((x, v) => (x.x = v)), { min: 5, max: 95, step: 0.5, fmt: (v) => `${v}%` }),
+          kf.range(b, { type: 'layer', id: L.id }, 'y', { label: 'Up/down', def: defaults.y, min: 5, max: 95, step: 0.5, fmt: (v) => `${+(+v).toFixed(1)}%` }),
+          kf.range(b, { type: 'layer', id: L.id }, 'x', { label: 'Left/right', def: 50, min: 5, max: 95, step: 0.5, fmt: (v) => `${+(+v).toFixed(1)}%` }),
         ),
         defaults.size
-          ? b.range('Size', get((x) => x.size ?? defaults.size), set((x, v) => (x.size = v)), { min: 10, max: 160, step: 1, fmt: (v) => `${v}%` })
+          ? kf.range(b, { type: 'layer', id: L.id }, 'size', { label: 'Size', def: defaults.size, min: 10, max: 160, step: 1, fmt: (v) => `${Math.round(v)}%` })
           : h('div', { class: 'grid2' },
               b.range('Width', get((x) => x.width ?? 92), set((x, v) => (x.width = v)), { min: 20, max: 100, step: 1, fmt: (v) => `${v}%` }),
               b.range('Height', get((x) => x.height ?? 16), set((x, v) => (x.height = v)), { min: 6, max: 80, step: 0.5, fmt: (v) => `${v}%` }),
@@ -310,7 +325,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         'div',
         {},
         common,
-        b.range('Opacity', get((x) => x.opacity ?? 1), set((x, v) => (x.opacity = v)), { min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
+        kf.range(b, { type: 'layer', id: L.id }, 'opacity', { label: 'Opacity', def: 1 }),
         b.select('Blend', get((x) => x.blend || 'source-over'), set((x, v) => (x.blend = v)), [['source-over', 'Normal'], ['screen', 'Screen (smoke, light leaks, sparks)'], ['multiply', 'Multiply (dark textures)'], ['overlay', 'Overlay'], ['lighter', 'Add'], ['difference', 'Difference']]),
         section(
           'Clips on this layer',
@@ -517,13 +532,13 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       section(
         'Look',
         h('div', { class: 'grid2' }, b.color('Color', g('color'), set((x, v) => (x.color = v))), b.color('Second color', g('color2'), set((x, v) => (x.color2 = v)))),
-        b.range('Intensity', g('intensity', 0.7), set((x, v) => (x.intensity = v)), { min: 0, max: 1.5, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
+        kf.range(b, { type: 'layer', id: L.id }, 'intensity', { label: 'Intensity', def: 0.7 }),
         REAL_PLACEMENT[L.style] ? b.toggle('Real-world colours (off = use the colours above)', g('classic', true), set((x, v) => (x.classic = v))) : null,
         ['ripple', 'particles'].includes(L.style) ? b.range('Hit sensitivity', g('sensitivity', 0.5), set((x, v) => (x.sensitivity = v)), { min: 0.05, max: 0.95, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` }) : null,
         ['ripple', 'particles'].includes(L.style) ? b.toggle('Scatter across the frame', g('scatter', false), set((x, v) => (x.scatter = v))) : null,
         placement({ y: 50, size: 70 }),
         h('div', { class: 'grid2' },
-          b.range('Opacity', g('opacity', 1), set((x, v) => (x.opacity = v)), { min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
+          kf.range(b, { type: 'layer', id: L.id }, 'opacity', { label: 'Opacity', def: 1 }),
           b.select('Blend', g('blend', 'screen'), set((x, v) => (x.blend = v)), BLENDS),
         ),
       ),

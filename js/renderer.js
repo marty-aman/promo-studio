@@ -20,6 +20,8 @@ import { drawLyricDisplay } from './lyricviz.js';
 import { lineStyle } from './linestyle.js';
 import { drawBackdrop } from './backgrounds.js';
 import { blurred } from './canvasfx.js';
+import { animate } from './keyframes.js';
+import { exitTransform, enterTransform, exitProgress, enterProgress, combine, isStill, STILL } from './exits.js';
 
 // what the frame being rendered needs deep inside drawClip (set at the start of renderFrame)
 const FRAME = { env: null, t: 0, beat: 0 };
@@ -195,7 +197,9 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
   const inT = 0.35;
   const outT = 0.2;
   const pIn = clamp(life / inT, 0, 1);
-  const pOut = clamp((dur - life) / outT, 0, 1);
+  // with an exit animation chosen, it replaces the old short fade at the end
+  const exitType = style.outAnimation;
+  const pOut = exitType ? 1 : clamp((dur - life) / outT, 0, 1);
   const frame = Math.floor(life * 30);
   let alpha = anim === 'none' ? 1 : pOut;
   let scale = 1;
@@ -242,10 +246,16 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
       break;
     default:
   }
-  ctx.globalAlpha *= alpha;
-  ctx.translate(cx, cy + dy);
+  let ex = STILL;
+  if (exitType) {
+    ex = exitTransform(exitType, exitProgress(dur - life, style.outDuration ?? 0.35));
+    if (ex.blur) ctx.filter = `blur(${(ex.blur * ctx.canvas.height).toFixed(1)}px)`;
+  }
+  ctx.globalAlpha *= alpha * (style.opacity ?? 1) * ex.alpha;
+  ctx.translate(cx + ex.fx * ctx.canvas.width, cy + dy + ex.fy * ctx.canvas.height);
+  rot += ((style.rotate || 0) * Math.PI) / 180 + ex.rot;
   if (rot) ctx.rotate(rot);
-  ctx.scale(scale, scale * scaleY);
+  ctx.scale(scale * ex.scale, scale * scaleY * ex.scale);
 
   // progress through the line for per-word effects (finish slightly before the end)
   const prog = clamp(life / Math.max(0.2, dur * 0.92), 0, 1);
@@ -599,8 +609,11 @@ function applyGradeWash(ctx, W, H, gr) {
 }
 
 /** extra: { alpha, dx, dy, zoom, blur, rot (deg) } on top of the clip's own framing. */
-function drawClip(ctx, W, H, clip, local, src, extra = {}) {
+function drawClip(ctx, W, H, clip0, local, src, extra0 = {}) {
   if (!hasFrame(src)) return false;
+  // keyframed properties take their value at this moment; opacity and blur add to the effect's own
+  const clip = animate(clip0, local);
+  const extra = clip === clip0 && clip.opacity == null && !clip.blur ? extra0 : { ...extra0, alpha: (extra0.alpha ?? 1) * (clip.opacity ?? 1), blur: (extra0.blur || 0) + (clip.blur || 0) };
   const m = clipMotion(clip, local);
   const mask = clip.mask && clip.mask.shape && clip.mask.shape !== 'none' ? clip.mask : null;
   const filter = filterString(clip.filter, extra.blur || 0, clip.grade);
@@ -664,7 +677,7 @@ function drawClip(ctx, W, H, clip, local, src, extra = {}) {
   }
 
   // what shows around the picture: blurred copy, a color, or nothing
-  const bg = extra.noBg ? (mask && mask.background === 'color' ? 'color' : 'none') : mask ? mask.background || 'blur' : clip.fit === 'blurfill' || small ? 'blur' : 'none';
+  const bg = extra.noBg ? (mask && mask.background === 'color' ? 'color' : 'none') : mask ? mask.background || 'blur' : clip.fit === 'blurfill' || (small && !extra.exiting) ? 'blur' : 'none';
   if (bg !== 'none') {
     ctx.save();
     ctx.globalAlpha *= alpha;
@@ -975,7 +988,7 @@ function drawVideoLane(ctx, W, H, project, t, env) {
   const d = Math.min(tr.duration || 0.4, cur.clip.duration * 0.9);
   const inTransition = tr.type !== 'none' && local < d && (i > 0 || tr.type === 'fade' || tr.type === 'flash' || tr.type === 'zoom' || tr.type === 'shake' || tr.type === 'glitch');
   if (inTransition) drawTransition(ctx, W, H, tr.type, clamp(local / d, 0, 1), curState, laid[i - 1], { ...env, t });
-  else drawClip(ctx, W, H, cur.clip, local, env.sourceFor(cur.clip), curState.fx);
+  else drawClip(ctx, W, H, cur.clip, local, env.sourceFor(cur.clip), i === laid.length - 1 ? clipExitFx(cur.clip, cur.end - t, W, H, curState.fx) : curState.fx);
   applyGradeWash(ctx, W, H, cur.clip.grade);
   postEffects(ctx, W, H, fx, t, beat);
 }
@@ -1020,8 +1033,9 @@ function drawLook(ctx, W, H, look, t, beat) {
 
 
 function drawTexts(ctx, W, H, texts, t, beat = 0, releaseDate = '') {
-  for (const tx of texts) {
-    if (t < tx.start || t >= tx.end) continue;
+  for (const tx0 of texts) {
+    if (t < tx0.start || t >= tx0.end) continue;
+    const tx = animate(tx0, t - tx0.start);
     drawAnimatedText(
       ctx,
       /\{(date|countdown)\}/i.test(tx.text) ? ctaText(tx.text, releaseDate) : tx.text,
@@ -1042,6 +1056,10 @@ function drawTexts(ctx, W, H, texts, t, beat = 0, releaseDate = '') {
         uppercase: false,
         maxW: W * 0.88,
         animation: tx.animation,
+        outAnimation: tx.outAnimation,
+        outDuration: tx.outDuration,
+        opacity: tx.opacity,
+        rotate: tx.rotate,
       },
       t - tx.start,
       tx.end - tx.start,
@@ -1053,16 +1071,18 @@ function drawTexts(ctx, W, H, texts, t, beat = 0, releaseDate = '') {
 function drawLyrics(ctx, W, H, project, t, beat = 0) {
   const ts = timelineToSong(t, project.song);
   if (drawLyricDisplay(ctx, W, H, project.lyrics, project.lyricStyle, ts, beat, project.theme)) return;
-  const line = activeLyric(project.lyrics, ts);
-  if (!line) return;
-  const s = lineStyle(project.lyricStyle, line, project.theme);
+  const line0 = activeLyric(project.lyrics, ts);
+  if (!line0) return;
+  const line = animate(line0, ts - line0.start);
+  const s0 = lineStyle(project.lyricStyle, line, project.theme);
+  const s = line.keys && line.keys.size ? { ...s0, size: line.size } : s0;
   const y = clamp(line.y ?? s.y, 5, 95);
   drawAnimatedText(
     ctx,
     line.text,
     (W * (line.x ?? s.x ?? 50)) / 100,
     (H * y) / 100,
-    { ...s, sizePx: (W * s.size) / 100, maxW: (W * s.maxWidth) / 100 },
+    { ...s, sizePx: (W * s.size) / 100, maxW: (W * s.maxWidth) / 100, opacity: line.opacity, rotate: line.rotate },
     ts - line.start,
     line.end - line.start,
     beat,
@@ -1339,13 +1359,42 @@ function drawVideoLayer(ctx, W, H, layer, t, env) {
   const local = t - clip.start;
   const tr = clip.transition || { type: 'none' };
   const d = Math.min(tr.duration || 0.4, clip.duration * 0.45);
-  // overlay clips fade in and out instead of cutting, unless set to a hard cut
-  const edge = tr.type === 'none' ? 1 : Math.min(1, local / d, (clip.duration - local) / d);
+  // overlay clips fade in and out instead of cutting, unless set to a hard cut; a chosen exit replaces the fade out
+  const hasExit = clip.exit && clip.exit.type;
+  const edge = tr.type === 'none' ? 1 : Math.min(1, local / d, hasExit ? 1 : (clip.duration - local) / d);
   ctx.save();
   ctx.globalAlpha *= (layer.opacity ?? 1) * Math.max(0, edge);
   ctx.globalCompositeOperation = layer.blend || 'source-over';
-  drawClip(ctx, W, H, clip, local, env.sourceFor(clip), { noBg: true });
+  drawClip(ctx, W, H, clip, local, env.sourceFor(clip), clipExitFx(clip, clip.duration - local, W, H, { noBg: true }));
   ctx.restore();
+}
+
+/**
+ * A layer's entrance and exit at time t: layer.enter / layer.exit = { type, duration } (see exits.js).
+ * The layer ends at its own end, or where the end card starts.
+ */
+function layerMotion(l, t, visEnd) {
+  const start = l.start || 0;
+  const end = l.end ?? visEnd;
+  const enter = l.enter && l.enter.type && l.enter.type !== 'cut' ? enterTransform(l.enter.type, enterProgress(t - start, l.enter.duration ?? 0.4)) : STILL;
+  const exit = l.exit && l.exit.type && l.exit.type !== 'cut' ? exitTransform(l.exit.type, exitProgress(end - t, l.exit.duration ?? 0.4)) : STILL;
+  return enter === STILL ? exit : exit === STILL ? enter : combine(enter, exit);
+}
+
+/** A clip's exit as drawClip extras (alpha, zoom, offset, rotation in degrees, blur in px). */
+function clipExitFx(clip, remaining, W, H, base = {}) {
+  const ex = clip.exit && clip.exit.type && clip.exit.type !== 'cut' ? exitTransform(clip.exit.type, exitProgress(remaining, clip.exit.duration ?? 0.5)) : STILL;
+  if (ex === STILL) return base;
+  return {
+    ...base,
+    exiting: true,
+    alpha: (base.alpha ?? 1) * ex.alpha,
+    zoom: (base.zoom || 1) * ex.scale,
+    dx: (base.dx || 0) + ex.fx * W,
+    dy: (base.dy || 0) + ex.fy * H,
+    rot: (base.rot || 0) + (ex.rot * 180) / Math.PI,
+    blur: (base.blur || 0) + ex.blur * H,
+  };
 }
 
 /**
@@ -1367,13 +1416,53 @@ export function renderFrame(ctx, W, H, project, t, env) {
 
   if (isVisible(project, 'video')) drawVideoLane(ctx, W, H, project, t, env);
   // video layers sit directly on the picture, so the look (vignette, grain…) covers them too
-  for (const l of layers) if (l.type === 'video') drawVideoLayer(ctx, W, H, l, t, env);
+  for (const l of layers) {
+    if (l.type !== 'video') continue;
+    const L = animate(l, t - (l.start || 0));
+    const mo = layerMotion(L, t, visEnd);
+    if (isStill(mo)) {
+      drawVideoLayer(ctx, W, H, L, t, env);
+      continue;
+    }
+    ctx.save();
+    ctx.globalAlpha *= mo.alpha;
+    if (mo.blur) ctx.filter = `blur(${(mo.blur * H).toFixed(1)}px)`;
+    ctx.translate(W / 2 + mo.fx * W, H / 2 + mo.fy * H);
+    if (mo.rot) ctx.rotate(mo.rot);
+    if (mo.scale !== 1) ctx.scale(mo.scale, mo.scale);
+    ctx.translate(-W / 2, -H / 2);
+    drawVideoLayer(ctx, W, H, L, t, env);
+    ctx.restore();
+  }
   drawLook(ctx, W, H, project.look, t, beat);
   // graphics layers in stack order
-  for (const l of layers) {
-    if (l.type === 'viz' && env.viz) drawViz(ctx, W, H, l, env.viz(l), t, songT, visEnd);
+  for (const l0 of layers) {
+    if (l0.type === 'video') continue;
+    const l = animate(l0, t - (l0.start || 0));
+    const mo = layerMotion(l, t, visEnd);
+    const moving = !isStill(mo);
+    if (moving) {
+      if (mo.alpha <= 0.001) continue;
+      ctx.save();
+      const cx = (W * (l.x ?? 50)) / 100;
+      const cy = (H * (l.y ?? 50)) / 100;
+      ctx.globalAlpha *= mo.alpha;
+      if (mo.blur) ctx.filter = `blur(${(mo.blur * H).toFixed(1)}px)`;
+      ctx.translate(cx + mo.fx * W, cy + mo.fy * H);
+      if (mo.rot) ctx.rotate(mo.rot);
+      if (mo.scale !== 1) ctx.scale(mo.scale, mo.scale);
+      ctx.translate(-cx, -cy);
+    }
+    const fadeOwn = l.type !== 'viz' && l.opacity != null && l.opacity < 1; // viz layers apply their own opacity
+    if (fadeOwn) {
+      ctx.save();
+      ctx.globalAlpha *= Math.max(0, l.opacity);
+    }
+    if (l.type === 'viz' && env.viz) drawViz(ctx, W, H, l, env.viz(l0), t, songT, visEnd);
     else if (l.type === 'tab' && env.tab && l.mediaId) drawTab(ctx, W, H, l, env.tab(l.mediaId, l.track), t, songT, visEnd);
-    else if (l.type === 'drums' && env.drums) drawDrums(ctx, W, H, l, env.drums(l), t, songT, visEnd, project.beats && project.beats.period);
+    else if (l.type === 'drums' && env.drums) drawDrums(ctx, W, H, l, env.drums(l0), t, songT, visEnd, project.beats && project.beats.period);
+    if (fadeOwn) ctx.restore();
+    if (moving) ctx.restore();
   }
   if (isVisible(project, 'text')) drawTexts(ctx, W, H, project.texts, t, beat, project.endCard.releaseDate);
   if (t < ecStart && isVisible(project, 'lyrics')) drawLyrics(ctx, W, H, project, t, beat);

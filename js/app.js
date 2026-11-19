@@ -12,10 +12,13 @@ import { buildTabStudio } from './page-tabstudio.js';
 import { buildCarouselPage } from './page-carousel.js';
 import { createPostCheck } from './panel-postcheck.js';
 import { createTips } from './panel-tips.js';
+import { kfTarget, kfSignature } from './panel-kf.js';
 import { createManager } from './manager/shell.js';
+import { applyTheme, themeById } from './themes.js';
 import { loadSettings } from './state.js';
 
 const store = createStore(loadProject() || newProject());
+let manager = null; // the Manager workspace (created below)
 
 // ------------------------------------------------------------ layout
 const app = document.getElementById('app');
@@ -69,12 +72,15 @@ const MODE_KEY = 'pvm.mode.v1';
 const modeBtn = (id, label, ic) => h('button', { type: 'button', role: 'tab', class: 'mode-btn', 'data-mode': id, onclick: () => setMode(id) }, icon(ic, 16), h('span', {}, label));
 const modeSwitch = h('div', { class: 'mode-switch', role: 'tablist', 'aria-label': 'Workspace' }, modeBtn('manager', 'Manager', 'users'), modeBtn('studio', 'Video Studio', 'film'));
 const studioOnly = (...els) => h('div', { class: 'studio-only' }, ...els);
+// which artist this promo is for (from the Manager): its name, theme and logo go on the edit
+const artistSel = h('select', { class: 'artist-sel', 'aria-label': 'Artist for this promo', title: 'Artist: the promo takes their name, theme and logo (set them in Manager → Press kit)' });
+artistSel.addEventListener('change', () => applyArtist(artistSel.value));
 const header = h(
   'header',
   { class: 'topbar' },
   h('div', { class: 'brand' }, icon('disc', 22), h('span', {}, 'Promo Studio')),
   modeSwitch,
-  studioOnly(nameInput, aspectSel, undoBtn, redoBtn, saveState),
+  studioOnly(nameInput, artistSel, aspectSel, undoBtn, redoBtn, saveState),
   h('div', { class: 'spacer' }),
   studioOnly(
     postSlot,
@@ -295,7 +301,7 @@ function leftSignature() {
       JSON.stringify(p.layerVis || {}),
       p.audioTracks.length,
       ui.selection && ui.selection.id,
-      L && [L.mediaId, L.source, L.track, L.mode, L.style, L.playAudio, L.type === 'video' ? L.clips.length : ''].join(','),
+      L && [L.mediaId, L.source, L.track, L.mode, L.style, L.playAudio, L.type === 'video' ? L.clips.length : '', kfSignature(L)].join(','),
       p.beats && p.beats.bpm,
     );
   }
@@ -320,7 +326,8 @@ function inspSignature() {
     (s.type === 'text' && p.texts.some((c) => c.id === s.id)) ||
     (s.type === 'audio' && p.audioTracks.some((c) => c.id === s.id)) ||
     s.type;
-  return `${s.type}#${s.id}#${exists}`;
+  const tg = kfTarget(p, s);
+  return `${s.type}#${s.id}#${exists}#${tg ? kfSignature(tg.item) : ''}`;
 }
 
 function keepScroll(el, fn) {
@@ -369,6 +376,7 @@ store.subscribe((p, meta) => {
   if (railSignature() !== railSig) renderRail();
   syncHeader();
   postcheck.refresh();
+  if (manager && artistSel.value !== (p.artistId || '')) syncArtistSel();
   saveState.textContent = 'Saving…';
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
@@ -395,7 +403,15 @@ media.onChange(() => {
   if (railSignature() !== railSig) renderRail();
 });
 
+let kfRefresh = 0;
 engine.on(() => {
+  // keyframe sliders and diamonds follow the playhead (when paused; every ~100 ms while playing)
+  const nowMs = performance.now();
+  if (!engine.playing || nowMs - kfRefresh > 100) {
+    kfRefresh = nowMs;
+    if (inspBinder) inspBinder.refresh();
+    if (leftBinder && ui.selection && ui.selection.type === 'layer') leftBinder.refresh();
+  }
   timeLabel.textContent = `${formatTime(engine.t)} / ${formatTime(store.get().duration)}`;
   playBtn.replaceChildren(icon(engine.playing ? 'pause' : 'play', 22));
   playBtn.setAttribute('aria-label', engine.playing ? 'Pause' : 'Play');
@@ -520,10 +536,11 @@ window.addEventListener('drop', (e) => {
 });
 
 // ------------------------------------------------------------ manager workspace
-const manager = createManager({
+manager = createManager({
   root: managerRoot,
   studio: {
     audioFiles: () => media.all().filter((m) => m.kind === 'audio').map((m) => ({ id: m.id, name: m.name })),
+    artistsChanged: () => syncArtistSel(),
     imageFiles: () => media.all().filter((m) => m.kind === 'image').map((m) => ({ id: m.id, name: m.name, thumb: m.thumb || null })),
     /** A library image as a JPEG data URL no larger than `max` px on its long side (for the press kit). */
     async imageDataUrl(id, max = 1400) {
@@ -547,15 +564,38 @@ const manager = createManager({
         d.endCard.title = song.title;
         const band = manager.store.get().band.name;
         if (band) d.endCard.artist = band;
+        d.artistId = manager.currentArtist();
         if (song.lyrics.trim()) d.lyrics = linesFromText(song.lyrics, +(timelineToSong(0, d.song) + 0.5).toFixed(2), 2.5);
         d.managerSongId = song.id;
       });
+      const b = manager.artistBand(manager.currentArtist());
+      if (b && (b.theme || b.logoId)) applyArtist(manager.currentArtist(), { quiet: true });
       setMode('studio');
       ui.openTab(song.lyrics.trim() ? 'lyrics' : 'start');
       toast(`“${song.title}” is in the editor${song.lyrics.trim() ? '. Next: tap along to sync the lyrics.' : '.'}`, 'info', 5000);
     },
   },
 });
+/** Put an artist's name, theme and logo on the current edit. */
+function applyArtist(id, { quiet = false } = {}) {
+  const band = manager.artistBand(id);
+  if (!band) return;
+  store.update((d) => {
+    d.artistId = id;
+    if (band.name) d.endCard.artist = band.name;
+    if (band.theme && themeById(band.theme)) applyTheme(d, band.theme);
+    if (band.logoId && media.get(band.logoId)) d.look.watermark = { ...d.look.watermark, mediaId: band.logoId };
+  });
+  if (!quiet) toast(`Promo set to ${band.name}${band.theme ? `, with the ${themeById(band.theme)?.name || ''} theme` : ''}${band.logoId ? ' and logo' : ''}. Undo (Ctrl+Z) to go back.`);
+}
+function syncArtistSel() {
+  const list = manager.artists();
+  const cur = store.get().artistId && list.some((a) => a.id === store.get().artistId) ? store.get().artistId : '';
+  artistSel.replaceChildren(h('option', { value: '', disabled: true }, list.length ? 'Artist…' : 'No artists'), ...list.map((a) => h('option', { value: a.id }, a.name)));
+  artistSel.value = cur;
+  artistSel.hidden = list.length < 2 && !cur;
+}
+
 let mode = localStorage.getItem(MODE_KEY) === 'manager' ? 'manager' : 'studio';
 function setMode(m) {
   mode = m;
@@ -599,6 +639,7 @@ async function boot() {
   timeline.render();
   engine.seek(engine.t);
   showPage();
+  syncArtistSel();
   setMode(mode);
   document.body.classList.add('ready');
 }

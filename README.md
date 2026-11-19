@@ -21,6 +21,13 @@ any other static host.
 The Manager workspace keeps the band's plans. It has its own undo (Ctrl+Z), saves in this browser, and
 **Back up / Restore** (bottom left) moves everything to another computer or bandmate as one file.
 
+**Several artists.** The switcher at the top left of the Manager holds every artist you manage
+(**Add an artist** creates one). Each artist has its own profile, songs, shows, posts, money, press kit
+and branding; venues, scene bands and contacts are one shared address book. **All artists** on Home and the
+Calendar puts every artist's dates together (tagged with the artist), and opening another artist's item
+switches to that artist. In the Video Studio, the **Artist** menu in the top bar puts that artist's name,
+theme and logo (set under Press kit → Branding for promos) on the edit. Older saves become the first artist.
+
 | Page | What it does |
 |---|---|
 | **Home** | The next show and the next release (with checklist progress), what's working in your content, anything overdue, and the next two weeks day by day |
@@ -85,6 +92,24 @@ mostly from Freesound. A *Find on MyInstants* link opens the same search there; 
 clips are cut from films, TV and songs, so only use ones you have the rights to.
 
 ## Features
+
+**Keyframes (animate anything over time)**
+- Every animatable slider has a ◆ next to it. Move the playhead and press ◆ (or just change the value once a
+  property has a keyframe) to set a keyframe; the value glides between keyframes.
+- Clips: position, zoom, rotation, opacity, blur, exposure, contrast, saturation. Text and lyric lines:
+  position, size, rotation, opacity. Tab and drum layers: position, opacity. Visualizers: position, size,
+  opacity, intensity.
+- Keyframes show as diamonds on the selected item in the timeline: drag to retime (they snap to beats when
+  snapping is on), double-click to delete, right-click to choose how it moves (smooth, linear, ease in,
+  ease out, overshoot, hold). The inspector lists them with their easing and a jump-to time.
+
+**Entrances and exits**
+- Text and lyrics: pick an **Entrance** (17 animations) and an **Exit** (fade, pop out, zoom out, shrink,
+  slide down / up / left / right, blur, spin, drop, glitch, flicker or cut) with its own length; per lyric
+  line too. Left on "Quick fade", they end with the original short fade.
+- Tab, drum, visualizer and video layers: an entrance and an exit from the same set.
+- Clips: an **Exit** on the last clip (as the video ends or the end card starts) and on video-layer clips;
+  between clips the next clip's transition in is used.
 
 **Video**
 - Upload videos and images, or drag files anywhere onto the window.
@@ -387,7 +412,10 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/lyricideas.js` | Theme, visualizer, display and line-look ideas from the lyrics |
 | `js/mytemplates.js` | Save, apply, export and import your own templates |
 | `js/soundpack.js`, `sounds/pack/` | The bundled CC0 sound pack and its search |
-| `js/manager/shell.js` | The Manager workspace: nav, store, backup and restore |
+| `js/manager/shell.js` | The Manager workspace: nav, artist switcher, store, backup and restore |
+| `js/manager/artists.js` | Several artists with a shared address book; combined agenda; backups (unit tested) |
+| `js/keyframes.js`, `js/panel-kf.js` | Keyframe engine (values, easing, editing) and its sliders, list and target lookup |
+| `js/exits.js` | Exit and entrance motions shared by text, lyrics, layers and clips |
 | `js/manager/model.js` | Songs, shows, the release checklist, the agenda and backups (unit tested) |
 | `js/manager/ideas.js` | Music video concepts, hook lines and post plans from the lyrics |
 | `js/manager/planner.js`, `seed.js` | Venues, bands, contacts, pitch emails, show to-dos; the researched starter lists |

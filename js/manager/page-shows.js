@@ -35,7 +35,7 @@ function showList(ctx) {
   const m = ctx.store.get();
   const today = ctx.today();
   const add = () => {
-    const s = { ...newShow(addDays(today, 30)), todo: showTodo() };
+    const s = { ...newShow(addDays(today, 30)), city: m.band.city || 'Seattle', todo: showTodo() };
     ctx.update((d) => d.shows.push(s));
     ctx.go('shows', s.id);
   };

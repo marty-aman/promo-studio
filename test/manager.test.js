@@ -334,3 +334,90 @@ test('the scene band list loads cleanly, with no venue or listing-site accounts'
   assert.ok(!links.some((u) => /do206|Do206Seattle|elcorazon/i.test(u)));
   assert.ok(list.filter((b) => b.socials.instagram).length >= 25);
 });
+
+// ---- several artists
+import { workspaceFrom, normalizeWorkspace, viewOf, mergeView, addArtist, removeArtist, artistList, combinedAgenda, combinedNext, workspaceBackup, parseWorkspaceBackup } from '../js/manager/artists.js';
+
+test('an old single-artist save becomes the first artist, nothing lost', () => {
+  const m = newManager();
+  m.songs.push({ ...newSong('Static'), releaseDate: '2026-12-04' });
+  m.venues.push({ id: 'v1', name: 'Funhouse' });
+  m.contacts.push({ id: 'c1', name: 'Sam' });
+  const ws = normalizeWorkspace(JSON.parse(JSON.stringify(m)));
+  assert.equal(ws.artists.length, 1);
+  assert.equal(ws.artists[0].band.name, 'Arc Flash');
+  assert.equal(ws.artists[0].songs[0].title, 'Static');
+  assert.equal(ws.shared.venues[0].name, 'Funhouse');
+  const v = viewOf(ws);
+  assert.equal(v.artistId, ws.current);
+  assert.equal(v.songs[0].title, 'Static');
+  assert.equal(v.contacts[0].name, 'Sam');
+});
+
+test('artists keep their own songs and shows but share venues, bands and contacts', () => {
+  let ws = workspaceFrom(newManager());
+  const first = ws.current;
+  let [next, second] = addArtist(ws, ' Static Ritual ', 'Tacoma');
+  ws = next;
+  assert.deepEqual(artistList(ws).map((a) => a.name), ['Arc Flash', 'Static Ritual']);
+  // edit the first artist's view: a song and a shared venue
+  const v1 = viewOf(ws, first);
+  v1.songs.push(newSong('Arc Song'));
+  v1.venues.push({ id: 'v1', name: 'El Corazon' });
+  ws = mergeView(ws, v1);
+  // the second artist sees the venue but not the song
+  const v2 = viewOf(ws, second);
+  assert.equal(v2.songs.length, 0);
+  assert.equal(v2.venues[0].name, 'El Corazon');
+  assert.equal(v2.band.name, 'Static Ritual');
+  assert.equal(v2.band.city, 'Tacoma');
+  v2.shows.push({ ...newShow('2026-11-25'), venue: 'El Corazon', status: 'confirmed' });
+  ws = mergeView(ws, v2);
+  assert.equal(viewOf(ws, first).shows.length, 0);
+  assert.equal(viewOf(ws, first).songs[0].title, 'Arc Song');
+  // removing keeps at least one, and moves "current" off a removed artist
+  ws = { ...ws, current: second };
+  ws = removeArtist(ws, second);
+  assert.equal(ws.artists.length, 1);
+  assert.equal(ws.current, first);
+  assert.equal(removeArtist(ws, first).artists.length, 1);
+});
+
+test('all-artists agenda and next show are tagged with the artist', () => {
+  let ws = workspaceFrom(newManager());
+  const a = ws.current;
+  let [next, b] = addArtist(ws, 'Static Ritual');
+  ws = next;
+  const va = viewOf(ws, a);
+  va.shows.push({ ...newShow('2026-11-28'), venue: 'Funhouse', status: 'confirmed' });
+  ws = mergeView(ws, va);
+  const vb = viewOf(ws, b);
+  vb.shows.push({ ...newShow('2026-11-21'), venue: 'Substation', status: 'confirmed' });
+  vb.songs.push({ ...newSong('Ritual'), releaseDate: '2026-11-30' });
+  ws = mergeView(ws, vb);
+  const items = combinedAgenda(ws, '2026-11-18', 14).filter((x) => x.kind !== 'task');
+  assert.deepEqual(items.map((x) => [x.date, x.artist]), [['2026-11-21', 'Static Ritual'], ['2026-11-28', 'Arc Flash'], ['2026-11-30', 'Static Ritual']]);
+  const n = combinedNext(ws, '2026-11-18');
+  assert.equal(n.show.show.venue, 'Substation');
+  assert.equal(n.show.artistId, b);
+  assert.equal(n.release.artist, 'Static Ritual');
+  const ics = managerICS(viewOf(ws), { ws, from: '2026-11-18', days: 14, stamp: new Date('2026-11-18T00:00:00Z') });
+  assert.ok(ics.includes('SUMMARY:Static Ritual: Show: Substation') && ics.includes('SUMMARY:Arc Flash: Show: Funhouse'));
+});
+
+test('workspace backups hold every artist; old backups still restore', () => {
+  let ws = workspaceFrom(newManager());
+  [ws] = addArtist(ws, 'Static Ritual');
+  const back = parseWorkspaceBackup(workspaceBackup(ws));
+  assert.deepEqual(back.artists.map((a) => a.band.name), ['Arc Flash', 'Static Ritual']);
+  assert.equal(back.current, ws.current);
+  const old = newManager();
+  old.songs.push(newSong('Old song'));
+  const fromOld = parseWorkspaceBackup(backupFile(old));
+  assert.equal(fromOld.artists.length, 1);
+  assert.equal(fromOld.artists[0].songs[0].title, 'Old song');
+  assert.throws(() => parseWorkspaceBackup('{"artists":[]}'), /isn’t a band manager backup/);
+  const bad = normalizeWorkspace({ artists: [{ id: 'x', band: { name: 'A' } }, 'junk', { band: {} }], current: 'nope' });
+  assert.equal(bad.artists.length, 1);
+  assert.equal(bad.current, 'x');
+});
