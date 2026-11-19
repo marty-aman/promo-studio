@@ -3,7 +3,7 @@
 // backed up as a JSON file. Pure functions so they can be unit tested.
 
 import { newFiles, normalizeFiles } from './files.js';
-import { normalizePhotos } from './photos.js';
+import { normalizePhotos, normalizeFolders } from './photos.js';
 import { normalizeTours } from './tours.js';
 import { newStats, normalizeStats } from './stats.js';
 
@@ -129,6 +129,7 @@ export function newManager() {
     money: [],
     stats: newStats(), // streaming numbers: imported reports and live lookups (see stats.js)
     tours: [], // this artist's tours: { id, name, stops: [{ city, date, status, picks, money… }] } (see tours.js)
+    photoFolders: [], // folders on the Photos page: { id, name, parent } (see photos.js)
     photos: [], // this artist's photos: { id, mediaId, caption, credit, tags, favorite, addedAt }
     playlists: [], // your own playlists and curators (shared by every artist)
     playlistsOff: [], // built-in playlist ids you hid
@@ -148,6 +149,8 @@ export function normalizeManager(raw) {
     return { ...d, ...s, sound: { ...d.sound, ...(s.sound || {}), moods: Array.isArray(s.sound?.moods) ? s.sound.moods : [] }, press: { ...d.press, ...(s.press || {}), edits: { ...(s.press?.edits || {}) } }, pitches: list(s.pitches), files: normalizeFiles(s.files), links: { ...d.links, ...(s.links || {}) }, shoot: { ...d.shoot, ...(s.shoot || {}) }, release: Array.isArray(s.release) ? s.release : d.release };
   });
   m.photos = normalizePhotos(raw.photos);
+  m.photoFolders = normalizeFolders(raw.photoFolders);
+  for (const p of m.photos) if (p.folder && !m.photoFolders.some((f) => f.id === p.folder)) p.folder = '';
   m.tours = normalizeTours(raw.tours);
   m.stats = normalizeStats(raw.stats);
   m.band.epkPhotos = Array.isArray(m.band.epkPhotos) ? m.band.epkPhotos.filter((x) => typeof x === 'string').slice(0, 4) : [];

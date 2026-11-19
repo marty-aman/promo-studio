@@ -9,6 +9,7 @@ import { driveButton } from '../gdrive.js';
 import { SIZES, sizeById, BLENDS, MASKS, SHAPES, LOOKS, defaultAdjust, newDoc, newLayer, normalizeDoc, hitTest, moveLayer, duplicateLayer, resizeBox, loadDesigns, saveDesigns, docMedia, slidesForImage } from './model.js';
 import { drawDoc, renderDoc, renderSlides, canvasBlob, layoutText } from './render.js';
 import { TEMPLATES, templateById, countdownSet } from './templates.js';
+import { PAGE_SIZES, loadPageSize, savePageSize, paginate, folderPath, folderTree } from '../manager/photos.js';
 
 const IMAGE_ACCEPT = 'image/*,.jpg,.jpeg,.png,.webp,.gif';
 const slug = (s) => String(s || 'design').replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'design';
@@ -36,7 +37,7 @@ export function createPhotoStudio({ root, studio }) {
     return d;
   };
   const store = createStore(saved.docs.find((d) => d.id === saved.current) || firstDoc());
-  const ui = { tab: 'templates', sel: null, zoom: 0, stock: { provider: loadSettings().stockProvider || 'pexels', q: '', results: [], busy: false, error: '' }, tpl: { songId: '', showId: '', tourId: '', photoId: '', slides: 0 }, clickMode: 'add', busy: '' };
+  const ui = { tab: 'templates', sel: null, zoom: 0, stock: { provider: loadSettings().stockProvider || 'pexels', q: '', results: [], busy: false, error: '' }, tpl: { songId: '', showId: '', tourId: '', photoId: '', slides: 0 }, clickMode: 'add', busy: '', folder: 'all', page: 1, size: 0 };
   const mattes = new Map(); // mediaId → canvas | 'pending' | Error
 
   // ---- persistence: the current design lives in the store; the rest in `saved`
@@ -338,10 +339,37 @@ export function createPhotoStudio({ root, studio }) {
     left.replaceChildren(tabs, h('div', { class: 'ph-left-body', role: 'tabpanel' }, body));
   }
 
-  const photoGrid = (list, onPick, { selected = null } = {}) =>
-    list.length
-      ? h('div', { class: 'ph-grid' }, list.map((m) => h('button', { type: 'button', class: `ph-thumb${selected === m.id ? ' on' : ''}`, title: m.name, onclick: () => onPick(m) }, h('img', { src: m.thumb || m.url, alt: m.name, loading: 'lazy' }))))
-      : h('p', { class: 'muted small' }, 'No photos yet. Upload some, pull them from Google Drive, or search Stock.');
+  /**
+   * A grid of photos, one page at a time (so a big library doesn't slow the browser), with the
+   * Photos page's folders to narrow it.
+   */
+  const photoGrid = (list, onPick, { selected = null } = {}) => {
+    if (!ui.size) ui.size = loadPageSize();
+    const c = studio.context();
+    const folders = c.photoFolders || [];
+    const where = c.photoFolderOf || {};
+    if (ui.folder !== 'all' && ui.folder !== 'none' && ui.folder !== 'artist' && !folders.some((f) => f.id === ui.folder)) ui.folder = 'all';
+    const tree = folders.some((f) => f.id === ui.folder) ? folderTree(folders, ui.folder) : null;
+    const pool = list.filter((m) => (ui.folder === 'all' ? true : ui.folder === 'artist' ? m.id in where : ui.folder === 'none' ? !where[m.id] : tree.has(where[m.id])));
+    const pg = paginate(pool, ui.page, ui.size);
+    ui.page = pg.page;
+    const re = () => renderLeft();
+    const fsel = h('select', { 'aria-label': 'Folder', 'data-k': 'ph-folder' }, h('option', { value: 'all', selected: ui.folder === 'all' }, `Whole media library (${list.length})`), h('option', { value: 'artist', selected: ui.folder === 'artist' }, `${c.band.name || 'Artist'}’s Photos page`), h('option', { value: 'none', selected: ui.folder === 'none' }, 'Not in a folder'), ...folders.map((f) => [f, folderPath(folders, f.id).map((x) => x.name).join(' › ')]).sort((a, b) => a[1].localeCompare(b[1])).map(([f, label]) => h('option', { value: f.id, selected: ui.folder === f.id }, `📁 ${label}`)));
+    fsel.addEventListener('change', () => ((ui.folder = fsel.value), (ui.page = 1), re()));
+    const sizeSel = h('select', { 'aria-label': 'Photos per page' }, PAGE_SIZES.map((n) => h('option', { value: String(n), selected: n === ui.size }, `${n} per page`)));
+    sizeSel.addEventListener('change', () => (savePageSize(+sizeSel.value), (ui.size = +sizeSel.value), (ui.page = 1), re()));
+    const nav = pg.pages > 1 ? h('div', { class: 'row ph-pager' }, iconButton('arrowLeft', 'Previous page', () => ((ui.page = pg.page - 1), re()), 'ghost'), h('span', { class: 'muted tiny' }, `Page ${pg.page} of ${pg.pages}`), iconButton('arrowRight', 'Next page', () => ((ui.page = pg.page + 1), re()), 'ghost')) : null;
+    return h(
+      'div',
+      { class: 'ph-gridbox' },
+      list.length ? fsel : null,
+      pool.length
+        ? h('div', { class: 'ph-grid' }, pg.items.map((m) => h('button', { type: 'button', class: `ph-thumb${selected === m.id ? ' on' : ''}`, title: m.name, onclick: () => onPick(m) }, h('img', { src: m.thumb || m.url, alt: m.name, loading: 'lazy', decoding: 'async' }))))
+        : h('p', { class: 'muted small' }, list.length ? 'No photos in this folder.' : 'No photos yet. Upload some, pull them from Google Drive, or search Stock.'),
+      pool.length ? h('div', { class: 'row ph-pager' }, h('span', { class: 'muted tiny' }, `${pg.from}–${pg.to} of ${pg.total}`), sizeSel) : null,
+      nav,
+    );
+  };
 
   function templatesPanel() {
     const c = studio.context();
