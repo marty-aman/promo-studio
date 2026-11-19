@@ -1458,7 +1458,7 @@ export function renderFrame(ctx, W, H, project, t, env) {
       ctx.save();
       ctx.globalAlpha *= Math.max(0, l.opacity);
     }
-    if (l.type === 'viz' && env.viz) drawViz(ctx, W, H, l, env.viz(l0), t, songT, visEnd);
+    if (l.type === 'viz' && env.viz) drawViz(ctx, W, H, l, env.viz(l0), t, songT, visEnd, project.beats);
     else if (l.type === 'tab' && env.tab && l.mediaId) drawTab(ctx, W, H, l, env.tab(l.mediaId, l.track), t, songT, visEnd);
     else if (l.type === 'drums' && env.drums) drawDrums(ctx, W, H, l, env.drums(l0), t, songT, visEnd, project.beats && project.beats.period);
     if (fadeOwn) ctx.restore();

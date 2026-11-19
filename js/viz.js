@@ -3,6 +3,7 @@
 import { clamp, noise, energyEnvelope } from './core.js';
 import { detectOnsets } from './drums.js';
 import { REAL_PLACEMENT, REAL_STYLES, REAL_DRAW } from './vizreal.js';
+import { POLY_STYLES, POLY_PLACEMENT, POLY_DEFAULTS, isPoly, drawPoly } from './vizpoly.js';
 
 export const VIZ_STYLES = [
   ['ripple', 'Water ripple', 'Rings that bend the picture on every hit (great for drums)'],
@@ -14,6 +15,7 @@ export const VIZ_STYLES = [
   ['glow', 'Glow pulse', 'The whole frame glows with the level (vocals, pads)'],
   ['rings', 'Speaker rings', 'Concentric rings pump with the level'],
   ...REAL_STYLES,
+  ...POLY_STYLES,
 ];
 
 /** Set a visualizer layer's style, moving it to the spot that suits that style. */
@@ -22,6 +24,11 @@ export function setVizStyle(x, id) {
   if (id === 'bars' || id === 'wave') Object.assign(x, { y: 80, size: 80 });
   if (id === 'circle' || id === 'rings' || id === 'electric') Object.assign(x, { y: 45, size: 70 });
   if (id === 'glow') x.blend = 'screen';
+  if (POLY_PLACEMENT[id]) {
+    // each style starts from counts that suit it (shapes need 3+, arcs look best as a run)
+    Object.assign(x, POLY_PLACEMENT[id], { x: 50, ratios: POLY_DEFAULTS[id] });
+    return x;
+  }
   if (REAL_PLACEMENT[id]) Object.assign(x, REAL_PLACEMENT[id], { x: 50 });
   else if (x.blend === 'source-over') x.blend = 'screen';
   return x;
@@ -228,8 +235,9 @@ function snapshot(ctx, W, H) {
   return snap;
 }
 
-export function drawViz(ctx, W, H, layer, feat, t, songTime, visibleEnd) {
-  if (!feat) return;
+export function drawViz(ctx, W, H, layer, feat, t, songTime, visibleEnd, beats = null) {
+  // polyrhythm styles keep time on their own, so they draw even with no audio picked
+  if (!feat && !isPoly(layer.style)) return;
   const end = layer.end ?? visibleEnd;
   if (t < (layer.start || 0) || t >= end) return;
   const fade = Math.min(1, (t - (layer.start || 0)) / 0.3, (end - t) / 0.3);
@@ -238,7 +246,7 @@ export function drawViz(ctx, W, H, layer, feat, t, songTime, visibleEnd) {
   const cx = (W * layer.x) / 100;
   const cy = (H * layer.y) / 100;
   const S = (W * layer.size) / 100;
-  const lvl = levelAt(feat, ts);
+  const lvl = feat ? levelAt(feat, ts) : 0;
   const frame = Math.floor(t * 30);
   ctx.save();
   ctx.globalAlpha *= Math.max(0, fade) * (layer.opacity ?? 1);
@@ -452,7 +460,8 @@ export function drawViz(ctx, W, H, layer, feat, t, songTime, visibleEnd) {
       break;
     }
     default:
-      if (REAL_DRAW[layer.style]) REAL_DRAW[layer.style](ctx, W, H, layer, feat, ts, { cx, cy, S, I, lvl, onsetsFor });
+      if (isPoly(layer.style)) drawPoly(ctx, layer, ts, beats, { cx, cy, S, I, lvl });
+      else if (REAL_DRAW[layer.style]) REAL_DRAW[layer.style](ctx, W, H, layer, feat, ts, { cx, cy, S, I, lvl, onsetsFor });
   }
   ctx.restore();
 }

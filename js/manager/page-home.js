@@ -10,6 +10,12 @@ const KIND = { show: ['ticket', 'Show'], release: ['disc', 'Release'], shoot: ['
 const inDays = (n) => (n === 0 ? 'today' : n === 1 ? 'tomorrow' : n < 0 ? `${-n} days ago` : `in ${n} days`);
 
 /** "This artist | All artists" chips, shown once there is more than one artist. */
+/** The artist's profile photo on Home (click it to change it in the press kit). */
+function homeAvatar(ctx, band) {
+  const ph = band.photoId && ctx.studio.mediaInfo(band.photoId);
+  return h('button', { type: 'button', class: `mgr-artist-dot big${ph ? ' photo' : ''}`, title: ph ? 'Change the profile photo' : 'Add a profile photo', 'aria-label': ph ? 'Change the profile photo' : 'Add a profile photo', onclick: () => ctx.go('epk') }, ph ? h('img', { src: ph.url, alt: '' }) : (band.name || '?')[0].toUpperCase());
+}
+
 export function scopeChips(ctx) {
   if (ctx.artists().length < 2) return null;
   const chip = (on, label) => button(label, () => ctx.setCombined(on), { variant: `chip${!!ctx.combined === on ? ' on' : ''}` });
@@ -125,7 +131,7 @@ export function buildHome(ctx) {
   return h(
     'div',
     { class: 'mgr-page' },
-    h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, all ? 'All artists' : m.band.name || 'Your band'), h('p', { class: 'muted' }, all ? `${niceDate(today)} · ${ws.artists.length} artists` : `${niceDate(today)} · ${m.songs.length} song${m.songs.length === 1 ? '' : 's'} · ${m.shows.filter((s) => s.date >= today && s.status !== 'cancelled').length} upcoming show${m.shows.length === 1 ? '' : 's'}`), scopeChips(ctx)), all ? null : h('div', { class: 'row' }, button('New song', addSong, { iconName: 'plus', variant: 'sm' }), button('New show', addShow, { iconName: 'plus', variant: 'sm' }))),
+    h('header', { class: 'mgr-head' }, h('div', { class: 'mgr-head-who' }, all ? null : homeAvatar(ctx, m.band), h('div', {}, h('h1', {}, all ? 'All artists' : m.band.name || 'Your band'), h('p', { class: 'muted' }, all ? `${niceDate(today)} · ${ws.artists.length} artists` : `${niceDate(today)} · ${m.songs.length} song${m.songs.length === 1 ? '' : 's'} · ${m.shows.filter((s) => s.date >= today && s.status !== 'cancelled').length} upcoming show${m.shows.length === 1 ? '' : 's'}`), scopeChips(ctx))), all ? null : h('div', { class: 'row' }, button('New song', addSong, { iconName: 'plus', variant: 'sm' }), button('New show', addShow, { iconName: 'plus', variant: 'sm' }))),
     h('div', { class: 'mgr-cards' }, nextShow, nextRelease, bestCard),
     lateList,
     h('section', { class: 'mgr-sect' }, h('h2', {}, 'Next two weeks'), week),

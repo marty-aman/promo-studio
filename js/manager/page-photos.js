@@ -64,10 +64,12 @@ export function buildPhotos(ctx) {
     const drop = () => ctx.update((d) => {
       d.photos = d.photos.filter((y) => y.id !== p.id);
       d.band.epkPhotos = (d.band.epkPhotos || []).filter((id) => id !== p.mediaId);
+      if (d.band.photoId === p.mediaId) d.band.photoId = null;
     });
     if (!x) return h('div', { class: 'mgr-ph missing' }, h('p', { class: 'muted small' }, 'This photo was removed from the media library.'), button('Remove', drop, { variant: 'sm ghost' }));
     const inKit = epk.includes(p.mediaId);
     const isLogo = band.logoId === p.mediaId;
+    const isProfile = band.photoId === p.mediaId;
     const tagsIn = h('input', { type: 'text', value: p.tags.join(', '), placeholder: 'Tags: live, press, 2026…', 'data-k': `ph-tags-${p.id}`, 'aria-label': 'Tags' });
     tagsIn.addEventListener('change', () => ctx.update(P(p.id, (y) => (y.tags = parseTags(tagsIn.value)))));
     return h(
@@ -78,7 +80,7 @@ export function buildPhotos(ctx) {
         { class: 'mgr-ph-img' },
         h('button', { type: 'button', class: 'mgr-ph-open', onclick: () => ((ui.open = p.id), rerender()), 'aria-label': `View ${p.caption || x.name}` }, h('img', { src: x.url, alt: p.caption || '', loading: 'lazy' })),
         h('button', { type: 'button', class: `mgr-ph-star${p.favorite ? ' on' : ''}`, 'aria-pressed': p.favorite ? 'true' : 'false', 'aria-label': p.favorite ? 'Unstar' : 'Star', onclick: () => ctx.update(P(p.id, (y) => (y.favorite = !y.favorite))) }, p.favorite ? '★' : '☆'),
-        inKit || isLogo ? h('span', { class: 'mgr-ph-badges' }, inKit ? h('span', {}, 'Press kit') : null, isLogo ? h('span', {}, 'Logo') : null) : null,
+        inKit || isLogo || isProfile ? h('span', { class: 'mgr-ph-badges' }, isProfile ? h('span', {}, 'Profile') : null, inKit ? h('span', {}, 'Press kit') : null, isLogo ? h('span', {}, 'Logo') : null) : null,
       ),
       f.text(`ph-cap-${p.id}`, '', p.caption, P(p.id, (y, v) => (y.caption = v)), { placeholder: 'Caption' }),
       f.text(`ph-cred-${p.id}`, '', p.credit, P(p.id, (y, v) => (y.credit = v)), { placeholder: 'Photographer' }),
@@ -93,6 +95,7 @@ export function buildPhotos(ctx) {
           if (!ok) toast(`The press kit holds ${EPK_PHOTO_MAX} photos. Take one out first.`, 'error');
         }, { iconName: inKit ? 'check' : 'clipboard', variant: `sm${inKit ? ' primary' : ''}`, title: `Use in the downloadable press kit (up to ${EPK_PHOTO_MAX})` }),
         button('Video', () => st.useInEditor(p.mediaId, 'clip', { open: false }), { iconName: 'film', variant: 'sm', title: 'Add to the end of the video track in the Video Studio' }),
+        button(isProfile ? 'Profile ✓' : 'Profile', () => ctx.update((d) => (d.band.photoId = isProfile ? null : p.mediaId)), { variant: `sm${isProfile ? ' primary' : ' ghost'}`, title: isProfile ? 'This is the profile photo. Click to clear it.' : 'Use as this artist’s profile photo' }),
         button(isLogo ? 'Logo ✓' : 'Logo', () => ctx.update((d) => (d.band.logoId = isLogo ? null : p.mediaId)), { variant: `sm${isLogo ? ' primary' : ' ghost'}`, title: isLogo ? 'This is the logo on promos. Click to clear it.' : 'Use as this artist’s logo on promos' }),
         iconButton('download', `Download ${x.name}`, async () => download(await (await fetch(x.url)).blob(), x.name), 'ghost'),
         iconButton('trash', `Remove ${x.name} from this page`, drop, 'ghost'),

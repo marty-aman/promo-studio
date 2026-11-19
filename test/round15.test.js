@@ -249,7 +249,7 @@ test('four new realistic visualizers are listed, placed and drawable', () => {
     assert.equal(typeof REAL_DRAW[id], 'function');
     assert.equal(GEAR_DRAW[id], REAL_DRAW[id]);
   }
-  assert.equal(VIZ_STYLES.length, 18);
+  assert.equal(VIZ_STYLES.length, 21); // + polyrhythm shapes, arcs and polymeter
 });
 
 test('lightning bolts are the same every frame and flicker then fade', () => {

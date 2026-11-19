@@ -9,6 +9,7 @@ import { TAB_STYLES, TAB_PLACEMENT, stringColor } from './tabviz.js';
 import { REAL_PLACEMENT } from './vizreal.js';
 import { themeById, themeLayer } from './themes.js';
 import { defaultVizLayer, VIZ_STYLES, BLENDS, setVizStyle } from './viz.js';
+import { isPoly, polyTiming, parseRatios, POLY_DEFAULTS } from './vizpoly.js';
 import { tabIntoLayout } from './templates.js';
 import { EXITS, ENTRANCES } from './exits.js';
 import { KIT_FINISHES, KIT_WRAPS, kitDoubleKick } from './drumkit.js';
@@ -89,7 +90,7 @@ const FRAMINGS = {
  * their own kind). Without it, the whole stack is shown, as in the "All layers" fold.
  */
 export function buildLayersPanel(b, ctx, opts = {}) {
-  const { store, engine, ui, importFiles, fontOptions, kf } = ctx;
+  const { store, engine, ui, importFiles, fontOptions, fontField, kf } = ctx;
   const p = store.get();
   const types = opts.types || null;
   const mine = (L) => !types || types.includes(L.type);
@@ -430,7 +431,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
           placement({ y: 30 }),
           h('div', { class: 'grid3' }, b.color('Numbers', g('numColor'), T((o, v) => (o.numColor = v))), b.color('Playing note', g('hiColor'), T((o, v) => (o.hiColor = v))), b.color('Strings', g('lineColor'), T((o, v) => (o.lineColor = v)))),
           h('div', { class: 'grid2' }, b.color('Background', g('bg'), T((o, v) => (o.bg = v))), b.range('Background opacity', g('bgOpacity', 0.55), T((o, v) => (o.bgOpacity = v)), { min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` })),
-          b.select('Font', g('font'), T((o, v) => (o.font = v)), fontOptions()),
+          fontField ? fontField(b, 'Font', g('font'), T((o, v) => (o.font = v))) : b.select('Font', g('font'), T((o, v) => (o.font = v)), fontOptions()),
           b.toggle('Show tuning letters', g('showTuning'), T((o, v) => (o.showTuning = v))),
           b.toggle('Show techniques (PM, h, /, bends, ~)', g('showMarks'), T((o, v) => (o.showMarks = v))),
         ),
@@ -544,8 +545,33 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       common,
       field('Reacts to', srcSel, 'Pick a stem (drums, bass, vocals…) or the whole song. Upload stems in the Audio tab.'),
       button('Upload stems', async () => importFiles(await pickFiles('audio/*', true)), { iconName: 'upload', variant: 'ghost sm' }),
-      h('p', { class: 'muted tiny' }, !recV ? 'No audio chosen yet.' : feat === undefined ? 'Analysing the audio…' : feat ? `Ready: ${feat.duration.toFixed(1)}s analysed.` : 'Could not read this audio file.'),
+      h('p', { class: 'muted tiny' }, !recV ? (isPoly(L.style) ? 'Audio is optional for this style: it only adds a glow on loud moments.' : 'No audio chosen yet.') : feat === undefined ? 'Analysing the audio…' : feat ? `Ready: ${feat.duration.toFixed(1)}s analysed.` : 'Could not read this audio file.'),
       section('Style', styleGrid),
+      isPoly(L.style)
+        ? (() => {
+            const T = polyTiming({ beats: p.beats, bpm: L.bpm, bars: L.bars ?? (L.style === 'arcs' ? 4 : 1), beatsPerBar: L.beatsPerBar || 4, followSong: L.followSong !== false }, 0);
+            const counts = parseRatios(L.ratios || POLY_DEFAULTS[L.style]);
+            const presets = L.style === 'polymeter' ? ['4, 5, 7', '3, 4', '4, 5, 6, 7', '5, 7, 9', '3, 5, 7, 11'] : L.style === 'arcs' ? ['1-12', '1-8', '2-16', '3, 4, 5, 7'] : ['3, 4, 5, 6', '3, 4', '2, 3', '3, 5, 7', '3-9'];
+            return section(
+              L.style === 'polymeter' ? 'Polymeter' : 'Polyrhythm',
+              h('p', { class: 'muted small' }, L.style === 'polymeter' ? 'Each row is a loop of that many steps. Every row moves one step per pulse, so the rows only meet again after they all come round together.' : `Each voice hits that many times per cycle, all in the same span of time: ${counts.join(' against ')}.`),
+              b.text(L.style === 'polymeter' ? 'Row lengths' : 'Hits per voice', g('ratios', POLY_DEFAULTS[L.style]), set((x, v) => (x.ratios = v)), { placeholder: 'e.g. 3, 4, 5 or 2-9' }),
+              h('div', { class: 'chips' }, presets.map((pr) => button(pr, () => store.update(set((x) => (x.ratios = pr))), { variant: `chip${(L.ratios || POLY_DEFAULTS[L.style]) === pr ? ' on' : ''}` }))),
+              h(
+                'div',
+                { class: 'grid2' },
+                L.style === 'polymeter'
+                  ? b.select('Pulse', g('pulse', 2), set((x, v) => (x.pulse = +v)), [[1, 'Quarter notes'], [2, 'Eighth notes'], [3, 'Triplets'], [4, 'Sixteenth notes']])
+                  : b.select('Cycle', g('bars', L.style === 'arcs' ? 4 : 1), set((x, v) => (x.bars = +v)), [[0.5, 'Half a bar'], [1, '1 bar'], [2, '2 bars'], [4, '4 bars'], [8, '8 bars']]),
+                b.select('Beats per bar', g('beatsPerBar', 4), set((x, v) => (x.beatsPerBar = +v)), [[3, '3'], [4, '4'], [5, '5'], [6, '6'], [7, '7']]),
+              ),
+              b.toggle('Follow the song’s tempo', g('followSong', true), set((x, v) => (x.followSong = v))),
+              L.followSong === false || !p.beats ? b.number('Tempo (BPM)', g('bpm', 120), set((x, v) => (x.bpm = Math.max(20, Math.min(300, +v || 120)))), { step: 1 }) : null,
+              h('p', { class: 'muted tiny' }, T.fromSong ? `Locked to the song: ${T.bpm} BPM from Audio → Detect BPM.` : p.beats ? `Running at ${T.bpm} BPM.` : `Running at ${T.bpm} BPM. Detect the song’s tempo in Audio → Detect BPM to lock it to the music.`),
+              h('div', { class: 'grid2' }, b.toggle('Rainbow colours', g('polyRainbow', true), set((x, v) => (x.polyRainbow = v))), b.toggle('Show the numbers', g('showLabels', true), set((x, v) => (x.showLabels = v)))),
+            );
+          })()
+        : null,
       section(
         'Look',
         h('div', { class: 'grid2' }, b.color('Color', g('color'), set((x, v) => (x.color = v))), b.color('Second color', g('color2'), set((x, v) => (x.color2 = v)))),

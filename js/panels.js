@@ -263,7 +263,90 @@ export function createPanels({ store, engine, ui }) {
     }
     return TAB_ALIASES[id] || [id];
   }
-  const layerCtx = () => ({ store, engine, ui, importFiles, fontOptions, kf });
+  // ---- your own fonts: upload once, then they're in every font menu (saved with your media)
+  const FONT_ACCEPT = '.ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2';
+  async function addFonts(apply) {
+    const files = await pickFiles(FONT_ACCEPT, true);
+    if (!files.length) return;
+    const fonts = files.filter((f) => /\.(ttf|otf|woff2?)$/i.test(f.name) || (f.type || '').startsWith('font/'));
+    const skipped = files.length - fonts.length;
+    const before = new Set(media.all().map((m) => m.id));
+    await importFiles(fonts);
+    const added = media.all().filter((m) => m.kind === 'font' && !before.has(m.id));
+    if (skipped) toast(`${added.length ? `Added ${added.map((m) => `“${m.family}”`).join(', ')}. ` : ''}Skipped ${skipped} file${skipped === 1 ? '' : 's'}: not a TTF, OTF, WOFF or WOFF2 font.`, added.length ? 'info' : 'error', 6000);
+    if (added.length && apply) apply(added[0].family);
+    ui.refreshPanels(true);
+  }
+  /** A font menu with an "Add a font" button that uploads one and picks it right away. */
+  function fontField(b, label, get, set) {
+    return h(
+      'div',
+      { class: 'font-field' },
+      b.select(label, get, set, fontOptions()),
+      button('Add a font', () => addFonts((family) => store.update((d) => set(d, family))), { iconName: 'plus', variant: 'sm ghost', title: 'Upload a TTF, OTF, WOFF or WOFF2 file. It joins every font menu.' }),
+    );
+  }
+  /** Where a font is used in this video: lyrics, texts, the end card, tab layers. */
+  function fontUses(family) {
+    const p = store.get();
+    let n = 0;
+    if (p.lyricStyle.font === family) n++;
+    n += p.texts.filter((t) => t.font === family).length;
+    n += p.lyrics.filter((l) => l.style && l.style.font === family).length;
+    if (p.endCard.font === family) n++;
+    n += (p.layers || []).filter((l) => l.font === family).length;
+    return n;
+  }
+  function buildFonts() {
+    const fonts = media.all().filter((m) => m.kind === 'font' && m.family);
+    const useAll = (family) => {
+      store.update((d) => {
+        d.lyricStyle.font = family;
+        for (const t of d.texts) t.font = family;
+        d.endCard.font = family;
+      });
+      toast(`“${family}” is now on the lyrics, every text and the end card. Undo (Ctrl+Z) to go back.`);
+    };
+    const remove = (rec) => {
+      const n = fontUses(rec.family);
+      if (!confirm(`Delete the font “${rec.family}”?${n ? ` ${n} thing${n === 1 ? '' : 's'} in this video use${n === 1 ? 's' : ''} it and will switch to Bebas Neue.` : ''}`)) return;
+      store.update((d) => {
+        const swap = (o) => o && o.font === rec.family && (o.font = 'Bebas Neue');
+        swap(d.lyricStyle);
+        d.texts.forEach(swap);
+        d.lyrics.forEach((l) => swap(l.style));
+        swap(d.endCard);
+        (d.layers || []).forEach(swap);
+      });
+      removeMedia(rec.id);
+      ui.refreshPanels(true);
+    };
+    return h(
+      'div',
+      {},
+      h('p', { class: 'muted small' }, 'Upload TTF, OTF, WOFF or WOFF2 files. They’re saved in this browser and show up in every font menu: text, lyrics, the end card and tab layers.'),
+      fonts.length
+        ? h(
+            'div',
+            { class: 'font-list' },
+            fonts.map((rec) => {
+              const n = fontUses(rec.family);
+              return h(
+                'div',
+                { class: 'font-row' },
+                h('div', { class: 'font-sample', style: { fontFamily: `"${rec.family}", sans-serif` } }, store.get().endCard.artist && store.get().endCard.artist !== 'Artist Name' ? store.get().endCard.artist : 'OUT NOW'),
+                h('div', { class: 'font-meta' }, h('strong', {}, rec.family), h('span', { class: 'muted tiny' }, `${rec.name}${n ? ` · used ${n}×` : ''}`)),
+                h('div', { class: 'row' }, button('Use everywhere', () => useAll(rec.family), { variant: 'sm', title: 'Put it on the lyrics, every text and the end card' }), iconButton('trash', `Delete ${rec.family}`, () => remove(rec), 'ghost danger')),
+              );
+            }),
+          )
+        : null,
+      button(fonts.length ? 'Add more fonts' : 'Add a font', () => addFonts(), { iconName: 'upload', variant: fonts.length ? 'sm' : 'primary' }),
+      h('p', { class: 'muted tiny' }, 'Only use fonts you’re allowed to use in videos. Free ones: Google Fonts, Font Squirrel.'),
+    );
+  }
+
+  const layerCtx = () => ({ store, engine, ui, importFiles, fontOptions, fontField, kf });
 
   // ---------------------------------------------------------------- START (stacked ideas)
   function buildStart(b) {
@@ -1484,7 +1567,7 @@ export function createPanels({ store, engine, ui }) {
         h('div', { class: 'lbl' }, 'How lyrics are shown'),
         displayGrid,
         presetRow,
-        b.select('Font', (p) => p.lyricStyle.font, s((o, v) => (o.font = v)), fontOptions()),
+        fontField(b, 'Font', (p) => p.lyricStyle.font, s((o, v) => (o.font = v))),
         display === 'line' ? b.select('Entrance', (p) => p.lyricStyle.animation, s((o, v) => (o.animation = v)), ANIMATIONS) : null,
         display === 'line'
           ? h('div', { class: 'grid2' },
@@ -1725,6 +1808,7 @@ export function createPanels({ store, engine, ui }) {
       {},
       section('Add text', h('p', { class: 'muted small' }, 'Titles and hooks that sit on top of the video. They start at the playhead; drag them on the Text track.'), h('div', { class: 'chips' }, presets.map((t) => button(t, () => add(t), { variant: 'chip' }))), button('Blank text', () => add('Your text'), { iconName: 'plus', variant: 'primary' })),
       p.texts.length ? section('On this video', list) : null,
+      section('Your fonts', buildFonts()),
     );
   }
 
@@ -1812,7 +1896,7 @@ export function createPanels({ store, engine, ui }) {
         'End card look',
         b.segmented('Background', (p) => p.endCard.background, e((o, v) => (o.background = v)), [['blur', 'Blurred cover'], ['color', 'Color'], ['video', 'Dimmed video']]),
         h('div', { class: 'grid3' }, b.color('Background', (p) => p.endCard.bgColor, e((o, v) => (o.bgColor = v))), b.color('Accent', (p) => p.endCard.accent, e((o, v) => (o.accent = v))), b.color('Text', (p) => p.endCard.textColor, e((o, v) => (o.textColor = v)))),
-        b.select('Title font', (p) => p.endCard.font, e((o, v) => (o.font = v)), fontOptions()),
+        fontField(b, 'Title font', (p) => p.endCard.font, e((o, v) => (o.font = v))),
         b.select('Entrance', (p) => p.endCard.animation, e((o, v) => (o.animation = v)), END_ANIMATIONS),
         button('Preview end card', () => {
           const p = store.get();
@@ -2138,7 +2222,7 @@ export function createPanels({ store, engine, ui }) {
       chips,
       hasLineStyle(line)
         ? h('div', {},
-            b.select('Font', () => cur().font, edit('font'), fontOptions()),
+            fontField(b, 'Font', () => cur().font, edit('font')),
             b.range('Size', () => cur().size, edit('size'), { min: 2.5, max: 18, step: 0.1, fmt: (v) => Number(v).toFixed(1) }),
             h('div', { class: 'grid2' }, b.color('Text', () => cur().color, edit('color')), b.color('Highlight', () => cur().highlight, edit('highlight'))),
             h('div', { class: 'grid2' }, b.color('Outline', () => cur().outline, edit('outline')), b.range('Outline width', () => cur().outlineWidth || 0, edit('outlineWidth'), { min: 0, max: 2, step: 0.05, fmt: (v) => Number(v).toFixed(2) })),
@@ -2417,7 +2501,7 @@ export function createPanels({ store, engine, ui }) {
         h('div', { class: 'insp-title' }, icon('type', 16), h('span', {}, 'Text overlay')),
         b.text('Text', () => get().text, T((x, v) => (x.text = v)), { multiline: true, rows: 2 }),
         h('div', { class: 'grid2' }, b.number('Start (s)', () => get().start, T((x, v) => ((x.start = v), x.end <= v && (x.end = v + 0.5))), { min: 0, step: 0.05 }), b.number('End (s)', () => get().end, T((x, v) => (x.end = Math.max(x.start + 0.1, v))), { min: 0, step: 0.05 })),
-        b.select('Font', () => get().font, T((x, v) => (x.font = v)), fontOptions()),
+        fontField(b, 'Font', () => get().font, T((x, v) => (x.font = v))),
         b.select('Entrance', () => get().animation, T((x, v) => (x.animation = v)), ANIMATIONS.filter(([k]) => k !== 'karaoke')),
         h('div', { class: 'grid2' },
           b.select('Exit', () => get().outAnimation || '', T((x, v) => (x.outAnimation = v)), TEXT_EXITS),
