@@ -1,0 +1,217 @@
+// Songs: one page per song with tabs for the overview, lyrics, video shoot, release checklist and
+// its content plan. "Make a promo" hands the song to the video studio.
+import { h, icon, button, iconButton, toast } from '../dom.js';
+import { SONG_STATUSES, TASK_CATS, newSong, taskDue, releaseProgress, releaseChecklist, niceDate, daysBetween, mid } from './model.js';
+import { hookLines, planPosts } from './ideas.js';
+import { buildShootTab } from './page-shoot.js';
+
+const TABS = [
+  ['overview', 'Overview'],
+  ['lyrics', 'Lyrics'],
+  ['shoot', 'Video shoot'],
+  ['release', 'Release'],
+  ['content', 'Content'],
+];
+export const POST_STATUSES = [['idea', 'Idea'], ['filmed', 'Filmed'], ['edited', 'Edited'], ['scheduled', 'Scheduled'], ['posted', 'Posted']];
+const statusLabel = (k) => (SONG_STATUSES.find(([v]) => v === k) || [k, k])[1];
+
+export function buildSongs(ctx) {
+  const m = ctx.store.get();
+  const song = ctx.view.id && m.songs.find((s) => s.id === ctx.view.id);
+  return song ? songPage(ctx, song) : songList(ctx);
+}
+
+function songList(ctx) {
+  const m = ctx.store.get();
+  const add = () => {
+    const s = newSong('New song');
+    ctx.update((d) => d.songs.unshift(s));
+    ctx.go('songs', s.id, 'overview');
+  };
+  const order = Object.fromEntries(SONG_STATUSES.map(([k], i) => [k, i]));
+  const songs = [...m.songs].sort((a, b) => (a.releaseDate || '9999').localeCompare(b.releaseDate || '9999') || order[a.status] - order[b.status]);
+  return h(
+    'div',
+    { class: 'mgr-page' },
+    h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, 'Songs'), h('p', { class: 'muted' }, 'Lyrics, the video shoot, the release checklist and the content plan for each song.')), button('New song', add, { iconName: 'plus', variant: 'primary' })),
+    songs.length
+      ? h(
+          'div',
+          { class: 'mgr-grid' },
+          songs.map((s) => {
+            const p = releaseProgress(s);
+            const days = s.releaseDate ? daysBetween(ctx.today(), s.releaseDate) : null;
+            return h(
+              'button',
+              { type: 'button', class: 'mgr-card', onclick: () => ctx.go('songs', s.id, 'overview') },
+              h('span', { class: `mgr-chip st-${s.status}` }, statusLabel(s.status)),
+              h('strong', {}, s.title),
+              h('span', { class: 'muted tiny' }, s.releaseDate ? `${niceDate(s.releaseDate)}${days != null && days >= 0 ? ` · in ${days} days` : ''}` : 'No release date'),
+              h('span', { class: 'mgr-bar' }, h('i', { style: { width: `${p.total ? (100 * p.done) / p.total : 0}%` } })),
+              h('span', { class: 'muted tiny' }, `${p.done}/${p.total} release tasks · ${m.posts.filter((x) => x.songId === s.id).length} posts`),
+            );
+          }),
+        )
+      : h('div', { class: 'mgr-empty' }, h('p', {}, 'No songs yet.'), button('Add your first song', add, { iconName: 'plus', variant: 'primary' })),
+  );
+}
+
+function songPage(ctx, song) {
+  const f = ctx.form;
+  const S = (fn) => (d, v) => {
+    const s = d.songs.find((x) => x.id === song.id);
+    if (s) fn(s, v, d);
+  };
+  const tab = TABS.some(([k]) => k === ctx.view.tab) ? ctx.view.tab : 'overview';
+  const remove = () => {
+    if (!confirm(`Delete “${song.title}” and its plan? Its posts are deleted too.`)) return;
+    ctx.update((d) => {
+      d.songs = d.songs.filter((s) => s.id !== song.id);
+      d.posts = d.posts.filter((p) => p.songId !== song.id);
+    });
+    ctx.go('songs');
+  };
+  const body = { overview: overviewTab, lyrics: lyricsTab, shoot: buildShootTab, release: releaseTab, content: contentTab }[tab](ctx, song, S);
+  return h(
+    'div',
+    { class: 'mgr-page' },
+    h('button', { type: 'button', class: 'link back', onclick: () => ctx.go('songs') }, icon('arrowLeft', 14), 'All songs'),
+    h(
+      'header',
+      { class: 'mgr-head song' },
+      h('div', { class: 'mgr-title' }, f.text(`title-${song.id}`, '', song.title, S((s, v) => (s.title = v.trim() || 'Untitled'))), h('div', { class: 'row' }, f.select(`status-${song.id}`, '', song.status, SONG_STATUSES, S((s, v) => (s.status = v))), h('label', { class: 'mf inline' }, h('span', { class: 'mf-l' }, 'Release date'), f.text(`rel-${song.id}`, '', song.releaseDate, S((s, v) => (s.releaseDate = v)), { type: 'date' })))),
+      h('div', { class: 'row' }, button('Make a promo', () => ctx.studio.openPromo(song), { iconName: 'film', variant: 'primary', title: 'Open the video studio with this song’s title, lyrics and audio' }), iconButton('trash', `Delete “${song.title}”`, remove, 'ghost danger')),
+    ),
+    h('div', { class: 'mgr-tabs', role: 'tablist' }, TABS.map(([k, label]) => h('button', { type: 'button', role: 'tab', 'aria-selected': k === tab ? 'true' : 'false', class: `mgr-tab${k === tab ? ' on' : ''}`, onclick: () => ctx.setTab(k) }, label))),
+    h('div', { class: 'mgr-tabbody', role: 'tabpanel' }, body),
+  );
+}
+
+function overviewTab(ctx, song, S) {
+  const f = ctx.form;
+  const audio = ctx.studio.audioFiles();
+  const p = releaseProgress(song);
+  const posts = ctx.store.get().posts.filter((x) => x.songId === song.id);
+  const link = (k, label, ph) => f.text(`link-${k}-${song.id}`, label, song.links[k], S((s, v) => (s.links[k] = v.trim())), { type: 'url', placeholder: ph });
+  return h(
+    'div',
+    { class: 'mgr-cols' },
+    h(
+      'section',
+      { class: 'mgr-sect' },
+      h('h2', {}, 'At a glance'),
+      h(
+        'ul',
+        { class: 'mgr-facts' },
+        h('li', {}, h('span', {}, 'Release checklist'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('release') }, `${p.done} of ${p.total} done`)),
+        h('li', {}, h('span', {}, 'Video shoot'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('shoot') }, song.shoot.date ? niceDate(song.shoot.date) : song.shoot.concept ? 'Concept picked, no date' : 'Not planned')),
+        h('li', {}, h('span', {}, 'Planned posts'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('content') }, `${posts.length} (${posts.filter((x) => x.status === 'posted').length} posted)`)),
+        h('li', {}, h('span', {}, 'Lyrics'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('lyrics') }, song.lyrics.trim() ? `${song.lyrics.trim().split(/\n+/).length} lines` : 'None yet')),
+      ),
+      h('div', { class: 'mgr-two' }, f.text(`bpm-${song.id}`, 'BPM', song.bpm, S((s, v) => (s.bpm = v)), { type: 'number' }), f.text(`key-${song.id}`, 'Key', song.key, S((s, v) => (s.key = v)), { placeholder: 'e.g. Drop C, D minor' })),
+      f.select(`audio-${song.id}`, 'Song file (for promos)', song.audioId || '', [['', audio.length ? '— pick a file —' : 'Upload audio in Video Studio → Audio'], ...audio.map((a) => [a.id, a.name])], S((s, v) => (s.audioId = v || null))),
+      f.text(`notes-${song.id}`, 'Notes', song.notes, S((s, v) => (s.notes = v)), { rows: 4, placeholder: 'Story behind the song, who wrote what, studio notes…' }),
+    ),
+    h('section', { class: 'mgr-sect' }, h('h2', {}, 'Links'), link('spotify', 'Spotify', 'https://open.spotify.com/track/…'), link('apple', 'Apple Music', 'https://music.apple.com/…'), link('youtube', 'YouTube', 'https://youtu.be/…'), link('bandcamp', 'Bandcamp', 'https://….bandcamp.com/track/…')),
+  );
+}
+
+function lyricsTab(ctx, song, S) {
+  const hooks = hookLines(song.lyrics, 5);
+  return h(
+    'div',
+    { class: 'mgr-cols' },
+    h('section', { class: 'mgr-sect' }, h('h2', {}, 'Lyrics'), ctx.form.text(`lyrics-${song.id}`, '', song.lyrics, S((s, v) => (s.lyrics = v)), { rows: 22, placeholder: 'One line per row. Blank lines between verses are fine.' })),
+    h(
+      'section',
+      { class: 'mgr-sect' },
+      h('h2', {}, 'Lines that work as hooks'),
+      hooks.length ? h('ol', { class: 'mgr-hooks' }, hooks.map((l) => h('li', {}, l))) : h('p', { class: 'muted small' }, 'Add lyrics to see the short, repeated or shouted lines that make the best on-screen hooks.'),
+      h('p', { class: 'muted tiny' }, 'Use them as the first line of a short video, a caption, or the end card. The Video shoot tab suggests concepts from these words.'),
+      button('Send lyrics to the video editor', () => ctx.studio.openPromo(song), { iconName: 'film', variant: 'sm' }),
+    ),
+  );
+}
+
+function releaseTab(ctx, song, S) {
+  const f = ctx.form;
+  const today = ctx.today();
+  const tasks = [...song.release].sort((a, b) => (taskDue(song, a) || `~${a.offset}`).localeCompare(taskDue(song, b) || `~${b.offset}`) || a.offset - b.offset);
+  const T = (id, fn) => S((s, v) => {
+    const t = s.release.find((x) => x.id === id);
+    if (t) fn(t, v);
+  });
+  const addTask = () => ctx.update(S((s) => s.release.push({ id: mid('task'), offset: 0, date: today, cat: 'other', text: 'New task', done: false })));
+  const reset = () => confirm('Put back the standard checklist? Tasks you added are kept; ticked standard tasks are reset.') && ctx.update(S((s) => (s.release = [...s.release.filter((t) => t.date), ...releaseChecklist()])));
+  const rows = tasks.map((t) => {
+    const due = taskDue(song, t);
+    const late = !t.done && due && due < today;
+    return h(
+      'li',
+      { class: `mgr-task${t.done ? ' done' : ''}${late ? ' late' : ''}` },
+      f.check(`done-${t.id}`, t.done, T(t.id, (x, v) => (x.done = v)), `Done: ${t.text}`),
+      h('span', { class: 'mgr-when' }, due ? niceDate(due, { weekday: false }) : t.offset === 0 ? 'Release day' : `${Math.abs(t.offset)} days ${t.offset < 0 ? 'before' : 'after'}`),
+      f.text(`task-${t.id}`, '', t.text, T(t.id, (x, v) => (x.text = v))),
+      h('span', { class: 'mgr-chip' }, TASK_CATS[t.cat] || 'Other'),
+      t.date ? f.text(`tdate-${t.id}`, '', t.date, T(t.id, (x, v) => (x.date = v)), { type: 'date' }) : null,
+      iconButton('trash', `Delete “${t.text}”`, () => ctx.update(S((s) => (s.release = s.release.filter((x) => x.id !== t.id)))), 'ghost'),
+    );
+  });
+  const p = releaseProgress(song);
+  return h(
+    'section',
+    { class: 'mgr-sect' },
+    h('h2', {}, `Release checklist · ${p.done}/${p.total}`),
+    song.releaseDate ? h('p', { class: 'muted small' }, `Counted back from ${niceDate(song.releaseDate)}. Change the release date above and every date moves with it.`) : h('p', { class: 'warn-list' }, 'Set a release date above to put dates on these tasks.'),
+    h('ul', { class: 'mgr-tasks' }, rows),
+    h('div', { class: 'row' }, button('Add a task', addTask, { iconName: 'plus', variant: 'sm' }), button('Put back the standard checklist', reset, { variant: 'sm ghost' })),
+  );
+}
+
+function contentTab(ctx, song) {
+  const f = ctx.form;
+  const posts = ctx.store.get().posts.filter((p) => p.songId === song.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const P = (id, fn) => (d, v) => {
+    const p = d.posts.find((x) => x.id === id);
+    if (p) fn(p, v);
+  };
+  const plan = () => {
+    if (!song.releaseDate) return toast('Set a release date first.', 'error');
+    const fresh = planPosts(song);
+    if (posts.length && !confirm(`Add ${fresh.length} more planned posts around release day?`)) return;
+    ctx.update((d) => d.posts.push(...fresh));
+    toast(`${fresh.length} posts planned around ${niceDate(song.releaseDate)}`);
+  };
+  const add = () => ctx.update((d) => d.posts.push({ id: mid('post'), songId: song.id, date: ctx.today(), platform: 'TikTok', format: 'other', title: 'New post', hook: '', idea: '', status: 'idea', url: '', stats: null }));
+  return h(
+    'section',
+    { class: 'mgr-sect' },
+    h('h2', {}, `Short-form plan · ${posts.length} posts`),
+    h('p', { class: 'muted small' }, 'The plan follows the posting playbook: snippet and “use this sound” before release, the hook and a share ask on release day, then riffs, live takes and the story behind the song.'),
+    h('div', { class: 'row' }, button('Plan posts around release day', plan, { iconName: 'wand', variant: 'sm primary' }), button('Add a post', add, { iconName: 'plus', variant: 'sm' })),
+    posts.length
+      ? h(
+          'table',
+          { class: 'mgr-table' },
+          h('thead', {}, h('tr', {}, ['Date', 'Post', 'Hook line', 'Where', 'Status', 'Link', ''].map((c) => h('th', {}, c)))),
+          h(
+            'tbody',
+            {},
+            posts.map((p) =>
+              h(
+                'tr',
+                {},
+                h('td', {}, f.text(`pdate-${p.id}`, '', p.date, P(p.id, (x, v) => (x.date = v)), { type: 'date' })),
+                h('td', {}, f.text(`ptitle-${p.id}`, '', p.title, P(p.id, (x, v) => (x.title = v))), p.idea ? h('span', { class: 'muted tiny' }, p.idea) : null),
+                h('td', {}, f.text(`phook-${p.id}`, '', p.hook, P(p.id, (x, v) => (x.hook = v)))),
+                h('td', {}, f.text(`pplat-${p.id}`, '', p.platform, P(p.id, (x, v) => (x.platform = v)))),
+                h('td', {}, f.select(`pst-${p.id}`, '', p.status, POST_STATUSES, P(p.id, (x, v) => (x.status = v)))),
+                h('td', {}, f.text(`purl-${p.id}`, '', p.url, P(p.id, (x, v) => (x.url = v.trim())), { type: 'url', placeholder: 'Paste the post link' })),
+                h('td', {}, iconButton('trash', `Delete “${p.title}”`, () => ctx.update((d) => (d.posts = d.posts.filter((x) => x.id !== p.id))), 'ghost')),
+              ),
+            ),
+          ),
+        )
+      : h('p', { class: 'muted small' }, 'No posts planned yet.'),
+  );
+}

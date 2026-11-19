@@ -1,5 +1,5 @@
 // App shell: layout, wiring, keyboard shortcuts and autosave.
-import { ASPECTS, clipAt, splitClip, formatTime, clamp } from './core.js';
+import { ASPECTS, clipAt, splitClip, formatTime, clamp, linesFromText, timelineToSong } from './core.js';
 import { createStore, newProject, loadProject, saveProject, FONTS, findClip } from './state.js';
 import { media, restoreMedia } from './media.js';
 import { Engine } from './engine.js';
@@ -12,6 +12,7 @@ import { buildTabStudio } from './page-tabstudio.js';
 import { buildCarouselPage } from './page-carousel.js';
 import { createPostCheck } from './panel-postcheck.js';
 import { createTips } from './panel-tips.js';
+import { createManager } from './manager/shell.js';
 import { loadSettings } from './state.js';
 
 const store = createStore(loadProject() || newProject());
@@ -63,24 +64,28 @@ const aspectSel = h('select', { class: 'aspect', 'aria-label': 'Format' }, Objec
 aspectSel.addEventListener('change', () => store.update((d) => (d.aspect = aspectSel.value)));
 
 const postSlot = h('span');
+// Manager | Video Studio: two workspaces in one app
+const MODE_KEY = 'pvm.mode.v1';
+const modeBtn = (id, label, ic) => h('button', { type: 'button', role: 'tab', class: 'mode-btn', 'data-mode': id, onclick: () => setMode(id) }, icon(ic, 16), h('span', {}, label));
+const modeSwitch = h('div', { class: 'mode-switch', role: 'tablist', 'aria-label': 'Workspace' }, modeBtn('manager', 'Manager', 'users'), modeBtn('studio', 'Video Studio', 'film'));
+const studioOnly = (...els) => h('div', { class: 'studio-only' }, ...els);
 const header = h(
   'header',
   { class: 'topbar' },
   h('div', { class: 'brand' }, icon('disc', 22), h('span', {}, 'Promo Studio')),
-  nameInput,
-  aspectSel,
-  undoBtn,
-  redoBtn,
-  saveState,
+  modeSwitch,
+  studioOnly(nameInput, aspectSel, undoBtn, redoBtn, saveState),
   h('div', { class: 'spacer' }),
-  postSlot,
-  button('New project', () => {
-    if (!confirm('Start a new project? Your media library is kept; the current edit is replaced.')) return;
-    store.replace(newProject());
-    ui.select(null);
-    engine.seek(0);
-  }, { variant: 'ghost' }),
-  button('Export', () => ui.openTab('export'), { iconName: 'download', variant: 'primary' }),
+  studioOnly(
+    postSlot,
+    button('New project', () => {
+      if (!confirm('Start a new project? Your media library is kept; the current edit is replaced.')) return;
+      store.replace(newProject());
+      ui.select(null);
+      engine.seek(0);
+    }, { variant: 'ghost' }),
+    button('Export', () => ui.openTab('export'), { iconName: 'download', variant: 'primary' }),
+  ),
 );
 
 const zoom = h('input', { type: 'range', min: 10, max: 300, step: 1, 'aria-label': 'Timeline zoom' });
@@ -104,8 +109,10 @@ const tlToolbar = h(
 const timelineRoot = h('section', { class: 'timeline', 'aria-label': 'Timeline' }, tlToolbar);
 const pageEl = h('div', { class: 'page-overlay', hidden: true, role: 'region', 'aria-label': 'Inspiration' });
 
+const managerRoot = h('div', { class: 'manager', role: 'region', 'aria-label': 'Band manager' });
 app.append(
   header,
+  managerRoot,
   h('main', { class: 'workspace' }, tabRail, leftPanel, h('div', { class: 'center' }, stage, transport), inspector, pageEl),
   timelineRoot,
 );
@@ -412,6 +419,19 @@ new ResizeObserver(() => {
 
 // ------------------------------------------------------------ keyboard
 window.addEventListener('keydown', (e) => {
+  if (mode === 'manager') {
+    const t = (e.target.tagName || '').toUpperCase();
+    if (/INPUT|TEXTAREA|SELECT/.test(t)) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) manager.redo();
+      else manager.undo();
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+      e.preventDefault();
+      manager.redo();
+    }
+    return;
+  }
   const tag = (e.target.tagName || '').toUpperCase();
   const typing = /INPUT|TEXTAREA|SELECT/.test(tag) && !(e.target.type === 'range' || e.target.type === 'checkbox');
   if (panels.sync.active) {
@@ -499,6 +519,51 @@ window.addEventListener('drop', (e) => {
   panels.importFiles([...e.dataTransfer.files]);
 });
 
+// ------------------------------------------------------------ manager workspace
+const manager = createManager({
+  root: managerRoot,
+  studio: {
+    audioFiles: () => media.all().filter((m) => m.kind === 'audio').map((m) => ({ id: m.id, name: m.name })),
+    /** Put a song's title, lyrics and audio into the video edit, then switch to the studio. */
+    openPromo(song) {
+      const p = store.get();
+      const rec = song.audioId && media.get(song.audioId);
+      const parts = ['title', song.lyrics.trim() && 'lyrics', rec && 'song file'].filter(Boolean);
+      if ((p.clips.length || p.lyrics.length) && !confirm(`Use “${song.title}” in the current video edit? Its ${parts.join(', ')} replace the edit’s. Undo (Ctrl+Z) in the studio puts them back.`)) return;
+      if (rec) panels.actions.useSong(rec);
+      store.update((d) => {
+        d.name = `${song.title} promo`;
+        d.endCard.title = song.title;
+        const band = manager.store.get().band.name;
+        if (band) d.endCard.artist = band;
+        if (song.lyrics.trim()) d.lyrics = linesFromText(song.lyrics, +(timelineToSong(0, d.song) + 0.5).toFixed(2), 2.5);
+        d.managerSongId = song.id;
+      });
+      setMode('studio');
+      ui.openTab(song.lyrics.trim() ? 'lyrics' : 'start');
+      toast(`“${song.title}” is in the editor${song.lyrics.trim() ? '. Next: tap along to sync the lyrics.' : '.'}`, 'info', 5000);
+    },
+  },
+});
+let mode = localStorage.getItem(MODE_KEY) === 'manager' ? 'manager' : 'studio';
+function setMode(m) {
+  mode = m;
+  localStorage.setItem(MODE_KEY, m);
+  document.body.classList.toggle('mode-manager', m === 'manager');
+  managerRoot.hidden = m !== 'manager';
+  for (const b of modeSwitch.children) {
+    const on = b.dataset.mode === m;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  }
+  if (m === 'manager') manager.show();
+  else {
+    fitStage();
+    timeline.render();
+    engine.render();
+  }
+}
+
 // ------------------------------------------------------------ boot
 async function boot() {
   // a tab id saved by an older version (media, stock, layers…) opens its new home
@@ -523,9 +588,10 @@ async function boot() {
   timeline.render();
   engine.seek(engine.t);
   showPage();
+  setMode(mode);
   document.body.classList.add('ready');
 }
 boot();
 
 // exposed for the automated browser checks in test/
-window.__pvm = { store, engine, ui, media, panels };
+window.__pvm = { store, engine, ui, media, panels, manager, setMode };
