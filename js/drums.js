@@ -3,6 +3,7 @@
 import { timedBeats } from './tab.js';
 import { glowPass, frost } from './canvasfx.js';
 import { energyEnvelope } from './core.js';
+import { kitLayout, drawStageKit, drawSticks, stickPose, HANDS, REST } from './drumkit.js';
 
 export const LANES = [
   { id: 'crash', label: 'Crash', color: '#ff8c42' },
@@ -826,322 +827,349 @@ function drawKit(ctx, W, H, layer, data, dt) {
   const tomHit = recent.get('tom');
   const tomPiece = tomHit ? tomHit.index % 3 : -1;
 
-  // stands
-  ctx.strokeStyle = 'rgba(200,200,220,0.35)';
-  ctx.lineWidth = Math.max(1, U * 0.006);
-  const stand = (x, y1, y2) => {
-    ctx.beginPath();
-    ctx.moveTo(x, y1);
-    ctx.lineTo(x, y2);
-    ctx.stroke();
-  };
-  const [crx, cry] = P(0.14, 0.2);
-  const [rdx, rdy] = P(0.88, 0.22);
-  const [hhx, hhy] = P(0.05, 0.42);
-  stand(crx, cry, by + bh * 0.95);
-  stand(rdx, rdy, by + bh * 0.95);
-  stand(hhx, hhy, by + bh * 0.95);
-
-  const G = glowPass(ctx, bx, by, bw, bh, U * 0.04);
-  const glowEllipse = (x, y, rx, ry, rot, col, e) =>
-    G.add((g) => {
-      g.fillStyle = col;
-      g.globalAlpha = 0.12 + 0.88 * e;
-      g.beginPath();
-      g.ellipse(x, y, rx * (1.1 + 0.25 * e), ry * (1.3 + 0.5 * e), rot, 0, Math.PI * 2);
-      g.fill();
-    });
-  const ripple = (x, y, rx, ry, col, age) => {
-    if (age > 0.5) return;
-    const k = age / 0.5;
-    ctx.strokeStyle = rgba(col, 0.8 * (1 - k));
-    ctx.lineWidth = Math.max(1, U * 0.006 * (1 - k));
-    ctx.beginPath();
-    ctx.ellipse(x, y, rx * (1 + k * 0.9), ry * (1 + k * 0.9), 0, 0, Math.PI * 2);
-    ctx.stroke();
-  };
-  const cymbal = (lane, x, y, rx, tilt) => {
-    const { e, age } = energy(lane);
-    const col = laneColor(layer, lane);
-    const swing = e * 10 * Math.sin(age * 22);
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(((tilt + swing) * Math.PI) / 180);
-    glowEllipse(x, y, rx, rx * 0.16, ((tilt + swing) * Math.PI) / 180, col, e);
-    const g = ctx.createLinearGradient(-rx, 0, rx, 0);
-    g.addColorStop(0, rgba(col, 0.35 + 0.5 * e));
-    g.addColorStop(0.5, rgba('#ffffff', 0.25 + 0.6 * e));
-    g.addColorStop(1, rgba(col, 0.35 + 0.5 * e));
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rx, rx * 0.16, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = rgba('#ffffff', 0.5);
-    ctx.beginPath();
-    ctx.ellipse(0, -rx * 0.03, rx * 0.12, rx * 0.05, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    ripple(x, y, rx, rx * 0.16, col, age);
-  };
-  const METAL = '#c8ccd8';
-  // A drum seen from the front and a little above: a lit cylinder (shell) with lugs, a hoop at
-  // each end and the head on top. The shell takes a dark wrap tinted by the drum's colour.
-  const drum = (lane, x, y, rx, ry, depth, e, age, label) => {
-    const col = laneColor(layer, lane);
-    const wrap = mixHex(chromeOf(layer).shell, col, 0.35);
-    const s = 1 + 0.06 * e;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(s, s);
-    // shell body: the sides plus the front half of the bottom edge
-    const body = () => {
+  const L = kitLayout(bx, by, bw, bh);
+  const colors = Object.fromEntries(['kick', 'snare', 'hihat', 'tom', 'crash', 'ride'].map((k) => [k, laneColor(layer, k)]));
+  // each hand's last and next hit, for the sticks
+  const tips = {};
+  if (layer.sticks !== false) {
+    for (const [hand, lanes] of Object.entries(HANDS)) {
+      let last = null;
+      for (const ln of lanes) {
+        const r = recent.get(ln);
+        if (r && (!last || r.time > last.time)) last = { lane: ln, time: r.time, index: r.index };
+      }
+      let next = null;
+      for (let i = first(data.hits, dt + 1e-6); i < data.hits.length && data.hits[i].time < dt + 0.2; i++) {
+        if (lanes.includes(data.hits[i].lane)) {
+          next = { lane: data.hits[i].lane, time: data.hits[i].time, index: i };
+          break;
+        }
+      }
+      tips[hand] = stickPose(L, last, next, dt, REST[hand]);
+    }
+  }
+  if (layer.kitFinish === 'stage') {
+    const hitOf = (lane, piece) => (lane === 'tom' ? (piece === tomPiece ? energy('tom') : { e: 0, age: 9 }) : energy(lane));
+    drawStageKit(ctx, L, layer, hitOf, dt, tips, colors);
+  } else {
+    // stands
+    ctx.strokeStyle = 'rgba(200,200,220,0.35)';
+    ctx.lineWidth = Math.max(1, U * 0.006);
+    const stand = (x, y1, y2) => {
       ctx.beginPath();
-      ctx.moveTo(-rx, 0);
-      ctx.lineTo(-rx, depth);
-      ctx.ellipse(0, depth, rx, ry, 0, Math.PI, 0, true);
-      ctx.lineTo(rx, 0);
-      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI, false);
-      ctx.closePath();
+      ctx.moveTo(x, y1);
+      ctx.lineTo(x, y2);
+      ctx.stroke();
     };
-    const sg = ctx.createLinearGradient(-rx, 0, rx, 0);
-    sg.addColorStop(0, mixHex(wrap, '#000000', 0.55));
-    sg.addColorStop(0.28, mixHex(wrap, '#ffffff', 0.28 + 0.3 * e));
-    sg.addColorStop(0.42, wrap);
-    sg.addColorStop(0.85, mixHex(wrap, '#000000', 0.35));
-    sg.addColorStop(1, mixHex(wrap, '#000000', 0.6));
-    ctx.fillStyle = sg;
-    body();
-    ctx.fill();
-    // a thin sheen line down the shell, like a lacquered finish
-    ctx.strokeStyle = rgba('#ffffff', 0.18 + 0.3 * e);
-    ctx.lineWidth = Math.max(1, rx * 0.04);
-    ctx.beginPath();
-    ctx.moveTo(-rx * 0.45, ry * 0.9);
-    ctx.lineTo(-rx * 0.45, depth + ry * 0.9);
-    ctx.stroke();
-    // lugs: small chrome blocks around the front of the shell
-    const lugs = 5;
-    for (let i = 0; i < lugs; i++) {
-      const a = Math.PI * (0.12 + (0.76 * i) / (lugs - 1));
-      const lx = -Math.cos(a) * rx;
-      const ly = Math.sin(a) * ry;
-      const w = Math.max(1.5, rx * 0.07 * Math.sin(a));
-      const top = depth > ry * 2.2 ? depth * 0.22 : depth * 0.12;
-      const len = depth > ry * 2.2 ? depth * 0.56 : depth * 0.76;
-      ctx.fillStyle = rgba(METAL, 0.85);
-      ctx.fillRect(lx - w / 2, ly + top, w, len);
+    const [crx, cry] = P(0.14, 0.2);
+    const [rdx, rdy] = P(0.88, 0.22);
+    const [hhx, hhy] = P(0.05, 0.42);
+    stand(crx, cry, by + bh * 0.95);
+    stand(rdx, rdy, by + bh * 0.95);
+    stand(hhx, hhy, by + bh * 0.95);
+
+    const G = glowPass(ctx, bx, by, bw, bh, U * 0.04);
+    const glowEllipse = (x, y, rx, ry, rot, col, e) =>
+      G.add((g) => {
+        g.fillStyle = col;
+        g.globalAlpha = 0.12 + 0.88 * e;
+        g.beginPath();
+        g.ellipse(x, y, rx * (1.1 + 0.25 * e), ry * (1.3 + 0.5 * e), rot, 0, Math.PI * 2);
+        g.fill();
+      });
+    const ripple = (x, y, rx, ry, col, age) => {
+      if (age > 0.5) return;
+      const k = age / 0.5;
+      ctx.strokeStyle = rgba(col, 0.8 * (1 - k));
+      ctx.lineWidth = Math.max(1, U * 0.006 * (1 - k));
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx * (1 + k * 0.9), ry * (1 + k * 0.9), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    };
+    const cymbal = (lane, x, y, rx, tilt) => {
+      const { e, age } = energy(lane);
+      const col = laneColor(layer, lane);
+      const swing = e * 10 * Math.sin(age * 22);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(((tilt + swing) * Math.PI) / 180);
+      glowEllipse(x, y, rx, rx * 0.16, ((tilt + swing) * Math.PI) / 180, col, e);
+      const g = ctx.createLinearGradient(-rx, 0, rx, 0);
+      g.addColorStop(0, rgba(col, 0.35 + 0.5 * e));
+      g.addColorStop(0.5, rgba('#ffffff', 0.25 + 0.6 * e));
+      g.addColorStop(1, rgba(col, 0.35 + 0.5 * e));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, rx * 0.16, 0, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = rgba('#ffffff', 0.5);
-      ctx.fillRect(lx - w / 2, ly + top, Math.max(0.5, w * 0.35), len);
+      ctx.beginPath();
+      ctx.ellipse(0, -rx * 0.03, rx * 0.12, rx * 0.05, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      ripple(x, y, rx, rx * 0.16, col, age);
+    };
+    const METAL = '#c8ccd8';
+    // A drum seen from the front and a little above: a lit cylinder (shell) with lugs, a hoop at
+    // each end and the head on top. The shell takes a dark wrap tinted by the drum's colour.
+    const drum = (lane, x, y, rx, ry, depth, e, age, label) => {
+      const col = laneColor(layer, lane);
+      const wrap = mixHex(chromeOf(layer).shell, col, 0.35);
+      const s = 1 + 0.06 * e;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(s, s);
+      // shell body: the sides plus the front half of the bottom edge
+      const body = () => {
+        ctx.beginPath();
+        ctx.moveTo(-rx, 0);
+        ctx.lineTo(-rx, depth);
+        ctx.ellipse(0, depth, rx, ry, 0, Math.PI, 0, true);
+        ctx.lineTo(rx, 0);
+        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI, false);
+        ctx.closePath();
+      };
+      const sg = ctx.createLinearGradient(-rx, 0, rx, 0);
+      sg.addColorStop(0, mixHex(wrap, '#000000', 0.55));
+      sg.addColorStop(0.28, mixHex(wrap, '#ffffff', 0.28 + 0.3 * e));
+      sg.addColorStop(0.42, wrap);
+      sg.addColorStop(0.85, mixHex(wrap, '#000000', 0.35));
+      sg.addColorStop(1, mixHex(wrap, '#000000', 0.6));
+      ctx.fillStyle = sg;
+      body();
+      ctx.fill();
+      // a thin sheen line down the shell, like a lacquered finish
+      ctx.strokeStyle = rgba('#ffffff', 0.18 + 0.3 * e);
+      ctx.lineWidth = Math.max(1, rx * 0.04);
+      ctx.beginPath();
+      ctx.moveTo(-rx * 0.45, ry * 0.9);
+      ctx.lineTo(-rx * 0.45, depth + ry * 0.9);
+      ctx.stroke();
+      // lugs: small chrome blocks around the front of the shell
+      const lugs = 5;
+      for (let i = 0; i < lugs; i++) {
+        const a = Math.PI * (0.12 + (0.76 * i) / (lugs - 1));
+        const lx = -Math.cos(a) * rx;
+        const ly = Math.sin(a) * ry;
+        const w = Math.max(1.5, rx * 0.07 * Math.sin(a));
+        const top = depth > ry * 2.2 ? depth * 0.22 : depth * 0.12;
+        const len = depth > ry * 2.2 ? depth * 0.56 : depth * 0.76;
+        ctx.fillStyle = rgba(METAL, 0.85);
+        ctx.fillRect(lx - w / 2, ly + top, w, len);
+        ctx.fillStyle = rgba('#ffffff', 0.5);
+        ctx.fillRect(lx - w / 2, ly + top, Math.max(0.5, w * 0.35), len);
+      }
+      // outline in the drum's colour, brighter on a hit
+      ctx.strokeStyle = rgba(col, 0.55 + 0.45 * e);
+      ctx.lineWidth = Math.max(1.2, U * 0.005);
+      body();
+      ctx.stroke();
+      // bottom hoop (front half)
+      ctx.strokeStyle = rgba(METAL, 0.8);
+      ctx.lineWidth = Math.max(1.5, ry * 0.22);
+      ctx.beginPath();
+      ctx.ellipse(0, depth, rx, ry, 0, 0, Math.PI);
+      ctx.stroke();
+      // head
+      glowEllipse(x, y, rx * s, ry * s, 0, col, e);
+      const hg = ctx.createRadialGradient(-rx * 0.3, -ry * 0.3, 0, 0, 0, rx);
+      hg.addColorStop(0, rgba('#ffffff', 0.35 + 0.6 * e));
+      hg.addColorStop(1, rgba(col, 0.3 + 0.6 * e));
+      ctx.fillStyle = hg;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // top hoop
+      ctx.strokeStyle = rgba(METAL, 0.95);
+      ctx.lineWidth = Math.max(1.5, ry * 0.26);
+      ctx.stroke();
+      ctx.strokeStyle = rgba(col, 0.5 + 0.5 * e);
+      ctx.lineWidth = Math.max(1, ry * 0.1);
+      ctx.stroke();
+      if (label) {
+        ctx.fillStyle = rgba('#ffffff', 0.7);
+        ctx.font = `700 ${Math.round(U * 0.03)}px Inter, system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(label, 0, depth + ry + U * 0.04);
+      }
+      ctx.restore();
+      ripple(x, y, rx, ry, col, age);
+    };
+    // hardware under the drums: a tripod for the snare, legs for the floor tom, arms for the rack toms
+    const legs = (x, y0, y1, spread) => {
+      ctx.strokeStyle = rgba(METAL, 0.45);
+      ctx.lineWidth = Math.max(1, U * 0.006);
+      ctx.beginPath();
+      for (const k of [-1, 0, 1]) {
+        ctx.moveTo(x + k * spread * 0.25, y0);
+        ctx.lineTo(x + k * spread, y1);
+      }
+      ctx.stroke();
+    };
+
+    // hi-hat: two plates that clap shut on a hit
+    {
+      const { e, age } = energy('hihat');
+      const col = laneColor(layer, 'hihat');
+      const gap = U * (0.03 - 0.022 * e);
+      for (const dy of [-gap / 2, gap / 2]) {
+        ctx.save();
+        ctx.translate(hhx, hhy + dy);
+        glowEllipse(hhx, hhy + dy, U * 0.1, U * 0.016, 0, col, e);
+        ctx.fillStyle = rgba(col, 0.35 + 0.55 * e);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, U * 0.1, U * 0.016, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ripple(hhx, hhy, U * 0.1, U * 0.016, col, age);
     }
-    // outline in the drum's colour, brighter on a hit
-    ctx.strokeStyle = rgba(col, 0.55 + 0.45 * e);
-    ctx.lineWidth = Math.max(1.2, U * 0.005);
-    body();
-    ctx.stroke();
-    // bottom hoop (front half)
-    ctx.strokeStyle = rgba(METAL, 0.8);
-    ctx.lineWidth = Math.max(1.5, ry * 0.22);
-    ctx.beginPath();
-    ctx.ellipse(0, depth, rx, ry, 0, 0, Math.PI);
-    ctx.stroke();
-    // head
-    glowEllipse(x, y, rx * s, ry * s, 0, col, e);
-    const hg = ctx.createRadialGradient(-rx * 0.3, -ry * 0.3, 0, 0, 0, rx);
-    hg.addColorStop(0, rgba('#ffffff', 0.35 + 0.6 * e));
-    hg.addColorStop(1, rgba(col, 0.3 + 0.6 * e));
-    ctx.fillStyle = hg;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // top hoop
-    ctx.strokeStyle = rgba(METAL, 0.95);
-    ctx.lineWidth = Math.max(1.5, ry * 0.26);
-    ctx.stroke();
-    ctx.strokeStyle = rgba(col, 0.5 + 0.5 * e);
-    ctx.lineWidth = Math.max(1, ry * 0.1);
-    ctx.stroke();
-    if (label) {
-      ctx.fillStyle = rgba('#ffffff', 0.7);
-      ctx.font = `700 ${Math.round(U * 0.03)}px Inter, system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.fillText(label, 0, depth + ry + U * 0.04);
+    cymbal('crash', crx, cry, U * 0.15, -12);
+    cymbal('ride', rdx, rdy, U * 0.16, 10);
+
+
+    // kick: front-facing bass drum with the band name
+    {
+      const { e, age } = energy('kick');
+      const col = laneColor(layer, 'kick');
+      const [kx, ky] = P(0.5, 0.7);
+      const r = U * 0.2 * (1 + 0.05 * e);
+      ctx.save();
+      G.add((g) => {
+        g.strokeStyle = col;
+        g.globalAlpha = 0.2 + 0.8 * e;
+        g.lineWidth = U * (0.03 + 0.04 * e);
+        g.beginPath();
+        g.arc(kx, ky, r, 0, Math.PI * 2);
+        g.stroke();
+      });
+      // spurs: two legs that keep the kick from rolling
+      ctx.strokeStyle = rgba(METAL, 0.55);
+      ctx.lineWidth = Math.max(1.5, U * 0.008);
+      ctx.beginPath();
+      for (const k of [-1, 1]) {
+        ctx.moveTo(kx + k * r * 0.8, ky + r * 0.45);
+        ctx.lineTo(kx + k * r * 1.18, ky + r * 1.02);
+      }
+      ctx.stroke();
+      // the shell, seen past the hoop: a darker ring with a lit top edge
+      const wrap = mixHex(chromeOf(layer).kickShell, col, 0.3);
+      const sh = ctx.createLinearGradient(kx, ky - r * 1.06, kx, ky + r * 1.06);
+      sh.addColorStop(0, mixHex(wrap, '#ffffff', 0.3 + 0.2 * e));
+      sh.addColorStop(0.5, wrap);
+      sh.addColorStop(1, mixHex(wrap, '#000000', 0.5));
+      ctx.fillStyle = sh;
+      ctx.beginPath();
+      ctx.arc(kx, ky, r * 1.06, 0, Math.PI * 2);
+      ctx.fill();
+      // front head
+      ctx.fillStyle = rgba(chromeOf(layer).kickShell, 0.95);
+      ctx.beginPath();
+      ctx.arc(kx, ky, r * 0.9, 0, Math.PI * 2);
+      ctx.fill();
+      // hoop: chrome with the kick's colour inside it
+      ctx.lineWidth = Math.max(3, U * 0.014);
+      ctx.strokeStyle = rgba(METAL, 0.9);
+      ctx.beginPath();
+      ctx.arc(kx, ky, r * 0.93, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = Math.max(1.5, U * 0.006);
+      ctx.strokeStyle = rgba(col, 0.7 + 0.3 * e);
+      ctx.beginPath();
+      ctx.arc(kx, ky, r * 0.88, 0, Math.PI * 2);
+      ctx.stroke();
+      // tension rods and claws around the hoop
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 + Math.PI / 10;
+        const c = Math.cos(a);
+        const sn2 = Math.sin(a);
+        ctx.strokeStyle = rgba(METAL, 0.85);
+        ctx.lineWidth = Math.max(2, U * 0.01);
+        ctx.beginPath();
+        ctx.moveTo(kx + c * r * 0.91, ky + sn2 * r * 0.91);
+        ctx.lineTo(kx + c * r * 1.05, ky + sn2 * r * 1.05);
+        ctx.stroke();
+      }
+      const kg = ctx.createRadialGradient(kx, ky, 0, kx, ky, r);
+      kg.addColorStop(0, rgba(col, 0.5 * e));
+      kg.addColorStop(1, rgba(col, 0.08));
+      ctx.fillStyle = kg;
+      ctx.beginPath();
+      ctx.arc(kx, ky, r * 0.86, 0, Math.PI * 2);
+      ctx.fill();
+      if (layer.kickText) {
+        let fs = r * 0.32;
+        ctx.font = `900 ${Math.round(fs)}px "Bebas Neue", Impact, sans-serif`;
+        while (fs > 6 && ctx.measureText(layer.kickText).width > r * 1.6) {
+          fs *= 0.9;
+          ctx.font = `900 ${Math.round(fs)}px "Bebas Neue", Impact, sans-serif`;
+        }
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = rgba('#ffffff', 0.75 + 0.25 * e);
+        ctx.fillText(layer.kickText.toUpperCase(), kx, ky);
+        if (e > 0.02) {
+          const font = ctx.font;
+          G.add((g) => {
+            g.font = font;
+            g.textAlign = 'center';
+            g.textBaseline = 'middle';
+            g.fillStyle = col;
+            g.globalAlpha = e;
+            g.fillText(layer.kickText.toUpperCase(), kx, ky);
+          });
+        }
+      }
+      ctx.restore();
+      ripple(kx, ky, r, r, col, age);
     }
-    ctx.restore();
-    ripple(x, y, rx, ry, col, age);
-  };
-  // hardware under the drums: a tripod for the snare, legs for the floor tom, arms for the rack toms
-  const legs = (x, y0, y1, spread) => {
+
+    // rack toms sit on an arm from the top of the kick; snare and floor tom stand beside it
+    const tom = energy('tom');
+    const tomE = (i) => (i === tomPiece ? tom.e : 0);
+    const tomAge = (i) => (i === tomPiece ? tom.age : 9);
+    const floor = by + bh * 0.95;
+    const [kx0, ky0] = P(0.5, 0.7);
+    const kTop = ky0 - U * 0.2 * 1.06;
+    // just above the kick's hoop, never higher than the cymbals
+    const tomY = Math.max(by + bh * 0.2, Math.min(by + bh * 0.3, kTop - U * (0.09 + 0.032 + 0.012)));
+    const [t1x] = P(0.38, 0);
+    const [t2x] = P(0.62, 0);
+    const t1y = tomY;
+    const t2y = tomY;
+    {
+      const kx = kx0;
+      ctx.strokeStyle = rgba(METAL, 0.6);
+      ctx.lineWidth = Math.max(1.5, U * 0.009);
+      ctx.beginPath();
+      ctx.moveTo(kx, kTop + U * 0.01);
+      ctx.lineTo(kx, kTop - U * 0.03);
+      ctx.lineTo(t1x, t1y + U * 0.1);
+      ctx.moveTo(kx, kTop - U * 0.03);
+      ctx.lineTo(t2x, t2y + U * 0.1);
+      ctx.stroke();
+    }
+    drum('tom', t1x, t1y, U * 0.075, U * 0.03, U * 0.085, tomE(0), tomAge(0));
+    drum('tom', t2x, t2y, U * 0.08, U * 0.032, U * 0.09, tomE(1), tomAge(1));
+    const [ftx, fty] = P(0.8, 0.56);
+    const ftD = U * 0.17;
+    legs(ftx, fty + ftD, floor, U * 0.09);
+    drum('tom', ftx, fty, U * 0.1, U * 0.04, ftD, tomE(2), tomAge(2), layer.showLabels ? 'TOMS' : '');
+    const sn = energy('snare');
+    const [snx, sny] = P(0.22, 0.58);
+    const snD = U * 0.06;
+    legs(snx, sny + snD + U * 0.04, floor, U * 0.08);
     ctx.strokeStyle = rgba(METAL, 0.45);
     ctx.lineWidth = Math.max(1, U * 0.006);
     ctx.beginPath();
-    for (const k of [-1, 0, 1]) {
-      ctx.moveTo(x + k * spread * 0.25, y0);
-      ctx.lineTo(x + k * spread, y1);
-    }
+    ctx.moveTo(snx, sny + snD + U * 0.04);
+    ctx.lineTo(snx, sny + snD);
     ctx.stroke();
-  };
+    drum('snare', snx, sny, U * 0.095, U * 0.036, snD, sn.e, sn.age, layer.showLabels ? 'SNARE' : '');
 
-  // hi-hat: two plates that clap shut on a hit
-  {
-    const { e, age } = energy('hihat');
-    const col = laneColor(layer, 'hihat');
-    const gap = U * (0.03 - 0.022 * e);
-    for (const dy of [-gap / 2, gap / 2]) {
-      ctx.save();
-      ctx.translate(hhx, hhy + dy);
-      glowEllipse(hhx, hhy + dy, U * 0.1, U * 0.016, 0, col, e);
-      ctx.fillStyle = rgba(col, 0.35 + 0.55 * e);
-      ctx.beginPath();
-      ctx.ellipse(0, 0, U * 0.1, U * 0.016, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-    ripple(hhx, hhy, U * 0.1, U * 0.016, col, age);
+    G.flush(0.9);
+    if (layer.sticks !== false) drawSticks(ctx, L, tips, { neon: true, color: chromeOf(layer).edge });
   }
-  cymbal('crash', crx, cry, U * 0.15, -12);
-  cymbal('ride', rdx, rdy, U * 0.16, 10);
-
-
-  // kick: front-facing bass drum with the band name
-  {
-    const { e, age } = energy('kick');
-    const col = laneColor(layer, 'kick');
-    const [kx, ky] = P(0.5, 0.7);
-    const r = U * 0.2 * (1 + 0.05 * e);
-    ctx.save();
-    G.add((g) => {
-      g.strokeStyle = col;
-      g.globalAlpha = 0.2 + 0.8 * e;
-      g.lineWidth = U * (0.03 + 0.04 * e);
-      g.beginPath();
-      g.arc(kx, ky, r, 0, Math.PI * 2);
-      g.stroke();
-    });
-    // spurs: two legs that keep the kick from rolling
-    ctx.strokeStyle = rgba(METAL, 0.55);
-    ctx.lineWidth = Math.max(1.5, U * 0.008);
-    ctx.beginPath();
-    for (const k of [-1, 1]) {
-      ctx.moveTo(kx + k * r * 0.8, ky + r * 0.45);
-      ctx.lineTo(kx + k * r * 1.18, ky + r * 1.02);
-    }
-    ctx.stroke();
-    // the shell, seen past the hoop: a darker ring with a lit top edge
-    const wrap = mixHex(chromeOf(layer).kickShell, col, 0.3);
-    const sh = ctx.createLinearGradient(kx, ky - r * 1.06, kx, ky + r * 1.06);
-    sh.addColorStop(0, mixHex(wrap, '#ffffff', 0.3 + 0.2 * e));
-    sh.addColorStop(0.5, wrap);
-    sh.addColorStop(1, mixHex(wrap, '#000000', 0.5));
-    ctx.fillStyle = sh;
-    ctx.beginPath();
-    ctx.arc(kx, ky, r * 1.06, 0, Math.PI * 2);
-    ctx.fill();
-    // front head
-    ctx.fillStyle = rgba(chromeOf(layer).kickShell, 0.95);
-    ctx.beginPath();
-    ctx.arc(kx, ky, r * 0.9, 0, Math.PI * 2);
-    ctx.fill();
-    // hoop: chrome with the kick's colour inside it
-    ctx.lineWidth = Math.max(3, U * 0.014);
-    ctx.strokeStyle = rgba(METAL, 0.9);
-    ctx.beginPath();
-    ctx.arc(kx, ky, r * 0.93, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.lineWidth = Math.max(1.5, U * 0.006);
-    ctx.strokeStyle = rgba(col, 0.7 + 0.3 * e);
-    ctx.beginPath();
-    ctx.arc(kx, ky, r * 0.88, 0, Math.PI * 2);
-    ctx.stroke();
-    // tension rods and claws around the hoop
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2 + Math.PI / 10;
-      const c = Math.cos(a);
-      const sn2 = Math.sin(a);
-      ctx.strokeStyle = rgba(METAL, 0.85);
-      ctx.lineWidth = Math.max(2, U * 0.01);
-      ctx.beginPath();
-      ctx.moveTo(kx + c * r * 0.91, ky + sn2 * r * 0.91);
-      ctx.lineTo(kx + c * r * 1.05, ky + sn2 * r * 1.05);
-      ctx.stroke();
-    }
-    const kg = ctx.createRadialGradient(kx, ky, 0, kx, ky, r);
-    kg.addColorStop(0, rgba(col, 0.5 * e));
-    kg.addColorStop(1, rgba(col, 0.08));
-    ctx.fillStyle = kg;
-    ctx.beginPath();
-    ctx.arc(kx, ky, r * 0.86, 0, Math.PI * 2);
-    ctx.fill();
-    if (layer.kickText) {
-      let fs = r * 0.32;
-      ctx.font = `900 ${Math.round(fs)}px "Bebas Neue", Impact, sans-serif`;
-      while (fs > 6 && ctx.measureText(layer.kickText).width > r * 1.6) {
-        fs *= 0.9;
-        ctx.font = `900 ${Math.round(fs)}px "Bebas Neue", Impact, sans-serif`;
-      }
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = rgba('#ffffff', 0.75 + 0.25 * e);
-      ctx.fillText(layer.kickText.toUpperCase(), kx, ky);
-      if (e > 0.02) {
-        const font = ctx.font;
-        G.add((g) => {
-          g.font = font;
-          g.textAlign = 'center';
-          g.textBaseline = 'middle';
-          g.fillStyle = col;
-          g.globalAlpha = e;
-          g.fillText(layer.kickText.toUpperCase(), kx, ky);
-        });
-      }
-    }
-    ctx.restore();
-    ripple(kx, ky, r, r, col, age);
-  }
-
-  // rack toms sit on an arm from the top of the kick; snare and floor tom stand beside it
-  const tom = energy('tom');
-  const tomE = (i) => (i === tomPiece ? tom.e : 0);
-  const tomAge = (i) => (i === tomPiece ? tom.age : 9);
-  const floor = by + bh * 0.95;
-  const [kx0, ky0] = P(0.5, 0.7);
-  const kTop = ky0 - U * 0.2 * 1.06;
-  // just above the kick's hoop, never higher than the cymbals
-  const tomY = Math.max(by + bh * 0.2, Math.min(by + bh * 0.3, kTop - U * (0.09 + 0.032 + 0.012)));
-  const [t1x] = P(0.38, 0);
-  const [t2x] = P(0.62, 0);
-  const t1y = tomY;
-  const t2y = tomY;
-  {
-    const kx = kx0;
-    ctx.strokeStyle = rgba(METAL, 0.6);
-    ctx.lineWidth = Math.max(1.5, U * 0.009);
-    ctx.beginPath();
-    ctx.moveTo(kx, kTop + U * 0.01);
-    ctx.lineTo(kx, kTop - U * 0.03);
-    ctx.lineTo(t1x, t1y + U * 0.1);
-    ctx.moveTo(kx, kTop - U * 0.03);
-    ctx.lineTo(t2x, t2y + U * 0.1);
-    ctx.stroke();
-  }
-  drum('tom', t1x, t1y, U * 0.075, U * 0.03, U * 0.085, tomE(0), tomAge(0));
-  drum('tom', t2x, t2y, U * 0.08, U * 0.032, U * 0.09, tomE(1), tomAge(1));
-  const [ftx, fty] = P(0.8, 0.56);
-  const ftD = U * 0.17;
-  legs(ftx, fty + ftD, floor, U * 0.09);
-  drum('tom', ftx, fty, U * 0.1, U * 0.04, ftD, tomE(2), tomAge(2), layer.showLabels ? 'TOMS' : '');
-  const sn = energy('snare');
-  const [snx, sny] = P(0.22, 0.58);
-  const snD = U * 0.06;
-  legs(snx, sny + snD + U * 0.04, floor, U * 0.08);
-  ctx.strokeStyle = rgba(METAL, 0.45);
-  ctx.lineWidth = Math.max(1, U * 0.006);
-  ctx.beginPath();
-  ctx.moveTo(snx, sny + snD + U * 0.04);
-  ctx.lineTo(snx, sny + snD);
-  ctx.stroke();
-  drum('snare', snx, sny, U * 0.095, U * 0.036, snD, sn.e, sn.age, layer.showLabels ? 'SNARE' : '');
-
-  G.flush(0.9);
 
   // what's coming: a thin strip along the top
   {
