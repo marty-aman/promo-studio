@@ -34,7 +34,8 @@ export function normalizeFiles(raw) {
   return {
     tabs: (Array.isArray(f.tabs) ? f.tabs : []).filter(ok).map((t) => ({ id: typeof t.id === 'string' ? t.id : mid('tab'), mediaId: t.mediaId })),
     stems: (Array.isArray(f.stems) ? f.stems : []).filter(ok).map((s) => ({ id: typeof s.id === 'string' ? s.id : mid('stem'), mediaId: s.mediaId, role: role(s.role) })),
-    video: ok(f.video) ? { mediaId: f.video.mediaId } : null,
+    // offset: where the song's 0:00 is in the music video (seconds), for cutting song sections out of it
+    video: ok(f.video) ? { mediaId: f.video.mediaId, offset: Number.isFinite(+f.video.offset) ? +f.video.offset : 0 } : null,
     footage: (Array.isArray(f.footage) ? f.footage : []).filter(ok).map((c) => ({ id: typeof c.id === 'string' ? c.id : mid('clip'), mediaId: c.mediaId, note: String(c.note || '') })),
   };
 }
@@ -74,7 +75,7 @@ export function addFootage(song, recs) {
 }
 export function setVideo(song, rec) {
   song.files ||= newFiles();
-  song.files.video = rec ? { mediaId: rec.id } : null;
+  song.files.video = rec ? { mediaId: rec.id, offset: 0 } : null;
   if (rec) song.files.footage = song.files.footage.filter((c) => c.mediaId !== rec.id);
 }
 

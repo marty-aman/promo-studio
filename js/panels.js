@@ -2053,6 +2053,7 @@ export function createPanels({ store, engine, ui }) {
             )
           : null,
       ),
+      ui.sectionsPanel ? ui.sectionsPanel() : null,
       buildShare(p, () => capPicker.currentText()),
       section(
         'Stills',
