@@ -1263,3 +1263,7 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .mgr-lightbox-details input { width: 100%; }
 .mgr-lightbox-bar .btn { pointer-events: auto; }
 .mgr-lightbox.with-details .mgr-lightbox-next { right: 352px; }
+.mgr-music-sect .mgr-releases { margin-bottom: 0; }
+.mgr-music-sect .mgr-sect-head { flex-wrap: wrap; gap: 8px; }
+.mgr-release-card .mgr-chip { justify-self: start; }
+.mgr-music-sect .mgr-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }

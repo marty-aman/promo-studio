@@ -1,6 +1,6 @@
 // The Manager workspace: its own left nav and pages, on its own store (with undo), saved in this
 // browser and backed up to a file. The video studio stays as it was; "Make a promo" hands a song over.
-import { h, icon, button, toast, download, pickFiles } from '../dom.js';
+import { h, icon, button, toast, download, pickFiles, onDateCommit } from '../dom.js';
 import { createStore } from '../state.js';
 import { openDriveSetup } from '../gdrive.js';
 import { todayISO } from './model.js';
@@ -21,8 +21,9 @@ import { buildReleases } from './page-releases.js';
 const VIEW_KEY = 'pvm.manager.view.v1';
 export const MANAGER_PAGES = [
   { id: 'home', label: 'Home', icon: 'home', build: buildHome },
-  { id: 'songs', label: 'Songs', icon: 'music', build: buildSongs },
-  { id: 'releases', label: 'Releases', icon: 'disc', build: buildReleases },
+  { id: 'songs', label: 'Songs & releases', icon: 'music', build: buildSongs },
+  // an EP's or album's own page; reached from Songs & releases, so not in the nav
+  { id: 'releases', label: 'Releases', icon: 'disc', build: buildReleases, hidden: true, navAs: 'songs' },
   { id: 'shows', label: 'Shows', icon: 'ticket', build: buildShows },
   { id: 'planner', label: 'Show planner', icon: 'mapPin', build: buildPlanner },
   { id: 'tours', label: 'Tours', icon: 'route', build: buildTours },
@@ -41,7 +42,9 @@ export function formKit(update) {
       ? h('textarea', { rows, placeholder, 'data-k': k }, value || '')
       : h('input', { type, placeholder, value: value ?? '', 'data-k': k, list });
     if (rows) el.value = value || '';
-    el.addEventListener('change', () => update((d) => set(d, type === 'number' ? (el.value === '' ? '' : +el.value) : el.value)));
+    // date and time fields save when you've finished typing (see onDateCommit)
+    if (type === 'date' || type === 'time' || type === 'month') onDateCommit(el, (v) => update((d) => set(d, v)));
+    else el.addEventListener('change', () => update((d) => set(d, type === 'number' ? (el.value === '' ? '' : +el.value) : el.value)));
     return label ? h('label', { class: 'mf' }, h('span', { class: 'mf-l' }, label), el, hint ? h('span', { class: 'mf-h' }, hint) : null) : el;
   };
   const select = (k, label, value, options, set) => {
@@ -189,9 +192,10 @@ export function createManager({ root, studio }) {
 
   function renderNav() {
     nav.replaceChildren(
-      ...MANAGER_PAGES.map((p) =>
-        h('button', { type: 'button', class: `mgr-nav-btn${view.page === p.id ? ' on' : ''}`, 'aria-current': view.page === p.id ? 'page' : null, onclick: () => go(p.id) }, icon(p.icon, 18), h('span', {}, p.label)),
-      ),
+      ...MANAGER_PAGES.filter((p) => !p.hidden).map((p) => {
+        const on = view.page === p.id || (MANAGER_PAGES.find((x) => x.id === view.page) || {}).navAs === p.id;
+        return h('button', { type: 'button', class: `mgr-nav-btn${on ? ' on' : ''}`, 'aria-current': on ? 'page' : null, onclick: () => go(p.id) }, icon(p.icon, 18), h('span', {}, p.label));
+      }),
     );
   }
 

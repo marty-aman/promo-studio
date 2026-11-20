@@ -2,47 +2,28 @@
 // its cover, date, label and UPC and an ordered tracklist of the artist's songs.
 import { h, icon, button, iconButton, toast } from '../dom.js';
 import { newSong, niceDate } from './model.js';
-import { RELEASE_TYPES, releaseTypeLabel, newRelease, tracklist, setRelease, moveTrack, deleteRelease, coverOf, fmtTime } from './releases.js';
+import { RELEASE_TYPES, releaseTypeLabel, tracklist, setRelease, moveTrack, deleteRelease, coverOf, fmtTime } from './releases.js';
 import { coverPicker } from './page-cover.js';
 
 export function buildReleases(ctx) {
   const m = ctx.store.get();
   const rel = ctx.view.id && (m.releases || []).find((r) => r.id === ctx.view.id);
-  return rel ? releasePage(ctx, rel) : releaseList(ctx);
+  if (rel) return releasePage(ctx, rel);
+  // the list of releases is on Songs & releases
+  queueMicrotask(() => ctx.go('songs'));
+  return h('div', { class: 'mgr-page' });
+}
+
+/** A release's card (cover, type, title, date, tracks) for the Songs & releases page. */
+export function releaseCard(ctx, r) {
+  const m = ctx.store.get();
+  const tracks = tracklist(m.songs, r.id);
+  return h('button', { type: 'button', class: 'mgr-release-card', onclick: () => ctx.go('releases', r.id) }, thumb(ctx, r.coverId, 'big'), h('span', { class: 'mgr-chip' }, releaseTypeLabel(r.type)), h('strong', {}, r.title), h('span', { class: 'muted tiny' }, [r.releaseDate ? niceDate(r.releaseDate, { weekday: false }) : 'No date', `${tracks.length} track${tracks.length === 1 ? '' : 's'}`].join(' · ')));
 }
 
 function thumb(ctx, id, cls = '') {
   const x = id ? ctx.studio.mediaInfo(id) : null;
   return h('span', { class: `mgr-cover-thumb ${cls}` }, x ? h('img', { src: x.url, alt: '', loading: 'lazy' }) : icon('disc', 22));
-}
-
-function releaseList(ctx) {
-  const m = ctx.store.get();
-  const releases = [...(m.releases || [])].sort((a, b) => (b.releaseDate || '9999').localeCompare(a.releaseDate || '9999'));
-  const add = (type) => {
-    const r = newRelease(type);
-    ctx.update((d) => (d.releases ||= []).unshift(r));
-    ctx.go('releases', r.id);
-  };
-  const singles = m.songs.filter((s) => !s.releaseId);
-  return h(
-    'div',
-    { class: 'mgr-page wide' },
-    h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, 'Releases'), h('p', { class: 'muted' }, `${m.band.name || 'This artist'}’s EPs and albums, their covers and tracklists.`)), h('div', { class: 'row' }, button('New EP', () => add('ep'), { iconName: 'plus', variant: 'primary' }), button('New album', () => add('album'), { iconName: 'plus' }))),
-    releases.length
-      ? h(
-          'div',
-          { class: 'mgr-releases' },
-          releases.map((r) => {
-            const tracks = tracklist(m.songs, r.id);
-            return h('button', { type: 'button', class: 'mgr-release-card', onclick: () => ctx.go('releases', r.id) }, thumb(ctx, r.coverId, 'big'), h('span', { class: 'mgr-chip' }, releaseTypeLabel(r.type)), h('strong', {}, r.title), h('span', { class: 'muted tiny' }, [r.releaseDate ? niceDate(r.releaseDate, { weekday: false }) : 'No date', `${tracks.length} track${tracks.length === 1 ? '' : 's'}`].join(' · ')));
-          }),
-        )
-      : h('div', { class: 'mgr-empty' }, h('p', {}, 'No EPs or albums yet. Make one, then add songs to it here or from each song’s page.'), h('div', { class: 'row' }, button('New EP', () => add('ep'), { iconName: 'plus', variant: 'sm primary' }), button('New album', () => add('album'), { iconName: 'plus', variant: 'sm' }))),
-    singles.length
-      ? h('section', { class: 'mgr-sect' }, h('h2', {}, `Singles · ${singles.length}`), h('p', { class: 'muted small' }, 'Songs not on an EP or album.'), h('div', { class: 'mgr-singles' }, singles.map((s) => h('button', { type: 'button', class: 'mgr-single', onclick: () => ctx.go('songs', s.id) }, thumb(ctx, s.coverId), h('span', {}, h('strong', {}, s.title), h('span', { class: 'muted tiny' }, s.releaseDate ? niceDate(s.releaseDate, { weekday: false }) : 'No date'))))))
-      : null,
-  );
 }
 
 function releasePage(ctx, r) {
@@ -75,7 +56,7 @@ function releasePage(ctx, r) {
   const remove = () => {
     if (!confirm(`Delete “${r.title}”? Its ${tracks.length} song${tracks.length === 1 ? '' : 's'} stay, as singles.`)) return;
     ctx.update((d) => deleteRelease(d, r.id));
-    ctx.go('releases');
+    ctx.go('songs');
   };
   const sameDate = () => {
     if (!r.releaseDate) return toast('Set the release date first.', 'error');
@@ -87,7 +68,7 @@ function releasePage(ctx, r) {
   return h(
     'div',
     { class: 'mgr-page wide' },
-    h('button', { type: 'button', class: 'link back', onclick: () => ctx.go('releases') }, icon('arrowLeft', 14), 'All releases'),
+    h('button', { type: 'button', class: 'link back', onclick: () => ctx.go('songs') }, icon('arrowLeft', 14), 'Songs & releases'),
     h(
       'header',
       { class: 'mgr-head' },
