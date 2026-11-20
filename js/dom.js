@@ -143,6 +143,42 @@ export function download(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
+/**
+ * Call `commit(value)` when a date, time or month field is done, not on every keystroke.
+ * Browsers fire `change` as soon as the typed parts make any valid date: typing the year "2026"
+ * fires it at "0002", "0020" and "0202" too. Saving then redraws the page and replaces the field
+ * mid-typing, so the year resets. Instead this waits for the field to lose focus, Enter, or a
+ * 2-second pause after a whole value (a 4-digit year from 1000 on, or a pick from the calendar).
+ */
+export function onDateCommit(el, commit, { delay = 2000 } = {}) {
+  let last = el.value;
+  let timer = null;
+  // whether you're in the field, from its own focus and blur (document.activeElement isn't
+  // reliable here: Firefox reports another element while it moves between the date's parts)
+  let inside = false;
+  const fire = () => {
+    clearTimeout(timer);
+    if (el.value === last) return;
+    last = el.value;
+    commit(el.value);
+  };
+  const whole = (v) => !v || el.type !== 'date' || +v.slice(0, 4) >= 1000;
+  const later = () => {
+    clearTimeout(timer);
+    // an emptied field (a part being retyped) only saves on blur
+    if (el.value && whole(el.value)) timer = setTimeout(fire, delay);
+  };
+  el.addEventListener('focus', () => (inside = true));
+  el.addEventListener('change', () => (inside ? later() : fire())); // not inside: a calendar pick that took focus
+  el.addEventListener('input', () => (inside ? later() : whole(el.value) && fire()));
+  el.addEventListener('blur', () => {
+    inside = false;
+    fire();
+  });
+  el.addEventListener('keydown', (e) => e.key === 'Enter' && fire());
+  return el;
+}
+
 export function pickFiles(accept, multiple = true) {
   return new Promise((resolve) => {
     const input = h('input', { type: 'file', accept, multiple });

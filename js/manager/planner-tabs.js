@@ -1,5 +1,5 @@
 // Show planner tabs: scene bands, contacts, and the show builder.
-import { h, icon, button, iconButton, toast } from '../dom.js';
+import { h, icon, button, iconButton, toast, onDateCommit } from '../dom.js';
 import { newShow, niceDate, addDays, mid } from './model.js';
 import { BAND_STATUSES, CONTACT_ROLES, SOCIALS, newBand, newContact, showTodo, breakEven, venueFit } from './planner.js';
 import { plannerUI, checkBadge } from './page-planner.js';
@@ -126,7 +126,8 @@ export function buildTab(ctx) {
   const re = () => ctx.setTab('build');
   const inp = (k, label, type = 'text', ph = '') => {
     const el = h('input', { type, value: ui[k], placeholder: ph, 'data-k': `build-${k}` });
-    el.addEventListener('change', () => ((ui[k] = el.value), re()));
+    if (type === 'date') onDateCommit(el, (v) => ((ui[k] = v), re()));
+    else el.addEventListener('change', () => ((ui[k] = el.value), re()));
     return h('label', { class: 'mf' }, h('span', { class: 'mf-l' }, label), el);
   };
   const venueSel = h('select', { 'data-k': 'build-venue' }, h('option', { value: '' }, '— pick a venue —'), [...m.venues].sort((a, b) => a.name.localeCompare(b.name)).map((v) => h('option', { value: v.id, selected: ui.venueId === v.id }, `${v.name}${v.capacity ? ` (${v.capacity})` : ''}`)));

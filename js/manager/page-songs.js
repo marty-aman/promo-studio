@@ -12,6 +12,7 @@ import { filesTab } from './page-files.js';
 import { fileCounts } from './files.js';
 import { sectionsTab } from './page-sections.js';
 import { coverPicker } from './page-cover.js';
+import { releaseCard } from './page-releases.js';
 import { coverOf, setRelease, releaseTypeLabel, sectionSpans, newRelease } from './releases.js';
 
 const TABS = [
@@ -35,44 +36,81 @@ export function buildSongs(ctx) {
   return song ? songPage(ctx, song) : songList(ctx);
 }
 
+export const songsUI = { show: 'all' };
+const ALBUM_TYPES = ['album', 'deluxe', 'live', 'comp'];
+
 function songList(ctx) {
   const m = ctx.store.get();
+  const releases = m.releases || [];
   const add = () => {
     const s = newSong('New song');
     ctx.update((d) => d.songs.unshift(s));
     ctx.go('songs', s.id, 'overview');
   };
+  const addRelease = (type) => {
+    const r = newRelease(type);
+    ctx.update((d) => (d.releases ||= []).unshift(r));
+    ctx.go('releases', r.id);
+  };
   const order = Object.fromEntries(SONG_STATUSES.map(([k], i) => [k, i]));
-  const songs = [...m.songs].sort((a, b) => (a.releaseDate || '9999').localeCompare(b.releaseDate || '9999') || order[a.status] - order[b.status]);
+  const singles = m.songs.filter((s) => !s.releaseId);
+  const pool = songsUI.show === 'singles' ? singles : m.songs;
+  const songs = [...pool].sort((a, b) => (a.releaseDate || '9999').localeCompare(b.releaseDate || '9999') || order[a.status] - order[b.status]);
+  const byDate = (list) => [...list].sort((a, b) => (b.releaseDate || '9999').localeCompare(a.releaseDate || '9999') || a.title.localeCompare(b.title));
+  const albums = byDate(releases.filter((r) => ALBUM_TYPES.includes(r.type)));
+  const eps = byDate(releases.filter((r) => r.type === 'ep'));
+  const singleRels = byDate(releases.filter((r) => r.type === 'single'));
+  const relSection = (title, list, type, blurb) =>
+    h(
+      'section',
+      { class: 'mgr-sect mgr-music-sect' },
+      h('div', { class: 'mgr-sect-head' }, h('h2', {}, `${title} · ${list.length}`), type ? button(`New ${type === 'ep' ? 'EP' : 'album'}`, () => addRelease(type), { iconName: 'plus', variant: 'sm' }) : null),
+      list.length ? h('div', { class: 'mgr-releases' }, list.map((r) => releaseCard(ctx, r))) : h('p', { class: 'muted small' }, blurb),
+    );
+  const chip = (k, label) => button(label, () => ((songsUI.show = k), ctx.go('songs')), { variant: `chip${songsUI.show === k ? ' on' : ''}` });
   return h(
     'div',
-    { class: 'mgr-page' },
-    h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, 'Songs'), h('p', { class: 'muted' }, 'Lyrics, the video shoot, the release checklist and the content plan for each song.')), button('New song', add, { iconName: 'plus', variant: 'primary' })),
-    songs.length
-      ? h(
-          'div',
-          { class: 'mgr-grid' },
-          songs.map((s) => {
-            const p = releaseProgress(s);
-            const days = s.releaseDate ? daysBetween(ctx.today(), s.releaseDate) : null;
-            return h(
-              'button',
-              { type: 'button', class: 'mgr-card', onclick: () => ctx.go('songs', s.id, 'overview') },
-              h('span', { class: 'mgr-card-cover' }, (() => {
-                const c = coverOf(s, m.releases);
-                const x = c && ctx.studio.mediaInfo(c);
-                return x ? h('img', { src: x.url, alt: '', loading: 'lazy' }) : icon('disc', 22);
-              })()),
-              h('span', { class: `mgr-chip st-${s.status}` }, statusLabel(s.status)),
-              h('strong', {}, s.title),
-              s.releaseId ? h('span', { class: 'muted tiny' }, (({ title, type }) => `${releaseTypeLabel(type)}: ${title} · track ${s.track || '?'}`)((m.releases || []).find((x) => x.id === s.releaseId) || {})) : null,
-              h('span', { class: 'muted tiny' }, s.releaseDate ? `${niceDate(s.releaseDate)}${days != null && days >= 0 ? ` · in ${days} days` : ''}` : 'No release date'),
-              h('span', { class: 'mgr-bar' }, h('i', { style: { width: `${p.total ? (100 * p.done) / p.total : 0}%` } })),
-              h('span', { class: 'muted tiny' }, `${p.done}/${p.total} release tasks · ${m.posts.filter((x) => x.songId === s.id).length} posts`),
-            );
-          }),
-        )
-      : h('div', { class: 'mgr-empty' }, h('p', {}, 'No songs yet.'), button('Add your first song', add, { iconName: 'plus', variant: 'primary' })),
+    { class: 'mgr-page wide' },
+    h(
+      'header',
+      { class: 'mgr-head' },
+      h('div', {}, h('h1', {}, 'Songs & releases'), h('p', { class: 'muted' }, `${m.band.name || 'This artist'}’s albums, EPs and songs: covers, tracklists, lyrics, the video shoot, the release checklist and the content plan.`)),
+      h('div', { class: 'row' }, button('New album', () => addRelease('album'), { iconName: 'plus' }), button('New EP', () => addRelease('ep'), { iconName: 'plus' }), button('New song', add, { iconName: 'plus', variant: 'primary' })),
+    ),
+    relSection('Albums', albums, 'album', 'No albums yet. Make one, then add songs to it from its page or from each song’s Overview.'),
+    relSection('EPs', eps, 'ep', 'No EPs yet.'),
+    singleRels.length ? relSection('Singles (as releases)', singleRels, '', '') : null,
+    h(
+      'section',
+      { class: 'mgr-sect mgr-music-sect' },
+      h('div', { class: 'mgr-sect-head' }, h('h2', {}, `Songs · ${m.songs.length}`), h('div', { class: 'row' }, m.songs.length && singles.length !== m.songs.length ? h('div', { class: 'chips' }, chip('all', `All ${m.songs.length}`), chip('singles', `Not on an EP or album ${singles.length}`)) : null, button('New song', add, { iconName: 'plus', variant: 'sm' }))),
+      songs.length
+        ? h(
+            'div',
+            { class: 'mgr-grid' },
+            songs.map((s) => {
+              const p = releaseProgress(s);
+              const days = s.releaseDate ? daysBetween(ctx.today(), s.releaseDate) : null;
+              const rel = s.releaseId && releases.find((x) => x.id === s.releaseId);
+              return h(
+                'button',
+                { type: 'button', class: 'mgr-card', onclick: () => ctx.go('songs', s.id, 'overview') },
+                h('span', { class: 'mgr-card-cover' }, (() => {
+                  const c = coverOf(s, releases);
+                  const x = c && ctx.studio.mediaInfo(c);
+                  return x ? h('img', { src: x.url, alt: '', loading: 'lazy' }) : icon('disc', 22);
+                })()),
+                h('span', { class: `mgr-chip st-${s.status}` }, statusLabel(s.status)),
+                h('strong', {}, s.title),
+                h('span', { class: 'muted tiny' }, rel ? `${releaseTypeLabel(rel.type)}: ${rel.title} · track ${s.track || '?'}` : 'Single'),
+                h('span', { class: 'muted tiny' }, s.releaseDate ? `${niceDate(s.releaseDate)}${days != null && days >= 0 ? ` · in ${days} days` : ''}` : 'No release date'),
+                h('span', { class: 'mgr-bar' }, h('i', { style: { width: `${p.total ? (100 * p.done) / p.total : 0}%` } })),
+                h('span', { class: 'muted tiny' }, `${p.done}/${p.total} release tasks · ${m.posts.filter((x) => x.songId === s.id).length} posts`),
+              );
+            }),
+          )
+        : h('div', { class: 'mgr-empty' }, h('p', {}, m.songs.length ? 'Every song is on an EP or album.' : 'No songs yet.'), m.songs.length ? null : button('Add your first song', add, { iconName: 'plus', variant: 'primary' })),
+    ),
   );
 }
 
@@ -95,7 +133,7 @@ function songPage(ctx, song) {
   return h(
     'div',
     { class: 'mgr-page' },
-    h('button', { type: 'button', class: 'link back', onclick: () => ctx.go('songs') }, icon('arrowLeft', 14), 'All songs'),
+    h('button', { type: 'button', class: 'link back', onclick: () => ctx.go('songs') }, icon('arrowLeft', 14), 'Songs & releases'),
     h(
       'header',
       { class: 'mgr-head song' },
