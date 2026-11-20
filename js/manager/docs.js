@@ -4,10 +4,12 @@ import { esc, escBr, docHTML } from './pdf.js';
 import { niceDate } from './model.js';
 
 const money = (v) => `${v < 0 ? '−' : ''}$${Math.abs(+v || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+const fmtT = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 const num = (v) => (v === '' || v == null || Number.isNaN(+v) ? 0 : +v);
 
 /** One show on a page: times, lineup, deal, setlist, to-dos and the settlement. */
-export function showSheetHTML(show, band = {}) {
+/** `times`: the setlist with lengths (setlist.js setlistTimes), when known. */
+export function showSheetHTML(show, band = {}, { times: setTimes = null } = {}) {
   const times = [['Load-in', show.loadIn], ['Doors', show.doors], ['Our set', show.setTime]].filter(([, v]) => v);
   const set = String(show.setlist || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
   const todo = [...(show.todo || [])].sort((a, b) => a.offset - b.offset);
@@ -25,7 +27,7 @@ ${show.contact ? `<tr><th>Contact</th><td>${esc(show.contact)}</td></tr>` : ''}
 </table>
 ${show.lineup.length ? `<h2>Lineup</h2><ol>${show.lineup.map((b) => `<li>${esc(b.name || 'TBA')}${b.time ? ` · ${esc(b.time)}` : ''}</li>`).join('')}</ol>` : ''}
 </div><div>
-${set.length ? `<h2>Setlist</h2><ol>${set.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : ''}
+${setTimes && setTimes.rows.length ? `<h2>Setlist · ${esc(setTimes.text)}</h2><table>${setTimes.rows.map((r) => `<tr><td class="n">${r.n}</td><td>${esc(r.title)}</td><td class="n">${r.seconds ? fmtT(r.seconds) : '?'}</td></tr>`).join('')}<tr><th></th><th>Set length${setTimes.gaps ? ` (with ${fmtT(setTimes.gaps)} between songs)` : ''}</th><th class="n">${esc(setTimes.text)}</th></tr></table>` : set.length ? `<h2>Setlist</h2><ol>${set.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : ''}
 ${show.notes ? `<h2>Notes</h2><p>${escBr(show.notes)}</p>` : ''}
 </div></div>
 ${todo.length ? `<h2>To do</h2><ul>${todo.map((t) => `<li>${t.done ? '☑' : '☐'} ${esc(t.text)}</li>`).join('')}</ul>` : ''}

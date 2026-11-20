@@ -3,6 +3,7 @@
 import { h, button, iconButton, toast } from '../dom.js';
 import { niceDate } from './model.js';
 import { exportPDF } from './pdf.js';
+import { songSeconds } from './setlist.js';
 import { newPlan, normalizePlan, runOfShow, setTimings, showPlanHTML, fromSec, STAGE_GEAR, STAGE_PRESETS, newStage, newStageItem, normalizeStage, inputList, monitorMixes, stagePlotSVG, stagePlotHTML, gearNames, STAGE_H } from './showplan.js';
 
 export const planUI = { showId: null };
@@ -10,11 +11,7 @@ export const stageUI = { sel: null };
 const pdfNote = () => toast('Pick “Save as PDF” as the printer to get a PDF.');
 
 /** Song lengths from each song's audio file in the media library, for the setlist timings. */
-const songLengths = (ctx) =>
-  ctx.store.get().songs.map((s) => {
-    const info = s.audioId && ctx.studio.mediaInfo ? ctx.studio.mediaInfo(s.audioId) : null;
-    return { title: s.title, seconds: info && info.duration ? Math.round(info.duration) : 0 };
-  });
+const songLengths = (ctx) => ctx.store.get().songs.map((s) => ({ title: s.title, seconds: songSeconds(s, (id) => (ctx.studio.mediaInfo ? ctx.studio.mediaInfo(id)?.duration : 0) || 0) }));
 
 // ---------------------------------------------------------------- show plan
 export function showPlanTab(ctx) {

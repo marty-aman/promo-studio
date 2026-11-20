@@ -13,7 +13,7 @@ import { fileCounts } from './files.js';
 import { sectionsTab } from './page-sections.js';
 import { coverPicker } from './page-cover.js';
 import { releaseCard } from './page-releases.js';
-import { coverOf, setRelease, releaseTypeLabel, sectionSpans, newRelease } from './releases.js';
+import { coverOf, setRelease, releaseTypeLabel, sectionSpans, newRelease, parseTime, fmtTime } from './releases.js';
 
 const TABS = [
   ['overview', 'Overview'],
@@ -216,7 +216,16 @@ function overviewTab(ctx, song, S) {
           coverPicker(ctx, { key: `song-${song.id}`, current: song.coverId, inherited: coverOf({ ...song, coverId: null }, rels), inheritedFrom: rel ? `“${rel.title}”` : '', set: (id) => ctx.update(S((x) => (x.coverId = id))) }),
         );
       })(),
-      h('div', { class: 'mgr-two' }, f.text(`bpm-${song.id}`, 'BPM', song.bpm, S((s, v) => (s.bpm = v)), { type: 'number' }), f.text(`key-${song.id}`, 'Key', song.key, S((s, v) => (s.key = v)), { placeholder: 'e.g. Drop C, D minor' })),
+      h(
+        'div',
+        { class: 'mgr-three' },
+        f.text(`bpm-${song.id}`, 'BPM', song.bpm, S((s, v) => (s.bpm = v)), { type: 'number' }),
+        f.text(`key-${song.id}`, 'Key', song.key, S((s, v) => (s.key = v)), { placeholder: 'e.g. Drop C, D minor' }),
+        (() => {
+          const fileLen = song.audioId ? ctx.studio.mediaInfo(song.audioId)?.duration : 0;
+          return f.text(`len-${song.id}`, 'Length', song.length, S((s, v) => (s.length = parseTime(v) ? fmtTime(parseTime(v)) : v.trim())), { placeholder: fileLen ? `${fmtTime(fileLen)} (from the file)` : 'e.g. 3:45 (for setlists)', hint: song.length && !parseTime(song.length) ? 'Type it like 3:45.' : '' });
+        })(),
+      ),
       h(
         'div',
         { class: 'mgr-upload' },

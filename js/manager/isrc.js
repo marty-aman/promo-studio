@@ -87,6 +87,15 @@ export function parseDeezer(json) {
 export function deezerByISRC(isrc, { timeout = 12000 } = {}) {
   const id = normISRC(isrc);
   if (!id || typeof document === 'undefined') return Promise.resolve(null);
+  return deezerJSONP(deezerURL(id), { timeout });
+}
+
+/**
+ * Any Deezer API URL as JSONP inside a sandboxed iframe (scripts only, no same-origin), so
+ * Deezer's script can't read this app's storage. Resolves the JSON, or null.
+ */
+export function deezerJSONP(url, { timeout = 12000 } = {}) {
+  if (typeof document === 'undefined' || !/^https:\/\/api\.deezer\.com\//.test(url)) return Promise.resolve(null);
   return new Promise((resolve) => {
     const nonce = Math.random().toString(36).slice(2);
     const frame = document.createElement('iframe');
@@ -106,7 +115,7 @@ export function deezerByISRC(isrc, { timeout = 12000 } = {}) {
     const timer = setTimeout(() => done(null), timeout);
     window.addEventListener('message', onMsg);
     const n = JSON.stringify(nonce);
-    frame.srcdoc = `<!doctype html><script>function cb(d){parent.postMessage({n:${n},d:d},'*')}</script><script src="${deezerURL(id)}?output=jsonp&callback=cb" onerror="parent.postMessage({n:${n},d:null},'*')"></script>`;
+    frame.srcdoc = `<!doctype html><script>function cb(d){parent.postMessage({n:${n},d:d},'*')}</script><script src="${url}${url.includes('?') ? '&' : '?'}output=jsonp&callback=cb" onerror="parent.postMessage({n:${n},d:null},'*')"></script>`;
     document.body.append(frame);
   });
 }
@@ -225,4 +234,152 @@ export async function lookupISRC(raw, { fetchFn = fetch, deezer = deezerByISRC, 
   if (!spotify.clientId) notes.push('Add a Spotify client ID and secret below for an exact Spotify match.');
   const links = mergeLinks([sp?.link, dz?.link, mb?.links || [], extra], meta);
   return { isrc, ...meta, cover: dz?.cover || '', links, notes };
+}
+
+// ---------------------------------------------------------------- UPC: a whole release
+// A UPC (or EAN) is the barcode of a release: a single, an EP or an album. Looking one up gives
+// the release (title, artist, date, cover, album links) and its tracklist, each track with its
+// ISRC when the service has it, so each song can then find its own links.
+//  - Deezer: album by UPC, then each track for its ISRC (JSONP in the sandboxed iframe)
+//  - MusicBrainz: release by barcode, with recordings and their ISRCs
+//  - iTunes: the album and its songs by UPC (Apple Music links)
+
+/** "0 602557 382549" → "602557382549"; null unless it's 12 or 13 digits (UPC-A or EAN-13). */
+export function normUPC(raw) {
+  const s = String(raw || '').replace(/[\s-]+/g, '');
+  return /^\d{12,13}$/.test(s) ? s : null;
+}
+
+export const deezerAlbumURL = (upc) => `https://api.deezer.com/album/upc:${upc}`;
+export const deezerTrackURL = (id) => `https://api.deezer.com/track/${encodeURIComponent(id)}`;
+export function parseDeezerAlbum(json) {
+  if (!json || json.error || !json.id) return null;
+  const link = platformOf(json.link) === 'deezer' ? found('deezer', json.link, 'upc', 'Deezer') : null;
+  return {
+    title: String(json.title || ''),
+    artist: String(json.artist?.name || ''),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(json.release_date || '') ? json.release_date : '',
+    type: ['single', 'ep', 'album', 'compile'].includes(json.record_type) ? (json.record_type === 'compile' ? 'comp' : json.record_type) : '',
+    label: String(json.label || ''),
+    cover: typeof json.cover_xl === 'string' ? json.cover_xl : '',
+    link,
+    tracks: ((json.tracks && json.tracks.data) || []).map((t, i) => ({ n: i + 1, id: String(t.id || ''), title: String(t.title || ''), ms: (+t.duration || 0) * 1000, isrc: normISRC(t.isrc) || '', link: platformOf(t.link) === 'deezer' ? found('deezer', t.link, 'upc', 'Deezer') : null })),
+  };
+}
+
+export const musicBrainzBarcodeURL = (upc) => `https://musicbrainz.org/ws/2/release/?query=barcode:${upc}&limit=3&fmt=json`;
+export const musicBrainzReleaseURL = (id) => `https://musicbrainz.org/ws/2/release/${encodeURIComponent(id)}?inc=recordings+isrcs+artist-credits+url-rels&fmt=json`;
+/** The best release id from a barcode search (an exact barcode, highest score). */
+export function pickMBRelease(json, upc) {
+  const list = (json && json.releases) || [];
+  const exact = list.filter((r) => String(r.barcode || '').replace(/^0+/, '') === String(upc).replace(/^0+/, ''));
+  return (exact[0] || null)?.id || null;
+}
+export function parseMBRelease(json) {
+  if (!json || !json.id) return null;
+  const tracks = (json.media || []).flatMap((m) => m.tracks || []).map((t, i) => ({
+    n: i + 1,
+    title: String(t.title || t.recording?.title || ''),
+    ms: +t.length || +t.recording?.length || 0,
+    isrc: normISRC((t.recording?.isrcs || [])[0]) || '',
+    link: null,
+  }));
+  const links = (json.relations || []).map((r) => r.url && r.url.resource).filter(Boolean).map((u) => platformOf(u) && found(platformOf(u), u, 'upc', 'MusicBrainz')).filter(Boolean);
+  return { title: String(json.title || ''), artist: (json['artist-credit'] || []).map((a) => a.name + (a.joinphrase || '')).join('').trim(), date: /^\d{4}-\d{2}-\d{2}$/.test(json.date || '') ? json.date : '', links, tracks };
+}
+
+export const itunesUPCURL = (upc) => `https://itunes.apple.com/lookup?upc=${upc}&entity=song`;
+export function parseITunesUPC(json) {
+  const res = (json && json.results) || [];
+  const album = res.find((r) => r.wrapperType === 'collection');
+  if (!album) return null;
+  const songs = res.filter((r) => r.wrapperType === 'track').sort((a, b) => (a.discNumber || 1) - (b.discNumber || 1) || (a.trackNumber || 0) - (b.trackNumber || 0));
+  const url = (u) => (platformOf(u) === 'apple' ? u : null);
+  return {
+    title: String(album.collectionName || ''),
+    artist: String(album.artistName || ''),
+    date: String(album.releaseDate || '').slice(0, 10),
+    link: url(album.collectionViewUrl) ? found('apple', album.collectionViewUrl, 'upc', 'Apple Music') : null,
+    cover: typeof album.artworkUrl100 === 'string' ? album.artworkUrl100.replace(/100x100bb/, '3000x3000bb') : '',
+    tracks: songs.map((t, i) => ({ n: i + 1, title: String(t.trackName || ''), ms: +t.trackTimeMillis || 0, isrc: '', link: url(t.trackViewUrl) ? found('apple', t.trackViewUrl, 'upc', 'Apple Music') : null })),
+  };
+}
+
+/** Song titles compared loosely (case, punctuation, "(feat. …)", " - Remastered"). */
+const tkey = (t) => String(t || '').toLowerCase().replace(/\s*[([].*?(feat|ft|with|remaster|version|edit|mix).*?[)\]]/g, '').replace(/\s+-\s+.*$/, '').replace(/[^\p{L}\p{N}]+/gu, '');
+
+/**
+ * Merge what the services said: Deezer's tracklist first (it has the ISRCs after the per-track
+ * step), MusicBrainz and iTunes fill in titles, lengths, ISRCs and links, matched by position
+ * when the lists are the same length, else by title.
+ */
+export function mergeRelease(upc, { dz = null, mb = null, it = null } = {}) {
+  const base = dz || mb || it;
+  if (!base) return null;
+  const lists = [dz, mb, it].filter(Boolean);
+  const tracks = base.tracks.map((t) => ({ ...t, links: t.link ? [t.link] : [] }));
+  for (const other of lists.filter((l) => l !== base)) {
+    const samePos = other.tracks.length === tracks.length;
+    other.tracks.forEach((o, i) => {
+      const t = samePos && (!o.title || tkey(o.title) === tkey(tracks[i].title) || !tracks[i].title) ? tracks[i] : tracks.find((x) => tkey(x.title) === tkey(o.title));
+      if (!t) return;
+      t.isrc ||= o.isrc;
+      t.ms ||= o.ms;
+      t.title ||= o.title;
+      if (o.link && !t.links.some((l) => l.key === o.link.key)) t.links.push(o.link);
+    });
+  }
+  const links = [dz?.link, it?.link, ...(mb?.links || [])].filter(Boolean).filter((l, i, a) => a.findIndex((x) => x.key === l.key) === i);
+  return {
+    upc,
+    title: dz?.title || it?.title || mb?.title || '',
+    artist: dz?.artist || it?.artist || mb?.artist || '',
+    date: dz?.date || mb?.date || it?.date || '',
+    type: dz?.type || (tracks.length === 1 ? 'single' : tracks.length <= 6 ? 'ep' : 'album'),
+    label: dz?.label || '',
+    cover: dz?.cover || it?.cover || '',
+    links,
+    tracks,
+  };
+}
+
+/** The found track that is this song (by title), or null. */
+export const matchTrack = (tracks, title) => (tracks || []).find((t) => tkey(t.title) === tkey(title)) || null;
+
+/**
+ * Look a release up by UPC. Returns the merged release (see mergeRelease) with `notes`, or
+ * throws when the UPC isn't valid or no service knows it.
+ */
+export async function lookupUPC(raw, { fetchFn = fetch, deezer = deezerJSONP, wait = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  const upc = normUPC(raw);
+  if (!upc) throw new Error('That isn’t a UPC. It’s the release’s barcode number: 12 or 13 digits.');
+  const notes = [];
+  const getJSON = async (url) => {
+    const res = await fetchFn(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error(String(res.status));
+    return res.json();
+  };
+  const mbFetch = async () => {
+    const id = pickMBRelease(await getJSON(musicBrainzBarcodeURL(upc)), upc);
+    if (!id) return null;
+    await wait(1100); // MusicBrainz allows one request a second
+    return parseMBRelease(await getJSON(musicBrainzReleaseURL(id)));
+  };
+  const [dz, mb, it] = await Promise.all([
+    deezer(deezerAlbumURL(upc)).then(parseDeezerAlbum).catch(() => null),
+    mbFetch().catch(() => (notes.push('MusicBrainz didn’t answer (it’s often busy). Try again in a moment for its ISRCs.'), null)),
+    getJSON(itunesUPCURL(upc)).then(parseITunesUPC).catch(() => null),
+  ]);
+  // Deezer's album list has no ISRCs: ask for each track (a handful of quick requests)
+  if (dz) {
+    for (const t of dz.tracks.slice(0, 40)) {
+      if (t.isrc || !t.id) continue;
+      const j = await deezer(deezerTrackURL(t.id)).catch(() => null);
+      if (j && normISRC(j.isrc)) t.isrc = normISRC(j.isrc);
+    }
+  }
+  const rel = mergeRelease(upc, { dz, mb, it });
+  if (!rel) throw new Error('No service knows this UPC yet. New releases can take a few days after release day to show up, and some distributors list a different barcode.');
+  if (rel.tracks.some((t) => !t.isrc)) notes.push('Some tracks have no ISRC listed; your distributor shows them next to each track.');
+  return { ...rel, notes };
 }

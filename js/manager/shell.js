@@ -171,6 +171,8 @@ export function createManager({ root, studio }) {
     },
     go,
     setTab: (tab) => go(view.page, view.id, tab),
+    /** Draw the page again where it is (no scrolling back to the top). */
+    refresh: () => render(),
     studio,
     today: () => todayISO(),
     form: null,

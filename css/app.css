@@ -1267,3 +1267,18 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .mgr-music-sect .mgr-sect-head { flex-wrap: wrap; gap: 8px; }
 .mgr-release-card .mgr-chip { justify-self: start; }
 .mgr-music-sect .mgr-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+
+/* ---- setlist lengths, UPC lookups */
+.mgr-setlen { margin: 8px 0 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
+.mgr-setlist { list-style: none; margin: 0; padding: 4px 0; max-height: 320px; overflow: auto; }
+.mgr-setlist li { display: grid; grid-template-columns: 24px minmax(0, 1fr) 52px 48px; gap: 8px; align-items: center; padding: 3px 10px; font-size: 13px; }
+.mgr-setlist li .link { text-align: left; }
+.mgr-setlist li.nolen strong { color: var(--danger); }
+.mgr-setlist li .mono { text-align: right; }
+.mgr-setlen-total { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--border); font-size: 13px; }
+.mgr-setlen-total select { width: auto; }
+.mgr-upc { margin: 8px 0; }
+.mgr-upc > summary { cursor: pointer; font-size: 12.5px; color: var(--accent); margin-bottom: 6px; }
+.mgr-upc-tracks { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 3px; }
+.mgr-upc-tracks li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 6px; font-size: 12.5px; }
+.mgr-upc-tracks li.match { background: var(--accent-soft); }

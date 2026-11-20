@@ -197,3 +197,46 @@ export function paginate(list, page = 1, size = 48) {
   const start = (p - 1) * size;
   return { items: list.slice(start, start + size), page: p, pages, from: total ? start + 1 : 0, to: Math.min(total, start + size), total };
 }
+
+// ---------------------------------------------------------------- tags for many photos
+/**
+ * Add and remove tags on many photos at once (by photo id). Tags are cleaned like the tag field
+ * (lower case, no #). Returns how many photos changed.
+ */
+export function tagPhotos(m, ids, add = [], remove = []) {
+  const want = new Set(ids);
+  const plus = parseTags(Array.isArray(add) ? add.join(',') : add);
+  const minus = new Set(parseTags(Array.isArray(remove) ? remove.join(',') : remove));
+  let n = 0;
+  for (const p of m.photos) {
+    if (!want.has(p.id)) continue;
+    const next = [...new Set([...p.tags.filter((t) => !minus.has(t)), ...plus.filter((t) => !minus.has(t))])];
+    if (next.join('|') !== p.tags.join('|')) (p.tags = next), n++;
+  }
+  return n;
+}
+
+/** "live, 2026, -old" → { add: ['live', '2026'], remove: ['old'] } (a leading minus takes a tag off). */
+export function parseTagEdit(text) {
+  const parts = String(text || '').split(/[,\n]+/).map((x) => x.trim()).filter(Boolean);
+  return { add: parseTags(parts.filter((x) => !x.startsWith('-')).join(',')), remove: parseTags(parts.filter((x) => x.startsWith('-')).map((x) => x.slice(1)).join(',')) };
+}
+
+/**
+ * What a click does to the ticked photos: a plain click on the tick toggles one; Shift ticks
+ * everything from the last one you clicked to this one (in the order shown); Ctrl or Cmd toggles
+ * one. Returns the new selection and the new anchor.
+ */
+export function clickSelect(selected, order, id, { shift = false, anchor = null } = {}) {
+  const next = new Set(selected);
+  if (shift && anchor && order.includes(anchor)) {
+    const a = order.indexOf(anchor);
+    const b = order.indexOf(id);
+    const [lo, hi] = a < b ? [a, b] : [b, a];
+    for (let i = lo; i <= hi; i++) next.add(order[i]);
+    return { selected: next, anchor };
+  }
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return { selected: next, anchor: id };
+}

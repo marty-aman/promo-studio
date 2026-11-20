@@ -100,6 +100,7 @@ export function newSong(title = 'New song') {
     lyrics: '',
     notes: '',
     bpm: '',
+    length: '', // "3:45"; blank uses the song file's length
     key: '',
     audioId: null, // a song file in the video studio's media library
     coverId: null, // cover art (an image in the media library); blank uses the EP's or album's
@@ -111,6 +112,7 @@ export function newSong(title = 'New song') {
     files: newFiles(), // stems, the music video and raw footage (references into the media library)
     pitches: [], // playlist pitches sent: { id, curator, playlist, service, contact, sent, status, followUp, ... }
     isrc: '',
+    upc: '', // the barcode of its release, for finding it when there's no ISRC
     links: { spotify: '', apple: '', youtube: '', youtubeMusic: '', deezer: '', tidal: '', amazon: '', soundcloud: '', bandcamp: '' },
     shoot: { concept: '', date: '', callTime: '', locations: [], crew: [], shots: [], wardrobe: '', props: '', budget: '', notes: '' },
     release: releaseChecklist(),
