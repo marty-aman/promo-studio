@@ -16,11 +16,13 @@ import { buildPhotos } from './page-photos.js';
 import { buildMoney } from './page-money.js';
 import { buildTours } from './page-tours.js';
 import { buildStats } from './page-stats.js';
+import { buildReleases } from './page-releases.js';
 
 const VIEW_KEY = 'pvm.manager.view.v1';
 export const MANAGER_PAGES = [
   { id: 'home', label: 'Home', icon: 'home', build: buildHome },
   { id: 'songs', label: 'Songs', icon: 'music', build: buildSongs },
+  { id: 'releases', label: 'Releases', icon: 'disc', build: buildReleases },
   { id: 'shows', label: 'Shows', icon: 'ticket', build: buildShows },
   { id: 'planner', label: 'Show planner', icon: 'mapPin', build: buildPlanner },
   { id: 'tours', label: 'Tours', icon: 'route', build: buildTours },
@@ -249,6 +251,16 @@ export function createManager({ root, studio }) {
       }
       return null;
     },
+    /** The whole song by id from any artist (sections, files, cover), with its artist's releases. */
+    songById: (id) => {
+      for (const a of current().artists) {
+        const s = (a.songs || []).find((x) => x.id === id);
+        if (s) return { song: s, artistId: a.id, releases: a.releases || [] };
+      }
+      return null;
+    },
+    /** Songs whose song file is this media item, from any artist. */
+    songsWithAudio: (mediaId) => current().artists.flatMap((a) => (a.songs || []).filter((s) => s.audioId === mediaId).map((s) => ({ song: s, artistId: a.id, releases: a.releases || [] }))),
     artistBand: (id) => (current().artists.find((a) => a.id === id) || {}).band || null,
     switchArtist,
     show: () => render(),

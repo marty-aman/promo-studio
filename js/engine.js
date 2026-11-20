@@ -487,7 +487,8 @@ export function pickMimeType(prefer = 'mp4') {
  * Real-time export: plays the project from 0 onto a full-resolution canvas while
  * MediaRecorder captures the canvas and the mixed audio.
  */
-export function exportVideo(engine, { format = 'mp4', fps = 30, bitrate = 10_000_000, monitor = false, onProgress } = {}) {
+/** `start`/`end` (seconds on the timeline) record just that part, e.g. one section of the song. */
+export function exportVideo(engine, { format = 'mp4', fps = 30, bitrate = 10_000_000, monitor = false, onProgress, start = 0, end = null } = {}) {
   return new Promise((resolve, reject) => {
     const mime = pickMimeType(format);
     if (!mime) return reject(new Error('This browser cannot record video. Use a recent Chrome, Edge or Firefox.'));
@@ -533,11 +534,24 @@ export function exportVideo(engine, { format = 'mp4', fps = 30, bitrate = 10_000
       reject(e.error || new Error('Recording failed'));
     };
 
-    const timer = setInterval(() => onProgress && onProgress(engine.t / engine.project.duration), 200);
+    const from = Math.max(0, +start || 0);
+    const to = end != null && end > from ? Math.min(end, engine.project.duration) : engine.project.duration;
+    let stopping = false;
+    const stopAt = () => {
+      if (stopping) return;
+      stopping = true;
+      engine.pause();
+      setTimeout(() => rec.state !== 'inactive' && rec.stop(), 60);
+    };
+    const timer = setInterval(() => {
+      onProgress && onProgress(Math.min(1, (engine.t - from) / Math.max(0.01, to - from)));
+      // a part of the timeline: stop when the playhead passes its end
+      if (to < engine.project.duration && engine.t >= to - 0.01) stopAt();
+    }, 15);
     engine.onEnded = () => setTimeout(() => rec.state !== 'inactive' && rec.stop(), 150);
 
-    // Prime: seek to 0 and give elements a moment to land on their first frames.
-    engine.seek(0);
+    // Prime: seek to the start and give elements a moment to land on their first frames.
+    engine.seek(from);
     setTimeout(() => {
       rec.start(250);
       engine.play();

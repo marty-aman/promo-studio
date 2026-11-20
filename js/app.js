@@ -15,6 +15,8 @@ import { createTips } from './panel-tips.js';
 import { kfTarget, kfSignature } from './panel-kf.js';
 import { createManager } from './manager/shell.js';
 import { createPhotoStudio } from './photo/page.js';
+import { sectionsExport } from './panel-sections.js';
+import { coverOf } from './manager/releases.js';
 import { addPhotos as addArtistPhotos } from './manager/photos.js';
 import { makeLayer, makeOverlayClip } from './panel-layers.js';
 import { studioSongFiles } from './manager/files.js';
@@ -624,7 +626,7 @@ manager = createManager({
       const m = id && media.get(id);
       if (!m) return null;
       const tab = m.kind === 'tab' ? { title: m.title || '', tracks: (m.tracks || []).map((t) => t.name), drumTracks: (m.drumTracks || []).length } : {};
-      return { id: m.id, name: m.name, kind: m.kind, duration: m.duration || 0, thumb: m.thumb || null, url: m.url, ...tab };
+      return { id: m.id, name: m.name, kind: m.kind, duration: Number.isFinite(m.duration) ? m.duration : 0, thumb: m.thumb || null, url: m.url, width: m.width || 0, height: m.height || 0, ...tab };
     },
     /**
      * Put a song's file into the current edit. `how`: 'clip' (end of the main video track),
@@ -644,6 +646,13 @@ manager = createManager({
     artistsChanged: () => (syncArtistSel(), syncNowOn()),
     /** The Manager's page, artist or song changed: update the header badge. */
     contextChanged: () => syncNowOn(),
+    /** Open this song's sections in the Video Studio's Export tab (loading the song first if the edit is another one). */
+    openSections(song) {
+      if (store.get().managerSongId !== song.id) this.openPromo(song);
+      if (store.get().managerSongId !== song.id) return; // they kept the other edit
+      setMode('studio');
+      ui.openTab('export');
+    },
     /** Open the Photo Studio on a template: 'promo', 'release', 'countdown', 'show', 'tour'… */
     openPhoto: (id, opts) => openPhoto(id, opts),
     imageFiles: () => media.all().filter((m) => m.kind === 'image').map((m) => ({ id: m.id, name: m.name, thumb: m.thumb || null })),
@@ -672,6 +681,8 @@ manager = createManager({
         d.artistId = manager.currentArtist();
         if (song.lyrics.trim()) d.lyrics = linesFromText(song.lyrics, +(timelineToSong(0, d.song) + 0.5).toFixed(2), 2.5);
         d.managerSongId = song.id;
+        const cover = coverOf(song, manager.store.get().releases || []);
+        if (cover && media.get(cover)) d.endCard.coverMediaId = cover;
       });
       const b = manager.artistBand(manager.currentArtist());
       if (b && (b.theme || b.logoId)) applyArtist(manager.currentArtist(), { quiet: true });
@@ -691,6 +702,26 @@ ui.sendToEdit = (id, how) => {
   const rec = media.get(id);
   if (rec) sendToEdit(rec, how);
 };
+// Export tab: the song's marked sections (see panel-sections.js)
+let previewStop = null;
+ui.sectionsPanel = () =>
+  sectionsExport({
+    store,
+    engine,
+    manager,
+    render: () => ui.refreshPanels(true),
+    seekPlay(from, to) {
+      clearInterval(previewStop);
+      engine.seek(from);
+      engine.play();
+      previewStop = setInterval(() => {
+        if (!engine.playing || engine.t >= to) {
+          if (engine.t >= to) engine.pause();
+          clearInterval(previewStop);
+        }
+      }, 30);
+    },
+  });
 ui.openSongFiles = (songId) => {
   setMode('manager');
   manager.go('songs', songId, 'files');
@@ -721,6 +752,9 @@ function photoContext() {
     currentSongId: manager.currentSong()?.id || '',
     // the Photos page's folders, and which folder each library photo is in
     photoFolders: m.photoFolders || [],
+    releases: m.releases || [],
+    /** A song's cover: its own, else its EP's or album's (a media id or null). */
+    coverOf: (song) => coverOf(song, m.releases || []),
     photoFolderOf: Object.fromEntries((m.photos || []).map((p) => [p.mediaId, p.folder || ''])),
     today: todayStr(),
   };
@@ -766,12 +800,14 @@ photo = createPhotoStudio({
 });
 media.onChange(() => mode === 'photo' && photo.mediaChanged());
 /** Open the Photo Studio on a template (from the Manager: a song, a show, a tour). */
-function openPhoto(templateId, { songId = '', showId = '', tourId = '' } = {}) {
+function openPhoto(templateId, { songId = '', showId = '', tourId = '', releaseId = '' } = {}) {
   const c = photoContext();
-  const song = c.songs.find((s) => s.id === songId) || null;
+  const rel = releaseId && c.releases.find((r) => r.id === releaseId);
+  // an EP or album stands in for the song: its title, date and cover
+  const song = c.songs.find((s) => s.id === songId) || (rel ? { title: rel.title, releaseDate: rel.releaseDate, coverId: rel.coverId } : null);
   const show = c.shows.find((s) => s.id === showId) || null;
   const tour = c.tours.find((t) => t.id === tourId) || null;
-  const extra = { song, show };
+  const extra = { song, show, coverId: rel ? rel.coverId : '' };
   if (tour) Object.assign(extra, { tourName: tour.name, dates: tour.stops.filter((s) => s.status !== 'dropped').map((s) => ({ date: s.date, city: s.city, venue: s.venueName })) });
   else extra.dates = c.shows.filter((s) => s.date && s.date >= c.today && s.status !== 'cancelled').sort((a, b) => a.date.localeCompare(b.date)).map((s) => ({ date: s.date, city: s.city, venue: s.venue }));
   setMode('photo');

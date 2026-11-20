@@ -8,7 +8,7 @@ import { PROVIDERS, searchStockPhotos, downloadStock } from '../stock.js';
 import { driveButton } from '../gdrive.js';
 import { SIZES, sizeById, BLENDS, MASKS, SHAPES, LOOKS, defaultAdjust, newDoc, newLayer, normalizeDoc, hitTest, moveLayer, duplicateLayer, resizeBox, loadDesigns, saveDesigns, docMedia, slidesForImage } from './model.js';
 import { drawDoc, renderDoc, renderSlides, canvasBlob, layoutText } from './render.js';
-import { TEMPLATES, templateById, countdownSet } from './templates.js';
+import { TEMPLATES, templateById, countdownSet, carouselSlides } from './templates.js';
 import { PAGE_SIZES, loadPageSize, savePageSize, paginate, folderPath, folderTree } from '../manager/photos.js';
 
 const IMAGE_ACCEPT = 'image/*,.jpg,.jpeg,.png,.webp,.gif';
@@ -343,7 +343,7 @@ export function createPhotoStudio({ root, studio }) {
    * A grid of photos, one page at a time (so a big library doesn't slow the browser), with the
    * Photos page's folders to narrow it.
    */
-  const photoGrid = (list, onPick, { selected = null } = {}) => {
+  const photoGrid = (list, onPick, { selected = null, order = null } = {}) => {
     if (!ui.size) ui.size = loadPageSize();
     const c = studio.context();
     const folders = c.photoFolders || [];
@@ -364,7 +364,10 @@ export function createPhotoStudio({ root, studio }) {
       { class: 'ph-gridbox' },
       list.length ? fsel : null,
       pool.length
-        ? h('div', { class: 'ph-grid' }, pg.items.map((m) => h('button', { type: 'button', class: `ph-thumb${selected === m.id ? ' on' : ''}`, title: m.name, onclick: () => onPick(m) }, h('img', { src: m.thumb || m.url, alt: m.name, loading: 'lazy', decoding: 'async' }))))
+        ? h('div', { class: 'ph-grid' }, pg.items.map((m) => {
+          const n = order ? order.indexOf(m.id) + 1 : 0;
+          return h('button', { type: 'button', class: `ph-thumb${selected === m.id || n ? ' on' : ''}`, title: m.name, 'aria-pressed': order ? (n ? 'true' : 'false') : null, onclick: () => onPick(m) }, h('img', { src: m.thumb || m.url, alt: m.name, loading: 'lazy', decoding: 'async' }), n ? h('span', { class: 'ph-thumb-n' }, String(n)) : null);
+        }))
         : h('p', { class: 'muted small' }, list.length ? 'No photos in this folder.' : 'No photos yet. Upload some, pull them from Google Drive, or search Stock.'),
       pool.length ? h('div', { class: 'row ph-pager' }, h('span', { class: 'muted tiny' }, `${pg.from}–${pg.to} of ${pg.total}`), sizeSel) : null,
       nav,
@@ -375,7 +378,13 @@ export function createPhotoStudio({ root, studio }) {
     const c = studio.context();
     const t = ui.tpl;
     const imgs = studio.images();
-    if (!t.photoId || !imgs.some((m) => m.id === t.photoId)) t.photoId = (c.photoIds || []).find((id) => imgs.some((m) => m.id === id)) || imgs[0]?.id || '';
+    // the photos picked, in order: the first is the main one; the carousel uses them all, photo in photo the first two
+    t.photoIds = (t.photoIds || []).filter((id) => imgs.some((m) => m.id === id));
+    if (!t.photoIds.length) {
+      const first = (c.photoIds || []).find((id) => imgs.some((m) => m.id === id)) || imgs[0]?.id;
+      if (first) t.photoIds = [first];
+    }
+    t.photoId = t.photoIds[0] || '';
     if (!t.songId) t.songId = c.currentSongId || c.songs[0]?.id || '';
     const upcoming = c.shows.filter((s) => !s.date || s.date >= c.today).sort((a, b) => (a.date || '9').localeCompare(b.date || '9'));
     if (!t.showId) t.showId = upcoming[0]?.id || c.shows[0]?.id || '';
@@ -390,7 +399,10 @@ export function createPhotoStudio({ root, studio }) {
       const show = c.shows.find((s) => s.id === t.showId) || null;
       const tour = c.tours.find((x) => x.id === t.tourId) || null;
       const dates = tour ? tour.stops.filter((s) => s.status !== 'dropped').map((s) => ({ date: s.date, city: s.city, venue: (s.venueName || '') })) : upcoming.map((s) => ({ date: s.date, city: s.city, venue: s.venue }));
-      return { ...c, song, show, dates, tourName: tour ? tour.name : '', photo: photo ? { id: photo.id, w: photo.width, h: photo.height } : null, slides: t.slides || 0 };
+      const ref = (rec) => (rec ? { id: rec.id, w: rec.width, h: rec.height } : null);
+      const photos = t.photoIds.map((id) => ref(studio.get(id))).filter(Boolean);
+      const coverId = song && c.coverOf ? c.coverOf(song) : null;
+      return { ...c, song, show, dates, tourName: tour ? tour.name : '', photo: photos[0] || null, photos, cover: ref(coverId && studio.get(coverId)), slides: t.slides || 0 };
     };
     const use = (tp) => {
       if (tp.needs === 'photo' && !photo) toast('No photo picked: the template has an empty photo layer. Click it and pick one from Photos.', 'info', 5000);
@@ -398,14 +410,25 @@ export function createPhotoStudio({ root, studio }) {
       openDoc(doc, { isNew: true });
       toast(`New design: ${doc.name}. Everything is editable.`);
     };
-    const carouselSlides = h('select', { 'data-k': 'tpl-slides', 'aria-label': 'Slides' }, h('option', { value: '0', selected: !t.slides }, `Auto (${photo ? slidesForImage(photo.width, photo.height) : 3})`), [2, 3, 4, 5, 6, 7, 8, 9, 10].map((k) => h('option', { value: String(k), selected: t.slides === k }, `${k} slides`)));
-    carouselSlides.addEventListener('change', () => ((t.slides = +carouselSlides.value), renderLeft()));
+    const slidesPick = h('select', { 'data-k': 'tpl-slides', 'aria-label': 'Slides' }, h('option', { value: '0', selected: !t.slides }, `Auto (${t.photoIds.length > 1 ? carouselSlides(t.photoIds.map((id) => studio.get(id)).filter(Boolean).map((x) => ({ w: x.width, h: x.height }))) : photo ? slidesForImage(photo.width, photo.height) : 3})`), [2, 3, 4, 5, 6, 7, 8, 9, 10].map((k) => h('option', { value: String(k), selected: t.slides === k }, `${k} slides`)));
+    slidesPick.addEventListener('change', () => ((t.slides = +slidesPick.value), renderLeft()));
     return h(
       'div',
       { class: 'ph-tpl' },
       h('p', { class: 'muted small' }, `Made from ${c.band.name || 'your band'}’s theme, logo and details. Pick what goes in, then a template.`),
       h('div', { class: 'ph-tpl-photo' }, photo ? h('img', { src: photo.thumb || photo.url, alt: '' }) : h('span', { class: 'muted tiny' }, 'No photo'), h('span', { class: 'muted tiny' }, photo ? `Photo: ${photo.name}` : 'Pick a photo below')),
-      h('details', { class: 'ph-pick' }, h('summary', {}, 'Change the photo'), photoGrid(imgs, (m) => ((t.photoId = m.id), renderLeft()), { selected: t.photoId })),
+      t.photoIds.length > 1 ? h('p', { class: 'muted tiny' }, `${t.photoIds.length} photos picked: the carousel lays them all side by side, photo in photo frames the 2nd over the 1st.`) : null,
+      h(
+        'details',
+        { class: 'ph-pick', open: ui.pickOpen || null, ontoggle: (e) => (ui.pickOpen = e.target.open) },
+        h('summary', {}, t.photoIds.length > 1 ? 'Change the photos' : 'Change the photo, or pick several'),
+        h('p', { class: 'muted tiny' }, 'Click photos in the order you want them; click again to drop one. The first is the main photo.'),
+        photoGrid(imgs, (m) => {
+          t.photoIds = t.photoIds.includes(m.id) ? t.photoIds.filter((x) => x !== m.id) : [...t.photoIds, m.id];
+          renderLeft();
+        }, { order: t.photoIds }),
+        t.photoIds.length > 1 ? button('Keep only the first', () => ((t.photoIds = t.photoIds.slice(0, 1)), renderLeft()), { variant: 'sm ghost' }) : null,
+      ),
       c.songs.length ? sel('songId', 'Song', [['', 'No song'], ...c.songs.map((s) => [s.id, s.title])]) : null,
       c.shows.length ? sel('showId', 'Show (for the poster)', c.shows.map((s) => [s.id, `${s.date || 'No date'} · ${s.venue || 'Venue TBD'}`])) : null,
       sel('tourId', 'Dates from', [['', 'Upcoming shows'], ...c.tours.map((x) => [x.id, `Tour: ${x.name}`])]),
@@ -417,7 +440,7 @@ export function createPhotoStudio({ root, studio }) {
             'div',
             { class: 'ph-tpl-card' },
             h('div', {}, h('strong', {}, tp.label), h('p', { class: 'muted tiny' }, tp.blurb)),
-            tp.id === 'carousel' ? carouselSlides : null,
+            tp.id === 'carousel' ? slidesPick : null,
             h('div', { class: 'row' }, button('Use', () => use(tp), { iconName: 'plus', variant: 'sm primary' }), tp.id === 'countdown' ? button('Make the whole countdown', () => {
               const docs = countdownSet(ctx());
               docs.forEach((d, i) => openDoc(d, { isNew: true, last: i === docs.length - 1 }));
@@ -962,7 +985,8 @@ export function createPhotoStudio({ root, studio }) {
       const c = studio.context();
       // the artist's own photo first, else the newest photo in the library
       const ph = studio.get(extra.photoId || (c.photoIds || [])[0] || (studio.images().at(-1) || {}).id);
-      const doc = tp.build({ ...c, ...extra, photo: ph ? { id: ph.id, w: ph.width, h: ph.height } : null });
+      const cov = extra.coverId ? studio.get(extra.coverId) : extra.song && c.coverOf ? studio.get(c.coverOf(extra.song)) : null;
+      const doc = tp.build({ ...c, ...extra, photo: ph ? { id: ph.id, w: ph.width, h: ph.height } : null, cover: cov ? { id: cov.id, w: cov.width, h: cov.height } : null });
       openDoc(doc, { isNew: true });
     },
     mediaChanged: () => (renderLeft(), renderRight(), draw()),

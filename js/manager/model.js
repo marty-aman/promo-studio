@@ -6,6 +6,7 @@ import { newFiles, normalizeFiles } from './files.js';
 import { normalizePhotos, normalizeFolders } from './photos.js';
 import { normalizeTours } from './tours.js';
 import { newStats, normalizeStats } from './stats.js';
+import { normalizeReleases, normalizeSections } from './releases.js';
 
 export const MANAGER_KEY = 'pvm.manager.v1';
 export const MANAGER_VERSION = 1;
@@ -101,6 +102,10 @@ export function newSong(title = 'New song') {
     bpm: '',
     key: '',
     audioId: null, // a song file in the video studio's media library
+    coverId: null, // cover art (an image in the media library); blank uses the EP's or album's
+    releaseId: '', // the EP or album it's on ('' = a single)
+    track: 0, // its track number there
+    sections: [], // intro, verse, chorus… { id, label, start, end } in seconds of the song
     sound: { genres: '', moods: [], energy: '', vocals: '', similar: '' }, // blank genres and similar fall back to the band's
     press: { headline: '', story: '', quote: '', quoteBy: '', credits: '', label: '', edits: {} },
     files: newFiles(), // stems, the music video and raw footage (references into the media library)
@@ -127,6 +132,7 @@ export function newManager() {
     contacts: [],
     posts: [],
     money: [],
+    releases: [], // EPs and albums: { id, type, title, releaseDate, coverId, label, upc, notes }
     stats: newStats(), // streaming numbers: imported reports and live lookups (see stats.js)
     tours: [], // this artist's tours: { id, name, stops: [{ city, date, status, picks, money… }] } (see tours.js)
     photoFolders: [], // folders on the Photos page: { id, name, parent } (see photos.js)
@@ -146,13 +152,15 @@ export function normalizeManager(raw) {
   for (const k of ['songs', 'shows', 'venues', 'bands', 'contacts', 'posts', 'money']) m[k] = list(raw[k]);
   m.songs = m.songs.map((s) => {
     const d = newSong(s.title);
-    return { ...d, ...s, sound: { ...d.sound, ...(s.sound || {}), moods: Array.isArray(s.sound?.moods) ? s.sound.moods : [] }, press: { ...d.press, ...(s.press || {}), edits: { ...(s.press?.edits || {}) } }, pitches: list(s.pitches), files: normalizeFiles(s.files), links: { ...d.links, ...(s.links || {}) }, shoot: { ...d.shoot, ...(s.shoot || {}) }, release: Array.isArray(s.release) ? s.release : d.release };
+    return { ...d, ...s, sections: normalizeSections(s.sections), coverId: typeof s.coverId === 'string' ? s.coverId : null, releaseId: typeof s.releaseId === 'string' ? s.releaseId : '', track: +s.track || 0, sound: { ...d.sound, ...(s.sound || {}), moods: Array.isArray(s.sound?.moods) ? s.sound.moods : [] }, press: { ...d.press, ...(s.press || {}), edits: { ...(s.press?.edits || {}) } }, pitches: list(s.pitches), files: normalizeFiles(s.files), links: { ...d.links, ...(s.links || {}) }, shoot: { ...d.shoot, ...(s.shoot || {}) }, release: Array.isArray(s.release) ? s.release : d.release };
   });
   m.photos = normalizePhotos(raw.photos);
   m.photoFolders = normalizeFolders(raw.photoFolders);
   for (const p of m.photos) if (p.folder && !m.photoFolders.some((f) => f.id === p.folder)) p.folder = '';
   m.tours = normalizeTours(raw.tours);
   m.stats = normalizeStats(raw.stats);
+  m.releases = normalizeReleases(raw.releases);
+  for (const s of m.songs) if (s.releaseId && !m.releases.some((r) => r.id === s.releaseId)) (s.releaseId = ''), (s.track = 0);
   m.band.epkPhotos = Array.isArray(m.band.epkPhotos) ? m.band.epkPhotos.filter((x) => typeof x === 'string').slice(0, 4) : [];
   m.playlists = list(raw.playlists);
   m.playlistsOff = Array.isArray(raw.playlistsOff) ? raw.playlistsOff.filter((x) => typeof x === 'string') : [];

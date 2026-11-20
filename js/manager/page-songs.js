@@ -10,11 +10,15 @@ import { pitchStats } from './press.js';
 import { linksSection } from './page-links.js';
 import { filesTab } from './page-files.js';
 import { fileCounts } from './files.js';
+import { sectionsTab } from './page-sections.js';
+import { coverPicker } from './page-cover.js';
+import { coverOf, setRelease, releaseTypeLabel, sectionSpans, newRelease } from './releases.js';
 
 const TABS = [
   ['overview', 'Overview'],
   ['lyrics', 'Lyrics'],
   ['files', 'Files'],
+  ['sections', 'Sections'],
   ['shoot', 'Video shoot'],
   ['release', 'Release'],
   ['content', 'Content'],
@@ -54,8 +58,14 @@ function songList(ctx) {
             return h(
               'button',
               { type: 'button', class: 'mgr-card', onclick: () => ctx.go('songs', s.id, 'overview') },
+              h('span', { class: 'mgr-card-cover' }, (() => {
+                const c = coverOf(s, m.releases);
+                const x = c && ctx.studio.mediaInfo(c);
+                return x ? h('img', { src: x.url, alt: '', loading: 'lazy' }) : icon('disc', 22);
+              })()),
               h('span', { class: `mgr-chip st-${s.status}` }, statusLabel(s.status)),
               h('strong', {}, s.title),
+              s.releaseId ? h('span', { class: 'muted tiny' }, (({ title, type }) => `${releaseTypeLabel(type)}: ${title} · track ${s.track || '?'}`)((m.releases || []).find((x) => x.id === s.releaseId) || {})) : null,
               h('span', { class: 'muted tiny' }, s.releaseDate ? `${niceDate(s.releaseDate)}${days != null && days >= 0 ? ` · in ${days} days` : ''}` : 'No release date'),
               h('span', { class: 'mgr-bar' }, h('i', { style: { width: `${p.total ? (100 * p.done) / p.total : 0}%` } })),
               h('span', { class: 'muted tiny' }, `${p.done}/${p.total} release tasks · ${m.posts.filter((x) => x.songId === s.id).length} posts`),
@@ -81,7 +91,7 @@ function songPage(ctx, song) {
     });
     ctx.go('songs');
   };
-  const body = { overview: overviewTab, lyrics: lyricsTab, files: filesTab, shoot: buildShootTab, release: releaseTab, content: contentTab, playlists: playlistsTab, press: pressTab, pitch: pitchTab }[tab](ctx, song, S);
+  const body = { overview: overviewTab, lyrics: lyricsTab, files: filesTab, sections: sectionsTab, shoot: buildShootTab, release: releaseTab, content: contentTab, playlists: playlistsTab, press: pressTab, pitch: pitchTab }[tab](ctx, song, S);
   return h(
     'div',
     { class: 'mgr-page' },
@@ -139,8 +149,35 @@ function overviewTab(ctx, song, S) {
         h('li', {}, h('span', {}, 'Planned posts'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('content') }, `${posts.length} (${posts.filter((x) => x.status === 'posted').length} posted)`)),
         h('li', {}, h('span', {}, 'Tab, stems, video and footage'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('files') }, (({ tabs, stems, video, footage, total }) => (total ? [tabs && `${tabs} tab${tabs === 1 ? '' : 's'}`, stems && `${stems} stem${stems === 1 ? '' : 's'}`, video && 'music video', footage && `${footage} clip${footage === 1 ? '' : 's'}`].filter(Boolean).join(' · ') : 'None yet'))(fileCounts(song)))),
         h('li', {}, h('span', {}, 'Playlist pitches'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('pitch') }, (({ total, sent, added }) => (total ? `${sent} sent · ${added} added` : 'None yet'))(pitchStats(song)))),
+        h('li', {}, h('span', {}, 'Sections'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('sections') }, song.sections.length ? sectionSpans(song.sections).map((x) => x.label).slice(0, 4).join(' · ') + (song.sections.length > 4 ? '…' : '') : 'None yet')),
         h('li', {}, h('span', {}, 'Lyrics'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('lyrics') }, song.lyrics.trim() ? `${song.lyrics.trim().split(/\n+/).length} lines` : 'None yet')),
       ),
+      (() => {
+        const m = ctx.store.get();
+        const rels = m.releases || [];
+        const rel = rels.find((x) => x.id === song.releaseId);
+        const sel = h('select', { 'data-k': `relsel-${song.id}`, 'aria-label': 'EP or album' }, h('option', { value: '' }, 'A single (not on an EP or album)'), rels.map((x) => h('option', { value: x.id, selected: x.id === song.releaseId }, `${releaseTypeLabel(x.type)}: ${x.title}`)), h('option', { value: '__new_ep' }, '+ New EP…'), h('option', { value: '__new_album' }, '+ New album…'));
+        sel.addEventListener('change', () => {
+          if (sel.value.startsWith('__new_')) {
+            const type = sel.value === '__new_ep' ? 'ep' : 'album';
+            const title = prompt(`Name the ${type === 'ep' ? 'EP' : 'album'}`, '');
+            if (!title || !title.trim()) return ctx.setTab('overview');
+            const r = { ...newRelease(type, title.trim()), releaseDate: song.releaseDate || '' };
+            ctx.update((d) => {
+              (d.releases ||= []).push(r);
+              setRelease(d, song.id, r.id);
+            });
+            return toast(`“${song.title}” is track 1 of “${r.title}”. Add the cover and other songs on the Releases page.`, 'info', 5000);
+          }
+          ctx.update((d) => setRelease(d, song.id, sel.value));
+        });
+        return h(
+          'div',
+          { class: 'mgr-release-pick' },
+          h('div', { class: 'mgr-two' }, h('label', { class: 'mf' }, h('span', { class: 'mf-l' }, 'Release'), sel), rel ? h('div', { class: 'mf' }, h('span', { class: 'mf-l' }, 'Track'), h('div', { class: 'row' }, h('strong', {}, `${song.track || '?'} of ${m.songs.filter((x) => x.releaseId === rel.id).length}`), button(`Open ${rel.title}`, () => ctx.go('releases', rel.id), { variant: 'sm ghost' }))) : h('span')),
+          coverPicker(ctx, { key: `song-${song.id}`, current: song.coverId, inherited: coverOf({ ...song, coverId: null }, rels), inheritedFrom: rel ? `“${rel.title}”` : '', set: (id) => ctx.update(S((x) => (x.coverId = id))) }),
+        );
+      })(),
       h('div', { class: 'mgr-two' }, f.text(`bpm-${song.id}`, 'BPM', song.bpm, S((s, v) => (s.bpm = v)), { type: 'number' }), f.text(`key-${song.id}`, 'Key', song.key, S((s, v) => (s.key = v)), { placeholder: 'e.g. Drop C, D minor' })),
       h(
         'div',

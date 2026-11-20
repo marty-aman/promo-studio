@@ -53,19 +53,48 @@ function logoOrName(doc, ctx, { y, h, size }) {
   return text(doc, band.toUpperCase(), { name: 'Band', font, size, color: c.light, y, x: Math.round(doc.w * 0.06), w: Math.round(doc.w * 0.88) });
 }
 
+/** Slides for several photos side by side: each photo gets about its own width at the post height. */
+export function carouselSlides(photos, slideW = 1080, slideH = 1350) {
+  const w = photos.reduce((a, p) => a + (p && p.w && p.h ? (p.w / p.h) * slideH : slideW), 0);
+  return Math.min(10, Math.max(2, Math.round(w / slideW)));
+}
+
+/**
+ * Several photos across the whole canvas, each blending into the one before it over a soft
+ * overlap (a fade mask on its left edge), so the seams between photos don't line up with the
+ * seams between slides. Each photo's share follows its shape.
+ */
+export function spanPhotos(doc, photos) {
+  const shares = photos.map((p) => (p && p.w && p.h ? p.w / p.h : 1));
+  const sum = shares.reduce((a, b) => a + b, 0);
+  const overlap = Math.round(Math.min(doc.w / photos.length, doc.w) * 0.22);
+  let x = 0;
+  return photos.map((p, i) => {
+    const seg = (doc.w * shares[i]) / sum;
+    const left = i ? overlap / 2 : 0;
+    const right = i < photos.length - 1 ? overlap / 2 : 0;
+    const L = photoLayer(doc, p, { name: `Photo ${i + 1}`, x: Math.round(x - left), w: Math.round(seg + left + right), y: 0, h: doc.h });
+    if (i) L.mask = { ...L.mask, type: 'fadeLeft', feather: Math.min(0.9, +(overlap / L.w).toFixed(3)) };
+    x += seg;
+    return L;
+  });
+}
+
 // ---------------------------------------------------------------- the templates
 export const TEMPLATES = [
   {
     id: 'carousel',
     label: 'Continuous carousel',
-    blurb: 'One wide photo across 2–10 slides, so it flows when people swipe. Slide 1 has the hook.',
+    blurb: 'One wide photo, or several side by side blending into each other, across 2–10 slides, so it flows when people swipe. Slide 1 has the hook.',
     needs: 'photo',
     build(ctx) {
       const { c, font, band } = common(ctx);
-      const k = ctx.slides || slidesForImage(ctx.photo?.w, ctx.photo?.h);
+      const photos = (ctx.photos && ctx.photos.length ? ctx.photos : [ctx.photo]).filter(Boolean);
+      const many = photos.length > 1;
+      const k = ctx.slides || (many ? carouselSlides(photos) : slidesForImage(ctx.photo?.w, ctx.photo?.h));
       const doc = newDoc({ size: 'post', slides: k, name: `${band} carousel` });
       const sw = doc.w / k;
-      const L = [photoLayer(doc, ctx.photo, { name: 'Wide photo' })];
+      const L = many ? spanPhotos(doc, photos) : [photoLayer(doc, ctx.photo, { name: 'Wide photo' })];
       L.push(fade(doc, { name: 'Shade at the bottom', toAlpha: 0.75, mid: 0.6 }));
       // a line that runs across every seam, so the swipe feels continuous
       L.push(box(doc, { name: 'Running line', shape: 'line', x: Math.round(sw * 0.08), y: Math.round(doc.h * 0.86), w: Math.round(doc.w - sw * 0.16), h: 10, fill: c.accent, strokeW: 10 }));
@@ -88,7 +117,7 @@ export const TEMPLATES = [
       const art = Math.round(doc.w * 0.74);
       doc.layers = [
         photoLayer(doc, ctx.photo, { name: 'Background', adjust: { brightness: 45, contrast: 110, saturate: 70, hue: 0, blur: 30, grayscale: 0, sepia: 0, invert: 0 } }),
-        photoLayer(doc, ctx.photo, { name: 'Artwork', x: Math.round((doc.w - art) / 2), y: Math.round(doc.h * 0.1), w: art, h: art, shadow: { on: true, color: '#000000', blur: 60, x: 0, y: 24 } }),
+        photoLayer(doc, ctx.cover || ctx.photo, { name: 'Artwork', x: Math.round((doc.w - art) / 2), y: Math.round(doc.h * 0.1), w: art, h: art, shadow: { on: true, color: '#000000', blur: 60, x: 0, y: 24 } }),
         text(doc, 'NEW SINGLE', { name: 'Kicker', font: 'Inter', weight: 800, size: 38, letter: 10, color: c.accent, y: Math.round(doc.h * 0.7) }),
         text(doc, (ctx.song?.title || 'Song title').toUpperCase(), { name: 'Title', font, size: 120, color: c.light, y: Math.round(doc.h * 0.74) }),
         text(doc, `${band} · ${ctx.song?.releaseDate && daysUntil(ctx.song.releaseDate, ctx.today) > 0 ? `out ${releaseWhen(ctx.song.releaseDate, ctx.today).toLowerCase()}` : 'out now'} everywhere`, { name: 'Line', font: 'Inter', weight: 600, size: 34, color: c.light, y: Math.round(doc.h * 0.85), opacity: 0.85 }),
@@ -112,7 +141,7 @@ export const TEMPLATES = [
         photoLayer(doc, ctx.photo, { name: 'Background', adjust: { brightness: 40, contrast: 115, saturate: 60, hue: 0, blur: 40, grayscale: 0, sepia: 0, invert: 0 } }),
         logoOrName(doc, ctx, { y: Math.round(doc.h * 0.06), h: 140, size: 90 }),
         text(doc, when === 'NOW' ? 'OUT NOW' : `OUT ${when}`, { name: 'When', font, size: 190, color: c.accent, y: Math.round(doc.h * 0.16) }),
-        photoLayer(doc, ctx.photo, { name: 'Artwork', x: Math.round((doc.w - art) / 2), y: Math.round(doc.h * 0.3), w: art, h: art, shadow: { on: true, color: '#000000', blur: 70, x: 0, y: 30 } }),
+        photoLayer(doc, ctx.cover || ctx.photo, { name: 'Artwork', x: Math.round((doc.w - art) / 2), y: Math.round(doc.h * 0.3), w: art, h: art, shadow: { on: true, color: '#000000', blur: 70, x: 0, y: 30 } }),
         text(doc, `“${ctx.song?.title || 'Song title'}”`, { name: 'Title', font, size: 120, color: c.light, y: Math.round(doc.h * 0.74) }),
         ctx.song?.releaseDate ? text(doc, shortDate(ctx.song.releaseDate), { name: 'Date', font: 'Inter', weight: 700, size: 40, letter: 8, color: c.light, y: Math.round(doc.h * 0.82), opacity: 0.8 }) : null,
         box(doc, { name: 'Link sticker space', x: Math.round(doc.w * 0.2), y: Math.round(doc.h * 0.87), w: Math.round(doc.w * 0.6), h: 110, fill: c.light, fillOn: false, stroke: c.light, strokeW: 4, radius: 0.5, opacity: 0.5 }),
@@ -190,6 +219,36 @@ export const TEMPLATES = [
           text(doc, [d.city, d.venue].filter(Boolean).join(' · ').toUpperCase(), { name: `Place ${i + 1}`, font, size, color: c.light, align: 'left', x: Math.round(doc.w * 0.36), w: Math.round(doc.w * 0.6), y: Math.round(doc.h * (top + i * step)) }),
         ]),
         text(doc, 'TICKETS · LINK IN BIO', { name: 'Tickets', font: 'Inter', weight: 800, size: 30, letter: 6, color: c.light, y: Math.round(doc.h * 0.93), opacity: 0.8 }),
+      ];
+      return doc;
+    },
+  },
+  {
+    id: 'pip',
+    label: 'Photo in photo',
+    blurb: 'A framed photo (like a print) on top of a big blurred one: a live shot over the crowd, the cover over the band.',
+    needs: 'photo',
+    build(ctx) {
+      const { c, font, band } = common(ctx);
+      const doc = newDoc({ size: ctx.size || 'post', name: `${ctx.song?.title || band} photo in photo` });
+      doc.bg = c.bg;
+      const back = ctx.photo;
+      const front = (ctx.photos && ctx.photos[1]) || ctx.cover || ctx.photo;
+      const fw = Math.round(doc.w * 0.62);
+      const ar = front && front.w && front.h ? front.h / front.w : 1;
+      const fh = Math.round(Math.min(doc.h * 0.52, fw * ar));
+      const pad = Math.round(fw * 0.045);
+      const fx = Math.round((doc.w - fw) / 2);
+      const fy = Math.round(doc.h * 0.16);
+      const tilt = -3;
+      doc.layers = [
+        photoLayer(doc, back, { name: 'Background photo', adjust: { brightness: 55, contrast: 110, saturate: 70, hue: 0, blur: 18, grayscale: 0, sepia: 0, invert: 0 } }),
+        newLayer('gradient', doc, { name: 'Vignette', kind: 'radial', from: '#000000', fromAlpha: 0, to: '#000000', toAlpha: 0.7, mid: 0.6 }),
+        box(doc, { name: 'Print border', x: fx - pad, y: fy - pad, w: fw + pad * 2, h: fh + pad * 4, fill: '#f6f3ec', rot: tilt, shadow: { on: true, color: '#000000', blur: 50, x: 0, y: 22 } }),
+        photoLayer(doc, front, { name: 'Framed photo', x: fx, y: fy, w: fw, h: fh, rot: tilt }),
+        text(doc, ctx.caption || (ctx.song ? ctx.song.title : band), { name: 'Caption on the print', font: 'Permanent Marker', size: Math.round(pad * 1.5), color: '#1b1b1b', x: fx, w: fw, y: fy + fh + Math.round(pad * 0.6), rot: tilt }),
+        text(doc, (ctx.song ? (ctx.song.releaseDate && daysUntil(ctx.song.releaseDate, ctx.today) > 0 ? `OUT ${releaseWhen(ctx.song.releaseDate, ctx.today)}` : 'OUT NOW') : band).toUpperCase(), { name: 'Headline', font, size: Math.round(doc.w * 0.1), color: c.light, y: Math.round(doc.h * 0.8), shadow: { on: true, color: '#000000', blur: 30, x: 0, y: 6 } }),
+        text(doc, band.toUpperCase(), { name: 'Band', font: 'Inter', weight: 800, size: Math.round(doc.w * 0.03), letter: 6, color: c.accent, y: Math.round(doc.h * 0.91) }),
       ];
       return doc;
     },
