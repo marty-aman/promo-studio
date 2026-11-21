@@ -126,7 +126,7 @@ export function parseTemplateFile(text) {
     name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 80) : 'Imported template',
     saved: Date.now(),
     thumb: typeof raw.thumb === 'string' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(raw.thumb) && raw.thumb.length < 200000 ? raw.thumb : null,
-    aspect: ['9:16', '1:1', '4:5', '16:9'].includes(raw.aspect) ? raw.aspect : '9:16',
+    aspect: ['9:16', '1:1', '4:5', '16:9', 'canvas'].includes(raw.aspect) ? raw.aspect : '9:16',
     layout: typeof raw.layout === 'string' ? raw.layout : null,
     template: typeof raw.template === 'string' ? raw.template : null,
     theme: isObj(raw.theme) && typeof raw.theme.id === 'string' ? raw.theme : null,

@@ -745,13 +745,16 @@ function rgbSplit(ctx, W, H, offset, alpha = 0.55) {
   ctx.restore();
 }
 
-function warmLeak(ctx, W, H, t, strength) {
+function warmLeak(ctx, W, H, t, strength, loop = 0) {
   if (strength <= 0) return;
+  // in a looping video (a Spotify Canvas) every drift makes whole turns per loop, so the seam can't be seen
+  const a = loop > 0 ? ((((t % loop) + loop) % loop) / loop) * Math.PI * 2 : 0;
+  const [s1, c1, c2, s2] = loop > 0 ? [Math.sin(a), Math.cos(a), Math.cos(a), Math.sin(2 * a)] : [Math.sin(t * 0.5), Math.cos(t * 0.4), Math.cos(t * 0.35), Math.sin(t * 0.3)];
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
   const spots = [
-    [0.15 + 0.25 * Math.sin(t * 0.5), 0.2 + 0.1 * Math.cos(t * 0.4), 'rgba(255,140,40,', 0.7],
-    [0.85 + 0.15 * Math.cos(t * 0.35), 0.75 + 0.15 * Math.sin(t * 0.3), 'rgba(255,60,120,', 0.6],
+    [0.15 + 0.25 * s1, 0.2 + 0.1 * c1, 'rgba(255,140,40,', 0.7],
+    [0.85 + 0.15 * c2, 0.75 + 0.15 * s2, 'rgba(255,60,120,', 0.6],
   ];
   for (const [x, y, col, r] of spots) {
     const g = ctx.createRadialGradient(W * x, H * y, 0, W * x, H * y, Math.max(W, H) * r);
@@ -1001,7 +1004,7 @@ function drawLook(ctx, W, H, look, t, beat) {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   }
-  warmLeak(ctx, W, H, t, look.lightLeak || 0);
+  warmLeak(ctx, W, H, t, look.lightLeak || 0, look.loop || 0);
   if (look.scanlines > 0) {
     ctx.save();
     ctx.fillStyle = `rgba(0,0,0,${look.scanlines * 0.35})`;

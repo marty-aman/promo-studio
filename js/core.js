@@ -6,6 +6,8 @@ export const ASPECTS = {
   '4:5': { w: 1080, h: 1350, label: '4:5 · Instagram feed' },
   '1:1': { w: 1080, h: 1080, label: '1:1 · Square' },
   '16:9': { w: 1920, h: 1080, label: '16:9 · YouTube' },
+  // Spotify takes Canvas files 720–1080 px tall, so a full-HD vertical (1920 tall) would be refused
+  canvas: { w: 608, h: 1080, label: '9:16 · Spotify Canvas (1080 tall)' },
 };
 
 export const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));

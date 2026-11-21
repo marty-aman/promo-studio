@@ -314,6 +314,21 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
     are hidden, not deleted. A card says when a template needs a Guitar Pro file with a guitar or bass track.
   - Lyric templates: **Lyric video** (scrolling sheet over blurred video), **Lyric poster** (kinetic
     words), **Neon tunnel** (3D word tunnel).
+- **Spotify Canvas (Start → Templates and themes, or Spotify Canvas on a song's page in the Manager):** the
+  3–8 second vertical loop that plays behind a track in Spotify's Now Playing view. Pick a loop length, then
+  one of 7 templates that build the loop from your first clips, or the song's cover art:
+  - Seamless loops, where the end blends back into the opening frame: **Seamless loop**, **Super 8 memory**,
+    **Neon city**, **Performance montage** (up to four shots, about two seconds each, soft crossfades).
+  - Rebound loops (zoom out and back, so a still loops perfectly): **Cover art, alive**, **Black and white**.
+  - Hard cut: **Slow push**.
+  - Each switches the Format to Spotify Canvas (608×1080: Spotify takes 720–1080 px tall), turns the end
+    card and text off, hides lyrics (kept), loops playback and previews Spotify's Now Playing view, with the
+    area its title and controls cover.
+  - A checklist flags what breaks Spotify's rules (length, size, end card, text, lyrics, fast cuts,
+    flashing, a logo, a fade from black that blinks every loop). **Back to my edit** puts the format,
+    length, clips and end card back.
+  - The export is silent (Spotify plays the track) and named `…-spotify-canvas.mp4`. Spotify needs MP4,
+    so export from Chrome or Edge. Upload it in Spotify for Artists → Music → your track → Add Canvas.
 - **App layouts:** TikTok, Instagram Reels, YouTube Shorts, "works on all three" and full frame. A layout
   moves lyrics, text, logo, progress bar and the end card into that app's clear area; templates keep it.
 - **Sound effects (Audio tab):** one list, **Your sounds**, holds everything you have: your own clips, the
@@ -496,6 +511,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/renderer.js` | Draws a frame (video, transitions, effects, text, lyrics, end card) to a canvas |
 | `js/overlays.js` | Phantom TikTok / Reels / Shorts UI for the preview |
 | `js/templates.js` | App layouts and song templates |
+| `js/canvas.js` | Spotify Canvas loop templates, going back to the edit, and the checks against Spotify's rules (unit tested) |
 | `js/sfx.js` | Built-in synthesized sound effects and Openverse sound search |
 | `js/freesound.js` | Freesound API search |
 | `js/soundlib.js` | Personal sound library stored in IndexedDB |
