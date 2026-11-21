@@ -229,6 +229,10 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
 - Cover art with blurred-cover, color or dimmed-video background, title, artist, CTA pill,
   streaming platform badges, small text. Entrances: rise, zoom, spin, drop & bounce, card flip,
   vinyl slides out, glitch.
+- The **Cover art** menu lists only the covers of your songs, EPs and albums in Songs & releases (an EP's
+  or album's cover names the songs on it), the song in the edit first, not every picture in the library.
+  A cover set another way (Spotify's *Get info*, *Cover art* on a library picture) stays in the menu,
+  marked as not a song's cover.
 - CTA tokens: `{date}` → "NOV 21", `{countdown}` → "OUT IN 3 DAYS" / "OUT TOMORROW" / "OUT NOW".
 
 **Extras**

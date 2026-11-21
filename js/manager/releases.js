@@ -62,6 +62,38 @@ export function coverOf(song, releases = []) {
   return (r && r.coverId) || null;
 }
 
+/**
+ * The cover art of the songs, EPs and albums on Songs & releases, for a cover picker:
+ * [{ mediaId, label, songIds }], one per picture. The song in `firstSongId` (the edit's) comes first.
+ * A release's cover lists the songs that use it ("EP: Static · Static Bloom, Undertow").
+ */
+export function songCovers(m, { firstSongId = '' } = {}) {
+  const releases = m.releases || [];
+  const out = new Map();
+  const add = (mediaId, label, songId) => {
+    if (!mediaId) return;
+    const e = out.get(mediaId) || { mediaId, label, songIds: [] };
+    if (songId && !e.songIds.includes(songId)) e.songIds.push(songId);
+    out.set(mediaId, e);
+  };
+  for (const r of releases) if (r.coverId) add(r.coverId, `${releaseTypeLabel(r.type)}: ${r.title}`);
+  for (const s of m.songs || []) {
+    const id = coverOf(s, releases);
+    if (!id) continue;
+    if (!out.has(id)) add(id, s.title, s.id);
+    else add(id, out.get(id).label, s.id);
+  }
+  const title = (id) => ((m.songs || []).find((s) => s.id === id) || {}).title;
+  const list = [...out.values()].map((e) => {
+    const names = e.songIds.map(title).filter(Boolean);
+    const isSong = names.length === 1 && names[0] === e.label;
+    return { ...e, label: isSong || !names.length ? e.label : `${e.label} · ${names.join(', ')}` };
+  });
+  const first = list.findIndex((e) => e.songIds.includes(firstSongId));
+  if (first > 0) list.unshift(...list.splice(first, 1));
+  return list;
+}
+
 // ---------------------------------------------------------------- song sections
 export const SECTION_NAMES = ['Intro', 'Verse', 'Pre-chorus', 'Chorus', 'Post-chorus', 'Hook', 'Bridge', 'Breakdown', 'Solo', 'Drop', 'Interlude', 'Outro'];
 
