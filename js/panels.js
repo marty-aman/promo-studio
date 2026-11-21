@@ -41,7 +41,8 @@ import { THEMES, themeById, applyTheme } from './themes.js';
 import { stemRoleLabel } from './manager/files.js';
 
 const themeState = { motion: false };
-import { ensureLayerAnalyses } from './media.js';
+import { ensureLayerAnalyses, videoWaveform } from './media.js';
+import { syncPoint, autoLineUp, describeSyncPoint } from './clipsync.js';
 import { media, addMedia, removeMedia, tabTimeline } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
@@ -2076,6 +2077,148 @@ export function createPanels({ store, engine, ui }) {
     );
   }
 
+  // ---------------------------------------------------------------- SOUND SYNC (video clips)
+  /**
+   * The clip's own sound under the song's, around the playhead: drag to slide the video against the song,
+   * nudge by a frame or more, or line it up by listening. Changes the clip's in-point (where in the file it plays from).
+   */
+  function soundSyncSection(b, sel, rec, c) {
+    const p = store.get();
+    const song = p.song && media.get(p.song.mediaId);
+    const startOf = (pp) => {
+      const x = findClip(pp, sel.id);
+      if (!x.clip) return 0;
+      return x.layer ? x.clip.start : (layoutClips(pp.clips).find((l) => l.clip.id === sel.id) || { start: 0 }).start;
+    };
+    const state = videoWaveform(rec, () => ui.refreshPanels(true));
+    if (state === 'pending') return section('Sound sync', h('p', { class: 'muted small' }, 'Reading the video’s sound…'));
+    if (state === 'none') return section('Sound sync', h('p', { class: 'muted small' }, 'This video has no sound, so there’s nothing to line up. Drag the clip on the timeline to place it by eye.'));
+    if (!song) return section('Sound sync', h('p', { class: 'muted small' }, 'Choose the song (Audio tab) to line this video’s sound up with it.'));
+    const W = 600;
+    const H = 96;
+    const span = 3; // seconds either side of the playhead
+    const cv = h('canvas', { class: 'sync-view', width: W, height: H, 'aria-label': 'The song’s waveform (top) and the video’s (bottom) around the playhead. Drag sideways to slide the video against the song.' });
+    const draw = () => {
+      const pp = store.get();
+      const x = findClip(pp, sel.id).clip;
+      if (!x) return;
+      const g = cv.getContext('2d');
+      g.clearRect(0, 0, W, H);
+      const t0 = engine.t - span;
+      const songAt = (t) => timelineToSong(t, pp.song);
+      const start = startOf(pp);
+      const vidAt = (t) => (x.in || 0) + (t - start) * (x.speed || 1);
+      const lane = (r, timeAt, y, hh, col, from, to) => {
+        if (!r.peaks) return;
+        g.fillStyle = col;
+        const per = r.peaksPerSec;
+        const bins = r.peaks.length / 2;
+        for (let px = 0; px < W; px++) {
+          const t = t0 + (px / W) * span * 2;
+          if (t < from || t > to) continue;
+          const a = timeAt(t);
+          const bn = Math.floor(a * per);
+          const bEnd = Math.max(bn, Math.floor(timeAt(t + (span * 2) / W) * per));
+          let lo = 0;
+          let hi = 0;
+          for (let k = bn; k <= bEnd; k++) {
+            if (k < 0 || k >= bins) continue;
+            lo = Math.min(lo, r.peaks[k * 2]);
+            hi = Math.max(hi, r.peaks[k * 2 + 1]);
+          }
+          g.fillRect(px, y + hh / 2 - hi * hh * 0.48, 1, Math.max(1, (hi - lo) * hh * 0.48));
+        }
+      };
+      lane(song, songAt, 2, H / 2 - 4, 'rgba(110,231,160,.9)', -Infinity, Infinity);
+      lane(rec, vidAt, H / 2 + 2, H / 2 - 4, 'rgba(255,214,102,.9)', start, start + x.duration);
+      // beat lines from the song, and the playhead
+      if (pp.beats) {
+        g.fillStyle = 'rgba(255,255,255,.14)';
+        for (const bt of pp.beats.beats) {
+          const tt = songToTimeline(bt, pp.song);
+          if (tt >= t0 && tt <= t0 + span * 2) g.fillRect(((tt - t0) / (span * 2)) * W, 0, 1, H);
+        }
+      }
+      g.fillStyle = 'rgba(255,255,255,.8)';
+      g.fillRect(W / 2, 0, 1, H);
+      g.fillStyle = 'rgba(255,255,255,.12)';
+      g.fillRect(0, H / 2 - 0.5, W, 1);
+    };
+    b._reg(() => draw());
+    // follow the playhead while the panel is open
+    let lastT = null;
+    const tick = () => {
+      if (lastT !== null && !cv.isConnected) return;
+      if (engine.t !== lastT) (lastT = engine.t), draw();
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    const setIn = (fn) => store.update(c((x, v, d) => {
+      const len = rec.duration || Infinity;
+      x.in = +Math.max(0, Math.min(fn(x), Number.isFinite(len) ? Math.max(0, len - x.duration * (x.speed || 1)) : fn(x))).toFixed(3);
+    }), `sync:${sel.id}`);
+    // drag: moving right makes the video's sound later against the song (an earlier in-point)
+    let drag = null;
+    cv.addEventListener('pointerdown', (e) => {
+      try {
+        cv.setPointerCapture(e.pointerId);
+      } catch {
+        /* a pointer the browser doesn't track (synthetic): drag without capture */
+      }
+      drag = { x: e.clientX, in: findClip(store.get(), sel.id).clip.in || 0, w: cv.getBoundingClientRect().width };
+    });
+    cv.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const dt = ((e.clientX - drag.x) / drag.w) * span * 2;
+      setIn(() => drag.in - dt);
+      draw();
+      info.textContent = describeSyncPoint(syncPoint(findClip(store.get(), sel.id).clip, startOf(store.get()), store.get().song.offset));
+    });
+    const end = () => (drag = null);
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
+    const x0 = findClip(p, sel.id).clip;
+    const point = syncPoint(x0, startOf(p), p.song.offset);
+    const info = h('p', { class: 'small' }, describeSyncPoint(point));
+    const fps = 30;
+    const nudge = (sec) => setIn((x) => (x.in || 0) + sec);
+    const auto = () => {
+      const pp = store.get();
+      const r = autoLineUp(song, rec, findClip(pp, sel.id).clip, startOf(pp), pp.song.offset);
+      if (r.error) return toast(r.error, 'error', 5000);
+      setIn(() => r.in);
+      toast(`${describeSyncPoint(r.point)} ${r.sure === 'sure' ? 'A clear match.' : r.sure === 'likely' ? 'A likely match: play it to check.' : 'No clear match: play it, and nudge or drag if it’s off.'} Undo (Ctrl+Z) to go back.`, r.sure === 'unsure' ? 'error' : 'info', 7000);
+      ui.refreshPanels(true);
+    };
+    // the song's own music video: keep the sync point on the song, for templates and section exports
+    const sc = ui.songContext ? ui.songContext() : null;
+    const isMv = sc && sc.song && sc.song.files && sc.song.files.video && sc.song.files.video.mediaId === rec.id;
+    const saveMv = () => {
+      const pp = store.get();
+      const pt = syncPoint(findClip(pp, sel.id).clip, startOf(pp), pp.song.offset);
+      ui.saveVideoSyncPoint && ui.saveVideoSyncPoint(sc.song.id, Math.max(0, pt));
+      toast(`Saved on “${sc.song.title}”: ${describeSyncPoint(Math.max(0, pt))} Templates and section exports use it.`, 'info', 5000);
+    };
+    const hear = h('input', { type: 'checkbox', checked: (x0.volume || 0) > 0 });
+    hear.addEventListener('change', () => store.update(c((x) => (x.volume = hear.checked ? 1 : 0))));
+    return section(
+      'Sound sync',
+      h('p', { class: 'muted small' }, 'The song (green) over this video’s own sound (gold), 3 seconds either side of the playhead. Drag sideways to slide the video until the hits line up, or nudge it.'),
+      cv,
+      h('div', { class: 'sync-legend' }, h('span', {}, h('i', { style: { background: 'rgba(110,231,160,.9)' } }), 'Song'), h('span', {}, h('i', { style: { background: 'rgba(255,214,102,.9)' } }), 'This video'), h('span', {}, 'White line: the playhead')),
+      info,
+      h('div', { class: 'row wrap' },
+        h('span', { class: 'muted small' }, 'Video'),
+        ...[[-0.5, '−0.5 s'], [-0.1, '−0.1 s'], [-1 / fps, '−1 frame'], [1 / fps, '+1 frame'], [0.1, '+0.1 s'], [0.5, '+0.5 s']].map(([sec, label]) => button(label, () => nudge(-sec), { variant: 'sm', title: sec < 0 ? 'The video plays earlier against the song' : 'The video plays later against the song' })),
+      ),
+      h('div', { class: 'row wrap' },
+        button('Line it up by listening', auto, { iconName: 'activity', variant: 'sm primary', title: 'Compare the video’s sound with the song and set where it plays from' }),
+        isMv ? button(`Save as “${sc.song.title}”’s music video sync`, saveMv, { variant: 'sm', title: 'Templates and section exports use where the song starts in its music video' }) : null,
+      ),
+      h('label', { class: 'toggle' }, hear, h('span', {}, 'Play the video’s own sound too (to check by ear)')),
+    );
+  }
+
   // ---------------------------------------------------------------- CAPTIONS
   const captionUI = { style: 'bold' };
   /** Captions on the video (import a caption file, or make them from the lyrics), and caption files out. */
@@ -2676,6 +2819,7 @@ export function createPanels({ store, engine, ui }) {
           }), [['0.25', '0.25× (very slow)'], ['0.5', '0.5× (slow-mo)'], ['0.75', '0.75×'], ['1', '1× normal'], ['1.5', '1.5×'], ['2', '2× (fast)'], ['4', '4×']]) : null,
           h('p', { class: 'muted tiny' }, isVideo ? `Up to ${maxDur.toFixed(1)}s available at this speed. Drag clip edges on the timeline to trim.` : 'Images can be any length.'),
         ),
+        isVideo && rec ? soundSyncSection(b, sel, rec, c) : null,
         section(
           'Frame',
           b.segmented('Fit', () => G().fit, c((x, v) => (x.fit = v)), [['cover', 'Fill'], ['contain', 'Fit'], ['blurfill', 'Fit + blur']]),

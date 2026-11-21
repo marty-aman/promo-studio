@@ -199,6 +199,14 @@ const ui = {
     rebuildLeft();
     rebuildInspector();
   },
+  /** Save "the song's 0:00 is `sec` seconds into its music video" on the Manager song (templates use it). */
+  saveVideoSyncPoint(songId, sec) {
+    if (!manager) return;
+    manager.store.update((m) => {
+      const s = m.songs.find((x) => x.id === songId);
+      if (s && s.files && s.files.video) s.files.video.offset = +Math.max(0, sec).toFixed(3);
+    });
+  },
   split() {
     const p = store.get();
     // an overlay clip that is selected and under the playhead is split first

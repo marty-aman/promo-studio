@@ -174,6 +174,29 @@ export function vizFeatures(rec, onReady) {
   return background('viz', rec, 'vizCache', () => analyseAudioBlob(rec.blob), onReady);
 }
 
+/**
+ * A video's sound, for its waveform on the timeline and for lining it up with the song: decodes the file's
+ * audio once in the background and fills rec.peaks / rec.envelope like a song file's.
+ * Returns 'ready', 'pending' (onReady is called when it lands), 'none' (no sound in it) or null (not a video).
+ */
+const waveWaiters = new Map();
+export function videoWaveform(rec, onReady) {
+  if (!rec || rec.kind !== 'video') return null;
+  if (rec.peaks) return 'ready';
+  if (rec.noAudio) return 'none';
+  if (onReady) (waveWaiters.get(rec.id) || waveWaiters.set(rec.id, new Set()).get(rec.id)).add(onReady);
+  if (!rec.waveLoading) {
+    rec.waveLoading = analyseAudio(rec).then(() => {
+      if (!rec.peaks) rec.noAudio = true; // decodeAudioData refuses a file with no audio track
+      rec.waveLoading = null;
+      const fns = waveWaiters.get(rec.id);
+      waveWaiters.delete(rec.id);
+      if (fns) fns.forEach((fn) => fn());
+    });
+  }
+  return 'pending';
+}
+
 /** Drum hits detected from a drum stem at a given sensitivity. */
 export function drumHitsFromStem(rec, sensitivity, onReady) {
   if (!rec || !rec.blob) return null;
@@ -243,7 +266,7 @@ async function analyseAudio(rec) {
     rec.peaks = computePeaks(mono, Math.max(1, Math.ceil(audio.duration * rec.peaksPerSec)));
     rec.envRate = 100;
     rec.envelope = energyEnvelope(mono, audio.sampleRate, rec.envRate);
-    rec.duration = audio.duration;
+    if (rec.kind !== 'video' || !rec.duration) rec.duration = audio.duration; // a video keeps its picture's length
   } catch (e) {
     console.warn('Audio analysis failed', e);
   }
