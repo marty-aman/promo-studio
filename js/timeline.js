@@ -1,6 +1,6 @@
 // Multi-track timeline: ruler, video lane, text, lyrics, song, extra audio and end card.
 import { layoutClips, songToTimeline, timelineToSong, snap, clamp, formatTime, maxClipDuration, ctaText } from './core.js';
-import { media } from './media.js';
+import { media, videoWaveform } from './media.js';
 import { isVisible } from './state.js';
 import { h, icon } from './dom.js';
 import { kfTarget } from './panel-kf.js';
@@ -92,6 +92,29 @@ export function createTimeline({ root, store, engine, ui }) {
     return c;
   }
 
+  /**
+   * A video clip's own sound along the bottom of its block (from its in-point, at its speed), so you can
+   * line it up with the song by eye. The file is analysed once in the background; the timeline redraws
+   * when it's ready.
+   */
+  let waveRedraw = 0;
+  function clipWave(el, rec, clip, widthPx) {
+    if (!rec || rec.kind !== 'video' || ui.clipWaves === false) return;
+    const state = videoWaveform(rec, () => {
+      cancelAnimationFrame(waveRedraw);
+      waveRedraw = requestAnimationFrame(() => render());
+    });
+    if (state === 'none') {
+      el.classList.add('no-sound');
+      return;
+    }
+    if (state !== 'ready') return;
+    const sp = clip.speed || 1;
+    const c = waveformCanvas(rec, clip.in || 0, (clip.in || 0) + clip.duration * sp, widthPx, 20, 'rgba(255,214,102,.85)');
+    c.classList.add('clip-wave');
+    el.append(c);
+  }
+
   /** Greedy lane packing so overlapping items get their own row. */
   function lanes(items, startOf, endOf) {
     const ends = [];
@@ -176,18 +199,18 @@ export function createTimeline({ root, store, engine, ui }) {
           if (!L.clips.length) row.append(h('div', { class: 'tl-empty' }, 'Empty video layer: add a clip in its settings'));
           for (const c of L.clips) {
             const rec = media.get(c.mediaId);
-            row.append(
-              block({
-                cls: 'clip oclip',
-                left: c.start * s,
-                width: c.duration * s,
-                label: rec ? rec.name : 'Missing media',
-                sub: `${c.duration.toFixed(1)}s`,
-                selected: sel && sel.type === 'clip' && sel.id === c.id,
-                data: { kind: 'oclip', id: c.id, layer: L.id },
-                style: rec && rec.thumb ? { backgroundImage: `linear-gradient(rgba(10,40,30,.55),rgba(10,40,30,.55)), url(${rec.thumb})` } : {},
-              }),
-            );
+            const el = block({
+              cls: 'clip oclip',
+              left: c.start * s,
+              width: c.duration * s,
+              label: rec ? rec.name : 'Missing media',
+              sub: `${c.duration.toFixed(1)}s`,
+              selected: sel && sel.type === 'clip' && sel.id === c.id,
+              data: { kind: 'oclip', id: c.id, layer: L.id },
+              style: rec && rec.thumb ? { backgroundImage: `linear-gradient(rgba(10,40,30,.55),rgba(10,40,30,.55)), url(${rec.thumb})` } : {},
+            });
+            clipWave(el, rec, c, c.duration * s);
+            row.append(el);
           }
         }, { layer: L });
         continue;
@@ -252,6 +275,7 @@ export function createTimeline({ root, store, engine, ui }) {
           el.classList.add('dragging');
         }
         if (l.clip.transition && l.clip.transition.type !== 'none') el.append(h('div', { class: 'tl-trans', title: `Transition: ${l.clip.transition.type}` }));
+        clipWave(el, rec, l.clip, l.clip.duration * s);
         row.append(el);
       });
     }, { vis: 'video' });

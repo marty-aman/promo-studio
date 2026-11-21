@@ -235,6 +235,15 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
 - **Detect BPM** adds beat markers; timeline items snap to beats.
 - **Auto-edit to the beat** builds a video track that cuts on every 1/2/4/8 beats.
 - Extra audio tracks (voice-over, SFX) with volume and fades; per-clip sound (muted by default).
+- **Video sound on the timeline:** each video clip shows its own sound as a gold waveform along the bottom
+  of its block (read in the background the first time it's shown). A video with no sound track says
+  "no sound".
+- **Sound sync** (in a video clip's settings): the song (green) over the video's own sound (gold), 3 s
+  either side of the playhead. Drag sideways to slide the video against the song, or nudge it by
+  ±0.5 s, ±0.1 s or one frame; this changes where in the file the clip plays from. **Line it up by
+  listening** compares the two sounds and sets it for you (1× speed only), and you can switch on the
+  video's own sound to check by ear. For the song's music video, **Save as the music video sync** stores
+  where the song starts in it, which templates and section exports use.
 
 **End card / call to action**
 - Cover art with blurred-cover, color or dimmed-video background, title, artist, CTA pill,
@@ -630,6 +639,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/midiviz.js` | MIDI notes layer: piano roll, falling keys, note bursts |
 | `js/page-drumconvert.js` | The Drum MIDI converter page |
 | `js/autosync.js`, `js/layersync.js` | Auto-sync of stems and charts to the song (FFT cross-correlation, unit tested) |
+| `js/clipsync.js` | Lining a video clip's own sound up with the song (sync point maths, unit tested) |
 | `js/subtitles.js` | Captions: .srt/.vtt in and out, caption styles, the lyrics and captions as cues in video time (unit tested) |
 | `js/rhythmgame.js`, `js/gamechart.js` | Rhythm game layer: charts from tabs, MIDI or stems, drawing, themes (unit tested) |
 | `js/songtemplates.js` | Templates from a song's files: rhythm game, music video + lyrics, raw footage + lyrics (unit tested) |
