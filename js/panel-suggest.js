@@ -6,14 +6,19 @@ import { layoutClips } from './core.js';
 import { media, tabTimeline } from './media.js';
 import { inventory, inventorySignature, canSuggest, planTakes, applyTake } from './suggest.js';
 import { coverPalette } from './backgrounds.js';
+import { loadScan, hotTemplates, ago } from './trendscan.js';
+import { TRENDS } from './inspiration.js';
 
 export const suggestState = { seed: 0, seen: '' };
 
 /** Is there a suggestion the user hasn't looked at yet (for the dot on the rail)? */
 export function hasNewSuggestions(p) {
   const inv = inventory(media.all(), p);
-  return canSuggest(inv) && inventorySignature(inv) !== suggestState.seen;
+  return canSuggest(inv) && signature(inv) !== suggestState.seen;
 }
+
+/** The inputs plus the last trend refresh: a new refresh counts as new suggestions too. */
+const signature = (inv) => `${inventorySignature(inv)}|${(loadScan() || {}).fetchedAt || ''}`;
 
 let stopPreview = null;
 
@@ -91,7 +96,8 @@ export function buildSuggestPanel({ store, engine, ui }) {
       ),
     );
   }
-  suggestState.seen = inventorySignature(inv);
+  suggestState.seen = signature(inv);
+  const scan = loadScan();
   const cover = p.endCard.coverMediaId && media.get(p.endCard.coverMediaId);
   const palette = cover && cover.el ? coverPalette(cover.el) : null;
   const tabTempo = (id, track) => {
@@ -99,7 +105,7 @@ export function buildSuggestPanel({ store, engine, ui }) {
     return tl && tl.tempo;
   };
   const seed = suggestState.seed;
-  const takes = planTakes(inv, { seed });
+  const takes = planTakes(inv, { seed, hot: hotTemplates(TRENDS, scan) });
   const base = engine.env(false);
 
   const cards = takes.map((take, i) => {
@@ -190,6 +196,7 @@ export function buildSuggestPanel({ store, engine, ui }) {
         'div',
         { class: 'sugg-info' },
         h('strong', {}, `${i === 0 ? 'Best match · ' : ''}${take.title}`),
+        take.trending ? h('span', { class: 'heat hot tiny', title: 'Its format is among the hottest on Shorts in your niche (Inspiration → Refresh trends)' }, '🔥 Trending format') : null,
         h('ul', { class: 'sugg-facts tiny' }, facts.map((f) => h('li', {}, f))),
         h('div', { class: 'row' }, playBtn, use),
       ),
@@ -202,6 +209,7 @@ export function buildSuggestPanel({ store, engine, ui }) {
     section(
       'Suggested edits',
       h('p', { class: 'muted small' }, 'Three edits built from what you added. Play one to see and hear it, then use it. It replaces the video track and look; your lyrics, text and files stay.'),
+      h('p', { class: 'muted tiny' }, scan && scan.videos ? `Leaning on the formats trending on Shorts (refreshed ${ago(scan.fetchedAt)}). ` : 'Refresh the trends on the Inspiration page and these lean on what’s working right now. ', h('button', { type: 'button', class: 'link', onclick: () => ui.openTab('inspiration') }, scan && scan.videos ? 'Refresh trends' : 'Open Inspiration')),
       have,
       h('div', { class: 'sugg-list' }, cards),
       h('div', { class: 'row' },

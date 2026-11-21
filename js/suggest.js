@@ -52,9 +52,11 @@ const nameOf = (id) => (TEMPLATES.find((t) => t.id === id) || {}).name || id;
 
 /**
  * Three different takes, best first. `seed` rotates the choices for "Show different takes".
- * Each: { id, template, title, hookLen, beatsPerCut }
+ * `hot` lists template ids of formats trending right now (from the Inspiration page's refresh); the
+ * first one that isn't already a pick replaces the plain look, and it's marked `trending`.
+ * Each: { id, template, title, hookLen, beatsPerCut, trending? }
  */
-export function planTakes(inv, { seed = 0 } = {}) {
+export function planTakes(inv, { seed = 0, hot = [] } = {}) {
   const band = [];
   if (inv.guitar && inv.drums) band.push('fullband');
   if (inv.guitar) band.push('riff', 'challenge');
@@ -73,11 +75,18 @@ export function planTakes(inv, { seed = 0 } = {}) {
       if (t && !picks.includes(t)) picks.push(t);
     }
   }
+  // a trending format takes the last slot (the plain look), unless it's already picked
+  const trend = hot.find((t) => TEMPLATES.some((x) => x.id === t) && !(TEMPLATES.find((x) => x.id === t).needs) && !picks.includes(t));
+  const trending = new Set(hot.filter((t) => picks.includes(t)));
+  if (trend && picks.length) {
+    picks[picks.length - 1] = trend;
+    trending.add(trend);
+  }
   const lens = [30, 15, 20];
   return picks.map((template, i) => {
     const hookLen = lens[(i + seed) % lens.length];
     const beatsPerCut = template === 'hype' || template === 'poster' ? 2 : template === 'lyricvideo' || template === 'cinematic' ? 8 : 4;
-    return { id: `take-${seed}-${i}-${template}`, template, title: nameOf(template), hookLen, beatsPerCut };
+    return { id: `take-${seed}-${i}-${template}`, template, title: nameOf(template), hookLen, beatsPerCut, ...(trending.has(template) ? { trending: true } : {}) };
   });
 }
 

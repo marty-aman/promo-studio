@@ -462,6 +462,23 @@ The page also has a posting playbook, a release-week plan dated from your releas
 of five and caption openers you can copy. Trends change weekly, so the page links to TikTok Creative
 Center for what is rising today. The trend list lives in `js/inspiration.js`.
 
+**Refresh trends** (top of the page) checks what's working this fortnight and re-ranks everything:
+
+- It searches YouTube Shorts from the last 14 days for your words (default: metalcore, post-hardcore,
+  emo band), using the YouTube key saved on the Manager's Content page. TikTok and Instagram can't be
+  searched from a web page, so Shorts (mostly the same videos, cross-posted) stand in. Each search word
+  costs 100 of the key's 10,000 free daily units.
+- Each trend card gets **🔥 Hot now**, **Rising** or **Quiet now**, with how many Shorts and channels use
+  that format, their views and example videos. The hottest come first.
+- **Right now on Shorts** lists the hashtags two or more channels are using (copy the top 5), and phrases
+  that 3+ channels put in titles that none of the known formats cover, each with an example.
+- The newest additions to Deezer's own editorial playlist for your genre (for example "Metalcore"; no key
+  needed), with a button to use those bands in "bands your fans also like" and the "If you like…" hooks.
+- The **Suggested edits** on the Start tab lean on the hottest format and mark it **🔥 Trending format**;
+  a new refresh shows as new suggestions.
+- The refresh is saved in this browser. After a week the page asks you to refresh again. Without a
+  YouTube key only Deezer is read, and the page says so. The logic is in `js/trendscan.js` (unit tested).
+
 ## Sharing
 
 - **Share to an app:** after exporting, the system share sheet sends the video (and copies the caption)
