@@ -3,10 +3,23 @@
 // picture, stems as a drum chart, a visualizer or an extra audio track.
 import { h, button, iconButton, toast, pickFiles } from '../dom.js';
 import { driveButton } from '../gdrive.js';
-import { STEM_ROLES, newFiles, addStems, addFootage, addTabs, setVideo, fileCounts } from './files.js';
+import { STEM_ROLES, newFiles, addStems, addFootage, addTabs, setVideo, fileCounts, stemName, groupStems, moveStem, VIDEO_STATUSES, videoDone } from './files.js';
 
 /** Which upload is running (not saved). */
 export const filesUI = { busy: null };
+
+/** Where the music video is at, with a one-click "Mark complete". Used on the Files and Video shoot tabs. */
+export function videoStatusControl(ctx, song, S) {
+  const done = videoDone(song);
+  return h(
+    'div',
+    { class: `row mgr-video-status${done ? ' done' : ''}` },
+    h('label', { class: 'mgr-inline' }, h('span', { class: 'muted small' }, 'Music video'), ctx.form.select(`video-status-${song.id}`, '', song.videoStatus || '', [['', 'No video yet'], ...VIDEO_STATUSES], S((s, v) => (s.videoStatus = v)))),
+    done
+      ? h('span', { class: 'mgr-chip ok' }, '✓ Complete')
+      : button('Mark complete', () => ctx.update(S((s) => (s.videoStatus = 'done'))), { iconName: 'check', variant: 'sm', title: 'The music video is finished' }),
+  );
+}
 
 const AUDIO_ACCEPT = 'audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.aif,.aiff';
 const VIDEO_ACCEPT = 'video/*,.mp4,.mov,.webm,.m4v';
@@ -88,36 +101,60 @@ export function filesTab(ctx, song, S) {
   );
 
   // ---- stems
-  const stemRows = files.stems.map((s) => {
+  const stemRow = (s, i, group) => {
     const m = info(s.mediaId);
     const drop = () => ctx.update(S((x) => (x.files.stems = x.files.stems.filter((y) => y.id !== s.id))));
     if (!m) return missing('Stem', drop);
+    const name = stemName(s, m.name);
+    const edit = (fn) => S((x, v) => {
+      const y = x.files.stems.find((z) => z.id === s.id);
+      if (y) fn(y, v);
+    });
+    const move = (dir) => ctx.update(S((x) => moveStem(x, s.id, dir)));
     return h(
       'div',
-      { class: 'mgr-file stem' },
-      h('div', { class: 'mgr-file-main' }, h('strong', { title: m.name }, m.name), h('span', { class: 'muted tiny' }, len(m.duration))),
-      ctx.form.select(`stem-role-${s.id}`, '', s.role, STEM_ROLES, S((x, v) => {
-        const y = x.files.stems.find((z) => z.id === s.id);
-        if (y) y.role = v;
-      })),
-      h('audio', { controls: true, preload: 'none', src: m.url, 'aria-label': `Play ${m.name}` }),
+      { class: 'mgr-file stem', 'data-stem': s.id },
+      h(
+        'div',
+        { class: 'mgr-stem-head' },
+        h('input', {
+          type: 'text',
+          class: 'mgr-stem-name',
+          'data-k': `stem-name-${s.id}`,
+          value: s.name || '',
+          placeholder: m.name.replace(/\.[a-z0-9]+$/i, ''),
+          maxlength: 80,
+          'aria-label': `Name for ${m.name}`,
+          title: `File: ${m.name}`,
+          onchange: (e) => ctx.update(edit((y) => (y.name = e.target.value.trim().slice(0, 80)))),
+        }),
+        h('span', { class: 'muted tiny' }, len(m.duration)),
+        group.stems.length > 1 ? Object.assign(iconButton('arrowUp', `Move ${name} up`, () => move(-1), 'ghost'), { disabled: i === 0 }) : null,
+        group.stems.length > 1 ? Object.assign(iconButton('arrowDown', `Move ${name} down`, () => move(1), 'ghost'), { disabled: i === group.stems.length - 1 }) : null,
+      ),
+      s.name ? h('span', { class: 'muted tiny', title: m.name }, m.name) : null,
+      h('label', { class: 'mgr-stem-part' }, h('span', { class: 'muted tiny' }, 'Part'), ctx.form.select(`stem-role-${s.id}`, '', s.role, STEM_ROLES, edit((y, v) => (y.role = v)))),
+      h('audio', { controls: true, preload: 'none', src: m.url, 'aria-label': `Play ${name}` }),
       h(
         'div',
         { class: 'row' },
-        s.role === 'drums' ? button('Drum chart', () => send(m.id, 'drums'), { iconName: 'activity', variant: 'sm', title: 'Add a drum chart layer that finds the hits in this stem' }) : null,
+        s.role === 'drums' || s.role === 'perc' ? button('Drum chart', () => send(m.id, 'drums'), { iconName: 'activity', variant: 'sm', title: 'Add a drum chart layer that finds the hits in this stem' }) : null,
         button('Visualizer', () => send(m.id, 'viz'), { iconName: 'volume', variant: 'sm', title: 'Add a visualizer that moves to this stem' }),
         button('Audio track', () => send(m.id, 'audio'), { iconName: 'music', variant: 'sm', title: 'Add it as an extra audio track at the playhead' }),
-        iconButton('trash', `Remove ${m.name} from this song`, drop, 'ghost'),
+        iconButton('trash', `Remove ${name} from this song`, drop, 'ghost'),
       ),
     );
-  });
+  };
+  const stemGroups = groupStems(files.stems).map((g) =>
+    h('div', { class: 'mgr-stem-group', 'data-role': g.role }, h('h3', { class: 'mgr-stem-group-h' }, g.label, h('span', { class: 'muted tiny' }, ` · ${g.stems.length}`)), h('div', { class: 'mgr-files' }, g.stems.map((s, i) => stemRow(s, i, g)))),
+  );
   const stemIds = files.stems.map((s) => s.mediaId);
   const stems = h(
     'section',
     { class: 'mgr-sect' },
     h('h2', {}, `Stems · ${files.stems.length}`),
-    h('p', { class: 'muted small' }, 'Separate parts of the mix: drums, bass, guitars, vocals. The part is guessed from the file name. A drum stem can drive a drum chart, and any stem can drive a visualizer or play on its own track.'),
-    stemRows.length ? h('div', { class: 'mgr-files' }, stemRows) : null,
+    h('p', { class: 'muted small' }, 'Separate parts of the mix, grouped by part. The part is guessed from the file name; change it or give the stem a name of its own (the file keeps its name). A drum or percussion stem can drive a drum chart, and any stem can drive a visualizer or play on its own track.'),
+    stemGroups.length ? h('div', { class: 'mgr-stem-groups' }, stemGroups) : null,
     h(
       'div',
       { class: 'row' },
@@ -131,10 +168,12 @@ export function filesTab(ctx, song, S) {
   const vm = files.video && info(files.video.mediaId);
   const dropVideo = () => ctx.update(S((s) => setVideo(s, null)));
   const pickVideo = () => upload('video', VIDEO_ACCEPT, ['video'], false, (s, added) => setVideo(s, added[0]), 'video files');
+  const videoState = videoStatusControl(ctx, song, S);
   const video = h(
     'section',
     { class: 'mgr-sect' },
     h('h2', {}, 'Music video'),
+    videoState,
     files.video && !vm ? missing('Music video', dropVideo) : null,
     vm
       ? h(

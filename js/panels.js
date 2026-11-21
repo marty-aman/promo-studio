@@ -36,6 +36,7 @@ import { captionPicker } from './panel-captions.js';
 import { fetchSpotifyInfo } from './spotify.js';
 import { LINE_PRESETS, lineStyle, hasLineStyle } from './linestyle.js';
 import { THEMES, themeById, applyTheme } from './themes.js';
+import { stemRoleLabel } from './manager/files.js';
 
 const themeState = { motion: false };
 import { ensureLayerAnalyses } from './media.js';
@@ -458,8 +459,8 @@ export function createPanels({ store, engine, ui }) {
                   h(
                     'div',
                     { class: 'song-files-item stem' },
-                    h('span', { class: 'song-files-name', title: m.name }, `${{ drums: 'Drums', bass: 'Bass', guitar: 'Guitar', vocals: 'Vocals', keys: 'Keys', other: 'Stem' }[m.role] || 'Stem'}: ${m.name}`),
-                    m.role === 'drums' ? button('Drum chart', () => send(m.id, 'drums'), { variant: 'sm' }) : null,
+                    h('span', { class: 'song-files-name', title: m.name }, `${m.role === 'other' ? 'Stem' : stemRoleLabel(m.role)}: ${m.label || m.name}`),
+                    m.role === 'drums' || m.role === 'perc' ? button('Drum chart', () => send(m.id, 'drums'), { variant: 'sm' }) : null,
                     button('Visualizer', () => send(m.id, 'viz'), { variant: 'sm' }),
                   ),
                 ),

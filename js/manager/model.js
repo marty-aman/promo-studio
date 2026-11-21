@@ -2,7 +2,7 @@
 // bands, contacts, posts (with their stats) and money. Kept in this browser (localStorage) and
 // backed up as a JSON file. Pure functions so they can be unit tested.
 
-import { newFiles, normalizeFiles } from './files.js';
+import { newFiles, normalizeFiles, VIDEO_STATUSES } from './files.js';
 import { normalizePhotos, normalizeFolders } from './photos.js';
 import { normalizeTours } from './tours.js';
 import { newStats, normalizeStats } from './stats.js';
@@ -100,6 +100,8 @@ export function newSong(title = 'New song') {
     lyrics: '',
     notes: '',
     bpm: '',
+    instrumental: false, // no vocals: no lyrics needed, and pitches and the press release say so
+    videoStatus: '', // the music video: '' (none yet), idea, planned, shot, editing, done, released
     length: '', // "3:45"; blank uses the song file's length
     key: '',
     audioId: null, // a song file in the video studio's media library
@@ -154,7 +156,7 @@ export function normalizeManager(raw) {
   for (const k of ['songs', 'shows', 'venues', 'bands', 'contacts', 'posts', 'money']) m[k] = list(raw[k]);
   m.songs = m.songs.map((s) => {
     const d = newSong(s.title);
-    return { ...d, ...s, sections: normalizeSections(s.sections), coverId: typeof s.coverId === 'string' ? s.coverId : null, releaseId: typeof s.releaseId === 'string' ? s.releaseId : '', track: +s.track || 0, sound: { ...d.sound, ...(s.sound || {}), moods: Array.isArray(s.sound?.moods) ? s.sound.moods : [] }, press: { ...d.press, ...(s.press || {}), edits: { ...(s.press?.edits || {}) } }, pitches: list(s.pitches), files: normalizeFiles(s.files), links: { ...d.links, ...(s.links || {}) }, shoot: { ...d.shoot, ...(s.shoot || {}) }, release: Array.isArray(s.release) ? s.release : d.release };
+    return { ...d, ...s, instrumental: s.instrumental === true, videoStatus: VIDEO_STATUSES.some(([k]) => k === s.videoStatus) ? s.videoStatus : '', sections: normalizeSections(s.sections), coverId: typeof s.coverId === 'string' ? s.coverId : null, releaseId: typeof s.releaseId === 'string' ? s.releaseId : '', track: +s.track || 0, sound: { ...d.sound, ...(s.sound || {}), moods: Array.isArray(s.sound?.moods) ? s.sound.moods : [] }, press: { ...d.press, ...(s.press || {}), edits: { ...(s.press?.edits || {}) } }, pitches: list(s.pitches), files: normalizeFiles(s.files), links: { ...d.links, ...(s.links || {}) }, shoot: { ...d.shoot, ...(s.shoot || {}) }, release: Array.isArray(s.release) ? s.release : d.release };
   });
   m.photos = normalizePhotos(raw.photos);
   m.photoFolders = normalizeFolders(raw.photoFolders);

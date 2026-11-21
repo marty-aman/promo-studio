@@ -9,7 +9,7 @@ import { pressTab, playlistsTab, pitchTab } from './page-press.js';
 import { pitchStats } from './press.js';
 import { linksSection } from './page-links.js';
 import { filesTab } from './page-files.js';
-import { fileCounts } from './files.js';
+import { fileCounts, videoDone, videoStatusLabel } from './files.js';
 import { sectionsTab } from './page-sections.js';
 import { coverPicker } from './page-cover.js';
 import { releaseCard } from './page-releases.js';
@@ -100,7 +100,7 @@ function songList(ctx) {
                   const x = c && ctx.studio.mediaInfo(c);
                   return x ? h('img', { src: x.url, alt: '', loading: 'lazy' }) : icon('disc', 22);
                 })()),
-                h('span', { class: `mgr-chip st-${s.status}` }, statusLabel(s.status)),
+                h('span', { class: 'mgr-card-chips' }, h('span', { class: `mgr-chip st-${s.status}` }, statusLabel(s.status)), s.instrumental ? h('span', { class: 'mgr-chip', title: 'Instrumental' }, 'Instrumental') : null, videoDone(s) ? h('span', { class: 'mgr-chip ok', title: `Music video: ${videoStatusLabel(s.videoStatus)}` }, '✓ Video') : null),
                 h('strong', {}, s.title),
                 h('span', { class: 'muted tiny' }, rel ? `${releaseTypeLabel(rel.type)}: ${rel.title} · track ${s.track || '?'}` : 'Single'),
                 h('span', { class: 'muted tiny' }, s.releaseDate ? `${niceDate(s.releaseDate)}${days != null && days >= 0 ? ` · in ${days} days` : ''}` : 'No release date'),
@@ -137,7 +137,7 @@ function songPage(ctx, song) {
     h(
       'header',
       { class: 'mgr-head song' },
-      h('div', { class: 'mgr-title' }, f.text(`title-${song.id}`, '', song.title, S((s, v) => (s.title = v.trim() || 'Untitled'))), h('div', { class: 'row' }, f.select(`status-${song.id}`, '', song.status, SONG_STATUSES, S((s, v) => (s.status = v))), h('label', { class: 'mf inline' }, h('span', { class: 'mf-l' }, 'Release date'), f.text(`rel-${song.id}`, '', song.releaseDate, S((s, v) => (s.releaseDate = v)), { type: 'date' })))),
+      h('div', { class: 'mgr-title' }, f.text(`title-${song.id}`, '', song.title, S((s, v) => (s.title = v.trim() || 'Untitled'))), h('div', { class: 'row' }, f.select(`status-${song.id}`, '', song.status, SONG_STATUSES, S((s, v) => (s.status = v))), h('label', { class: 'mgr-inline mgr-instr', title: 'No vocals: no lyrics needed, and the pitches and press release say it’s instrumental' }, f.check(`instr-${song.id}`, song.instrumental, S((s, v) => (s.instrumental = v)), 'Instrumental'), h('span', { class: 'small' }, 'Instrumental')), h('label', { class: 'mf inline' }, h('span', { class: 'mf-l' }, 'Release date'), f.text(`rel-${song.id}`, '', song.releaseDate, S((s, v) => (s.releaseDate = v)), { type: 'date' })))),
       h('div', { class: 'row' }, button('Design a post', () => ctx.studio.openPhoto(song.releaseDate && song.releaseDate > ctx.today() ? 'release' : 'promo', { songId: song.id }), { iconName: 'image', variant: '', title: 'Open the Photo Studio with a release image for this song (more templates there: countdown, lyric card, carousel…)' }), button('Make a promo', () => ctx.studio.openPromo(song), { iconName: 'film', variant: 'primary', title: 'Open the video studio with this song’s title, lyrics and audio' }), iconButton('trash', `Delete “${song.title}”`, remove, 'ghost danger')),
     ),
     h('div', { class: 'mgr-tabs', role: 'tablist' }, TABS.map(([k, label]) => h('button', { type: 'button', role: 'tab', 'aria-selected': k === tab ? 'true' : 'false', class: `mgr-tab${k === tab ? ' on' : ''}`, onclick: () => ctx.setTab(k) }, label))),
@@ -183,12 +183,13 @@ function overviewTab(ctx, song, S) {
         'ul',
         { class: 'mgr-facts' },
         h('li', {}, h('span', {}, 'Release checklist'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('release') }, `${p.done} of ${p.total} done`)),
+        h('li', {}, h('span', {}, 'Music video'), h('button', { type: 'button', class: `link${videoDone(song) ? ' ok' : ''}`, onclick: () => ctx.setTab('files') }, song.videoStatus ? `${videoDone(song) ? '✓ ' : ''}${videoStatusLabel(song.videoStatus)}` : 'Not started')),
         h('li', {}, h('span', {}, 'Video shoot'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('shoot') }, song.shoot.date ? niceDate(song.shoot.date) : song.shoot.concept ? 'Concept picked, no date' : 'Not planned')),
         h('li', {}, h('span', {}, 'Planned posts'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('content') }, `${posts.length} (${posts.filter((x) => x.status === 'posted').length} posted)`)),
         h('li', {}, h('span', {}, 'Tab, stems, video and footage'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('files') }, (({ tabs, stems, video, footage, total }) => (total ? [tabs && `${tabs} tab${tabs === 1 ? '' : 's'}`, stems && `${stems} stem${stems === 1 ? '' : 's'}`, video && 'music video', footage && `${footage} clip${footage === 1 ? '' : 's'}`].filter(Boolean).join(' · ') : 'None yet'))(fileCounts(song)))),
         h('li', {}, h('span', {}, 'Playlist pitches'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('pitch') }, (({ total, sent, added }) => (total ? `${sent} sent · ${added} added` : 'None yet'))(pitchStats(song)))),
         h('li', {}, h('span', {}, 'Sections'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('sections') }, song.sections.length ? sectionSpans(song.sections).map((x) => x.label).slice(0, 4).join(' · ') + (song.sections.length > 4 ? '…' : '') : 'None yet')),
-        h('li', {}, h('span', {}, 'Lyrics'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('lyrics') }, song.lyrics.trim() ? `${song.lyrics.trim().split(/\n+/).length} lines` : 'None yet')),
+        h('li', {}, h('span', {}, 'Lyrics'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('lyrics') }, song.instrumental ? 'Instrumental' : song.lyrics.trim() ? `${song.lyrics.trim().split(/\n+/).length} lines` : 'None yet')),
       ),
       (() => {
         const m = ctx.store.get();
@@ -240,6 +241,15 @@ function overviewTab(ctx, song, S) {
 }
 
 function lyricsTab(ctx, song, S) {
+  if (song.instrumental)
+    return h(
+      'section',
+      { class: 'mgr-sect mgr-instr-note' },
+      h('h2', {}, 'Instrumental'),
+      h('p', { class: 'muted' }, `“${song.title}” is marked instrumental, so there are no lyrics or lyric hooks to plan. The pitches and press release call it an instrumental track.`),
+      song.lyrics.trim() ? h('p', { class: 'muted small' }, 'The lyrics you typed before are kept, in case it gets vocals later.') : null,
+      button('It has vocals after all', () => ctx.update(S((s) => (s.instrumental = false))), { variant: 'sm' }),
+    );
   const hooks = hookLines(song.lyrics, 5);
   return h(
     'div',

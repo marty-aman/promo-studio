@@ -3,22 +3,61 @@
 // never deletes it, and one clip can belong to several songs. Pure functions, unit tested.
 import { mid } from './model.js';
 
+/** Stem parts, in the order they're grouped (the usual mix-sheet order). */
 export const STEM_ROLES = [
   ['drums', 'Drums'],
+  ['perc', 'Percussion'],
   ['bass', 'Bass'],
   ['guitar', 'Guitar'],
-  ['vocals', 'Vocals'],
   ['keys', 'Keys / synth'],
+  ['vocals', 'Lead vocals'],
+  ['bvs', 'Backing vocals'],
+  ['fx', 'FX / samples'],
+  ['click', 'Click / guide'],
   ['other', 'Other'],
 ];
-export const stemRoleLabel = (k) => (STEM_ROLES.find(([v]) => v === k) || STEM_ROLES[5])[1];
+export const stemRoleLabel = (k) => (STEM_ROLES.find(([v]) => v === k) || STEM_ROLES[STEM_ROLES.length - 1])[1];
+
+/** A stem's name: the one you gave it, else its file name without the extension. */
+export const stemName = (stem, fileName = '') => (stem && stem.name && stem.name.trim()) || String(fileName || '').replace(/\.[a-z0-9]+$/i, '') || 'Stem';
+
+/**
+ * Stems grouped by part, in STEM_ROLES order, keeping each group's own order:
+ * [{ role, label, stems: [...] }] (empty groups left out).
+ */
+export function groupStems(stems) {
+  return STEM_ROLES.map(([role, label]) => ({ role, label, stems: (stems || []).filter((s) => s.role === role) })).filter((g) => g.stems.length);
+}
+
+/** Move a stem up or down within its part's group. Returns true when it moved. */
+export function moveStem(song, id, dir) {
+  const list = song.files.stems;
+  const i = list.findIndex((s) => s.id === id);
+  if (i < 0) return false;
+  const role = list[i].role;
+  let j = i + dir;
+  while (j >= 0 && j < list.length && list[j].role !== role) j += dir;
+  if (j < 0 || j >= list.length) return false;
+  [list[i], list[j]] = [list[j], list[i]];
+  return true;
+}
+
+/** The music video's progress, from the idea to out. */
+export const VIDEO_STATUSES = [['idea', 'Idea'], ['planned', 'Planned'], ['shot', 'Shot'], ['editing', 'Editing'], ['done', 'Complete'], ['released', 'Released']];
+export const videoStatusLabel = (k) => (VIDEO_STATUSES.find(([v]) => v === k) || ['', 'Not started'])[1];
+/** Done means complete or out. */
+export const videoDone = (song) => ['done', 'released'].includes(song && song.videoStatus);
 
 /** Guess a stem's part from its file name ("Static Bloom - DRUMS.wav" → drums). */
 export function guessStemRole(name) {
   const s = ` ${String(name || '').toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/[^a-z0-9]+/g, ' ')} `;
-  if (/ (drums?|kit|perc|percussion|kick|snare|overheads?|oh|toms?) /.test(s)) return 'drums';
+  if (/ (click|guide|metronome|cue|count ?in) /.test(s)) return 'click';
+  if (/ (perc|percussion|shaker|tamb|tambourine|claps?|congas?|bongos?) /.test(s)) return 'perc';
+  if (/ (drums?|kit|kick|snare|overheads?|oh|toms?|rooms?) /.test(s)) return 'drums';
   if (/ (bass|bs|sub) /.test(s)) return 'bass';
-  if (/ (vox|vocals?|voice|vocal|lead vox|bvs?|backing|harmony|screams?) /.test(s)) return 'vocals';
+  if (/ (bvs?|backing|backings|harmony|harmonies|bgv|choir|gang) /.test(s)) return 'bvs';
+  if (/ (vox|vocals?|voice|lead vox|screams?|lead vocal) /.test(s)) return 'vocals';
+  if (/ (fx|sfx|samples?|risers?|impacts?|ambience|amb|noise) /.test(s)) return 'fx';
   if (/ (keys?|synth|synths|piano|pad|pads|organ|strings) /.test(s)) return 'keys';
   if (/ (guitars?|gtr|gtrs|gt|rhythm|lead|riff) /.test(s)) return 'guitar';
   return 'other';
@@ -33,7 +72,7 @@ export function normalizeFiles(raw) {
   const role = (r) => (STEM_ROLES.some(([k]) => k === r) ? r : 'other');
   return {
     tabs: (Array.isArray(f.tabs) ? f.tabs : []).filter(ok).map((t) => ({ id: typeof t.id === 'string' ? t.id : mid('tab'), mediaId: t.mediaId })),
-    stems: (Array.isArray(f.stems) ? f.stems : []).filter(ok).map((s) => ({ id: typeof s.id === 'string' ? s.id : mid('stem'), mediaId: s.mediaId, role: role(s.role) })),
+    stems: (Array.isArray(f.stems) ? f.stems : []).filter(ok).map((s) => ({ id: typeof s.id === 'string' ? s.id : mid('stem'), mediaId: s.mediaId, role: role(s.role), name: typeof s.name === 'string' ? s.name.slice(0, 80) : '' })),
     // offset: where the song's 0:00 is in the music video (seconds), for cutting song sections out of it
     video: ok(f.video) ? { mediaId: f.video.mediaId, offset: Number.isFinite(+f.video.offset) ? +f.video.offset : 0 } : null,
     footage: (Array.isArray(f.footage) ? f.footage : []).filter(ok).map((c) => ({ id: typeof c.id === 'string' ? c.id : mid('clip'), mediaId: c.mediaId, note: String(c.note || '') })),
@@ -46,7 +85,7 @@ export function addStems(song, recs) {
   let n = 0;
   for (const r of recs) {
     if (song.files.stems.some((s) => s.mediaId === r.id) || r.id === song.audioId) continue;
-    song.files.stems.push({ id: mid('stem'), mediaId: r.id, role: guessStemRole(r.name) });
+    song.files.stems.push({ id: mid('stem'), mediaId: r.id, role: guessStemRole(r.name), name: '' });
     n++;
   }
   return n;
@@ -103,7 +142,7 @@ export function studioSongFiles(songs, info) {
       const video = f.video && info(f.video.mediaId);
       const tabs = f.tabs.map((t) => info(t.mediaId)).filter(Boolean);
       const footage = f.footage.map((c) => info(c.mediaId) && { ...info(c.mediaId), note: c.note }).filter(Boolean);
-      const stems = f.stems.map((st) => info(st.mediaId) && { ...info(st.mediaId), role: st.role }).filter(Boolean);
+      const stems = groupStems(f.stems).flatMap((g) => g.stems).map((st) => info(st.mediaId) && { ...info(st.mediaId), role: st.role, label: stemName(st, info(st.mediaId).name) }).filter(Boolean);
       return { id: s.id, title: s.title, releaseDate: s.releaseDate || '', video: video || null, footage, stems, tabs };
     })
     .filter((s) => s.video || s.footage.length || s.stems.length || s.tabs.length)

@@ -91,7 +91,7 @@ export function hookLines(lyrics, max = 4) {
  */
 export function planPosts(song, { platforms = ['TikTok', 'Reels', 'Shorts'] } = {}) {
   if (!song.releaseDate) return [];
-  const hooks = hookLines(song.lyrics, 6);
+  const hooks = song.instrumental ? [] : hookLines(song.lyrics, 6);
   return CALENDAR.map(([offset, trendId, note], i) => {
     const tr = TRENDS.find((t) => t.id === trendId);
     return {

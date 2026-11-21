@@ -4,6 +4,7 @@ import { h, icon, button, iconButton, toast } from '../dom.js';
 import { shootIdeas, hookLines } from './ideas.js';
 import { niceDate, mid } from './model.js';
 import { exportPDF } from './pdf.js';
+import { videoStatusControl } from './page-files.js';
 
 // clips worth grabbing on the same day, for the short-form plan
 const SHORT_FORM_GRABS = [
@@ -37,7 +38,8 @@ ${s.notes ? `<h2>Notes</h2><p>${esc(s.notes).replace(/\n/g, '<br>')}</p>` : ''}
 export function buildShootTab(ctx, song, S) {
   const f = ctx.form;
   const sh = song.shoot;
-  const ideas = shootIdeas(song.lyrics, song.title);
+  const inst = !!song.instrumental; // no vocals: ideas come from the title, no lyric-video or hook-line shots
+  const ideas = shootIdeas(inst ? '' : song.lyrics, song.title);
   const Sh = (fn) => S((s, v) => fn(s.shoot, v));
   const use = (c) =>
     ctx.update(
@@ -108,8 +110,9 @@ export function buildShootTab(ctx, song, S) {
     h(
       'section',
       { class: 'mgr-sect' },
-      h('h2', {}, 'Ideas from the lyrics'),
-      song.lyrics.trim() ? null : h('p', { class: 'muted small' }, 'Add lyrics (Lyrics tab) for concepts that fit the words. Until then, here are two that work for any song.'),
+      videoStatusControl(ctx, song, S),
+      h('h2', {}, inst ? 'Concept ideas' : 'Ideas from the lyrics'),
+      inst ? h('p', { class: 'muted small' }, 'An instrumental: these come from the title and work without a singer. A performance or story video carries it best.') : song.lyrics.trim() ? null : h('p', { class: 'muted small' }, 'Add lyrics (Lyrics tab) for concepts that fit the words. Until then, here are two that work for any song.'),
       h(
         'div',
         { class: 'mgr-ideas' },
@@ -150,7 +153,7 @@ export function buildShootTab(ctx, song, S) {
         shots,
         button('Add a shot', () => ctx.update(Sh((x) => x.shots.push({ id: mid('shot'), text: 'New shot', done: false }))), { iconName: 'plus', variant: 'sm ghost' }),
         h('h3', { class: 'mgr-h3' }, 'Also film for short-form'),
-        h('ul', { class: 'mgr-bullets' }, [...SHORT_FORM_GRABS, ...hookLines(song.lyrics, 2).map((l) => `The hook line on its own: “${l}”`)].map((t) => h('li', {}, t))),
+        h('ul', { class: 'mgr-bullets' }, [...(inst ? SHORT_FORM_GRABS.filter((t) => !/singer|lyric/.test(t)) : SHORT_FORM_GRABS), ...hookLines(inst ? '' : song.lyrics, 2).map((l) => `The hook line on its own: “${l}”`)].map((t) => h('li', {}, t))),
         button('Add these to the shot list', () => ctx.update(Sh((x) => {
           for (const t of [...SHORT_FORM_GRABS]) if (!x.shots.some((y) => y.text === t)) x.shots.push({ id: mid('shot'), text: t, done: false });
         })), { variant: 'sm ghost' }),

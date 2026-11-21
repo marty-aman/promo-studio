@@ -177,7 +177,7 @@ export function playlistLibrary(m) {
 export function soundOf(song, band = {}) {
   const s = song.sound || {};
   const genres = s.genres || band.genres || '';
-  return { genres, families: genreFamilies(genres), moods: s.moods || [], energy: energyOf(song), vocals: s.vocals || '', similar: s.similar || band.similar || '' };
+  return { genres, families: genreFamilies(genres), moods: s.moods || [], energy: energyOf(song), vocals: song.instrumental ? 'none' : s.vocals || '', similar: s.similar || band.similar || '' };
 }
 
 const HEAVY = new Set(['metal', 'metalcore', 'hardrock']);
