@@ -209,6 +209,8 @@ export function applySongTemplate(d, id, ctx) {
         label: n > 1 ? p.label : '',
         hud: true,
         backdrop: !bgVideo && i === 0 ? 'arena' : 'none',
+        gameTheme: ctx.gameTheme || 'classic',
+        ...(d.theme && d.theme.colors ? { themeColors: { ...d.theme.colors } } : {}),
       });
     });
     // the song intro, top left, like the game shows it

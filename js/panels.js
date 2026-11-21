@@ -49,6 +49,16 @@ import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS, MA
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate, tabIntoLayout, lyricsIntoLayout, tabSources, templateNeeds } from './templates.js';
 import { SONG_TEMPLATES, songTemplateReady, applySongTemplate } from './songtemplates.js';
+import { parseSubtitles, toSRT, toVTT, videoCues, CAPTION_STYLES, setCaptions, styleCaptions, shiftCaptions, captionY } from './subtitles.js';
+import { areaOf } from './templates.js';
+const AREAS_FOR = (layout) => {
+  const a = areaOf(layout);
+  return [a.x0, a.y0, a.x1, a.y1];
+};
+import { GAME_THEME_LIST } from './rhythmgame.js';
+
+/** The rhythm game theme picked on its template card (not saved). */
+const songTplUI = { gameTheme: 'classic' };
 import { CANVAS_TEMPLATES, CANVAS_MIN, CANVAS_MAX, canvasTemplate, applyCanvas, undoCanvas, canvasIssues, clampCanvasLength, isCanvas } from './canvas.js';
 
 /** The Spotify Canvas loop length picked in the Templates tab (not saved). */
@@ -769,7 +779,8 @@ export function createPanels({ store, engine, ui }) {
   // ---------------------------------------------------------------- TEMPLATES FROM THE SONG'S FILES
   /** Rhythm game, music video + lyrics, raw footage + lyrics: built from the current song's own files. */
   function songTemplatesSection() {
-    const ctx = ui.songTemplateContext ? ui.songTemplateContext() : null;
+    const ctx0 = ui.songTemplateContext ? ui.songTemplateContext() : null;
+    const ctx = ctx0 ? { ...ctx0, gameTheme: songTplUI.gameTheme } : null;
     const cards = SONG_TEMPLATES.map((tpl) => {
       const r = songTemplateReady(tpl.id, ctx);
       const c = h('canvas', { width: 108, height: 192, class: 'tpl-thumb', 'aria-hidden': 'true' });
@@ -797,10 +808,17 @@ export function createPanels({ store, engine, ui }) {
           h('strong', {}, tpl.name),
           h('span', { class: 'muted tiny' }, tpl.blurb),
           r.ok ? h('ul', { class: 'tpl-uses tiny' }, r.uses.map((u) => h('li', {}, u))) : h('span', { class: 'tpl-needs tiny' }, r.missing),
+          tpl.id === 'st-game' && r.ok
+            ? (() => {
+                const sel = h('select', { 'aria-label': 'Rhythm game theme', 'data-k': 'songtpl-gametheme' }, GAME_THEME_LIST.map(([id, name]) => h('option', { value: id, selected: id === songTplUI.gameTheme }, `Theme: ${name}`)));
+                sel.addEventListener('change', () => ((songTplUI.gameTheme = sel.value), ui.refreshPanels(true)));
+                return sel;
+              })()
+            : null,
           r.ok
             ? button(on ? 'Applied · re-apply' : 'Use this template', () => {
                 try {
-                  const facts = ui.applySongTemplate(tpl.id);
+                  const facts = ui.applySongTemplate(tpl.id, { gameTheme: songTplUI.gameTheme });
                   toast(`“${tpl.name}” for “${ctx.song.title}”: ${facts.join('. ')}. Undo (Ctrl+Z) to go back.`, 'info', 9000);
                 } catch (e) {
                   toast(e.message, 'error', 6000);
@@ -2052,8 +2070,80 @@ export function createPanels({ store, engine, ui }) {
       'div',
       {},
       section('Add text', h('p', { class: 'muted small' }, 'Titles and hooks that sit on top of the video. They start at the playhead; drag them on the Text track.'), h('div', { class: 'chips' }, presets.map((t) => button(t, () => add(t), { variant: 'chip' }))), button('Blank text', () => add('Your text'), { iconName: 'plus', variant: 'primary' })),
+      captionsSection(),
       p.texts.length ? section('On this video', list) : null,
       section('Your fonts', buildFonts()),
+    );
+  }
+
+  // ---------------------------------------------------------------- CAPTIONS
+  const captionUI = { style: 'bold' };
+  /** Captions on the video (import a caption file, or make them from the lyrics), and caption files out. */
+  function captionsSection() {
+    const p = store.get();
+    const caps = p.texts.filter((t) => t.caption);
+    const style = caps[0] ? caps[0].captionStyle || captionUI.style : captionUI.style;
+    const y = captionY(p.layout && p.layout !== 'full' ? AREAS_FOR(p.layout) : null);
+    const put = (cues, what) => {
+      if (!cues.length) return toast(`No ${what} to make captions from.`, 'error');
+      if (caps.length && !confirm(`Replace the ${caps.length} caption${caps.length === 1 ? '' : 's'} on the video?`)) return;
+      store.update((d) => setCaptions(d, cues, { style, y }));
+      toast(`${cues.length} caption${cues.length === 1 ? '' : 's'} on the video, on the Text row of the timeline. Undo (Ctrl+Z) to go back.`, 'info', 5000);
+      ui.refreshPanels(true);
+    };
+    const importFile = async () => {
+      const [f] = await pickFiles('.srt,.vtt,text/vtt,application/x-subrip', false);
+      if (!f) return;
+      const cues = parseSubtitles(await f.text());
+      if (!cues.length) return toast(`No captions found in ${f.name}. It should be an .srt or .vtt file.`, 'error', 5000);
+      put(cues, 'captions');
+      if (cues[cues.length - 1].start > store.get().duration) toast(`Some captions start after the video ends (${formatTime(store.get().duration, false)}). Shift them, or make the video longer.`, 'info', 6000);
+    };
+    const fromLyrics = () => {
+      // the lyrics become captions, and the lyric line is hidden so they don't show twice
+      const cues = videoCues(p, { which: 'lyrics' });
+      put(cues, 'lyrics in the video');
+      if (cues.length) store.update((d) => (d.layerVis = { ...(d.layerVis || {}), lyrics: false }));
+    };
+    const save = (kind, which) => {
+      const cues = videoCues(store.get(), { which });
+      if (!cues.length) return toast(which === 'captions' ? 'No captions yet.' : 'No lyrics or captions play in this video.', 'error');
+      const text = kind === 'srt' ? toSRT(cues) : toVTT(cues);
+      download(new Blob([text], { type: kind === 'srt' ? 'application/x-subrip' : 'text/vtt' }), `${slug(p.name)}.${kind}`);
+      toast(`${cues.length} captions saved. Upload the .${kind} with the video as closed captions.`, 'info', 5000);
+    };
+    const styles = h(
+      'div',
+      { class: 'chips', role: 'radiogroup', 'aria-label': 'Caption style' },
+      CAPTION_STYLES.map(([id, label, hint]) =>
+        button(label, () => {
+          captionUI.style = id;
+          if (caps.length) store.update((d) => styleCaptions(d, id));
+          ui.refreshPanels(true);
+        }, { variant: `chip${style === id ? ' on' : ''}`, title: hint }),
+      ),
+    );
+    const hasLyrics = p.lyrics.length > 0;
+    return section(
+      'Captions',
+      h('p', { class: 'muted small' }, 'Words on the video for people watching with the sound off. Import a caption file (.srt or .vtt) or make them from the lyrics; they land on the Text row, where you can drag and edit them.'),
+      h('div', { class: 'lbl' }, 'Style'),
+      styles,
+      h('div', { class: 'row wrap' },
+        button('Import .srt / .vtt', importFile, { iconName: 'upload', variant: 'sm' }),
+        hasLyrics ? button('Captions from the lyrics', fromLyrics, { iconName: 'mic', variant: 'sm', title: 'Each lyric line as a caption, in time, styled as a caption (the lyric line is hidden so they don’t show twice)' }) : null,
+        caps.length ? button(`Remove the ${caps.length} caption${caps.length === 1 ? '' : 's'}`, () => store.update((d) => (d.texts = d.texts.filter((t) => !t.caption))), { variant: 'sm ghost' }) : null,
+      ),
+      caps.length
+        ? h('div', { class: 'row' }, h('span', { class: 'muted small' }, 'Shift all'), ...[-1, -0.1, 0.1, 1].map((sec) => button(`${sec > 0 ? '+' : '−'}${Math.abs(sec)}s`, () => store.update((d) => shiftCaptions(d, sec)), { variant: 'sm' })))
+        : null,
+      h('div', { class: 'lbl' }, 'Caption file to upload with the video'),
+      h('p', { class: 'muted tiny' }, 'YouTube, Facebook and LinkedIn take an .srt file as closed captions; viewers can turn them on or off, and they help search. TikTok and Instagram make their own: turn on auto captions in the app.'),
+      h('div', { class: 'row wrap' },
+        button('Download .srt', () => save('srt', 'all'), { iconName: 'download', variant: 'sm' }),
+        button('Download .vtt', () => save('vtt', 'all'), { iconName: 'download', variant: 'sm ghost' }),
+      ),
+      h('p', { class: 'muted tiny' }, hasLyrics || caps.length ? `Includes ${[hasLyrics ? 'the lyrics that play' : '', caps.length ? 'the captions' : ''].filter(Boolean).join(' and ')}, timed to this video.` : 'Add lyrics or captions first.'),
     );
   }
 
@@ -2318,6 +2408,9 @@ export function createPanels({ store, engine, ui }) {
               { class: 'result' },
               h('video', { src: exportState.result.url, controls: true, playsInline: true }),
               h('a', { class: 'btn primary wide', href: exportState.result.url, download: exportState.result.name }, icon('download', 16), h('span', {}, `Download ${exportState.result.name} (${(exportState.result.blob.size / 1e6).toFixed(1)} MB)`)),
+              !cv && videoCues(p).length
+                ? h('div', { class: 'row' }, h('span', { class: 'muted tiny' }, 'Closed captions for it:'), button('.srt', () => download(new Blob([toSRT(videoCues(store.get()))], { type: 'application/x-subrip' }), exportState.result.name.replace(/\.\w+$/, '.srt')), { iconName: 'download', variant: 'sm ghost', title: 'The lyrics and captions in this video, to upload with it (YouTube, Facebook, LinkedIn)' }), button('.vtt', () => download(new Blob([toVTT(videoCues(store.get()))], { type: 'text/vtt' }), exportState.result.name.replace(/\.\w+$/, '.vtt')), { variant: 'sm ghost' }))
+                : null,
               exportState.result.mime.includes('webm') ? h('p', { class: cv ? 'warn-list' : 'muted tiny' }, cv ? 'This browser saved WebM, but Spotify only takes MP4 for a Canvas. Export it again in Chrome or Edge, which save MP4.' : 'WebM uploads fine to YouTube. Instagram prefers MP4, which Chrome and Edge can export.') : null,
             )
           : null,

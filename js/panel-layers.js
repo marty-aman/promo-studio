@@ -7,7 +7,7 @@ import { MIDI_ACCEPT, noteCounts } from './midi.js';
 import { guessEngines, engineGroups, noteName } from './drummap.js';
 import { defaultMidiLayer, midiNotesFor, MIDI_STYLES, MIDI_PLACEMENT, MIDI_COLOR_MODES } from './midiviz.js';
 import { syncLayer, syncKind, SURE_TEXT } from './layersync.js';
-import { defaultGameLayer, INSTRUMENTS } from './rhythmgame.js';
+import { defaultGameLayer, INSTRUMENTS, GAME_THEMES, GAME_THEME_LIST } from './rhythmgame.js';
 import { gameChart } from './gamechart.js';
 import { isBassTrack } from './tab.js';
 import { midiDrumTrack } from './drums.js';
@@ -687,6 +687,20 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         h('p', { class: 'muted tiny' }, chart === undefined ? 'Listening to the stem…' : chart ? `${chart.notes} notes on the highway.` : rec ? 'No notes found in it.' : 'Pick the file the notes come from.'),
         rec ? syncTools(() => chart || null, L.source === 'stem') : null,
         visibleRange(),
+        section(
+          'Theme',
+          h('div', { class: 'style-grid game-themes', role: 'radiogroup', 'aria-label': 'Rhythm game theme' }, GAME_THEME_LIST.map(([id, name, blurb]) => {
+            const T = GAME_THEMES[id];
+            const sw = h('span', { class: 'game-swatch', 'aria-hidden': 'true', style: { background: `linear-gradient(${T.board[1]}, ${T.board[0]})`, borderColor: T.rail } }, T.lanes.map((c) => h('i', { style: { background: c, borderRadius: T.gem === 'square' ? '1px' : T.gem === 'diamond' ? '2px' : '50%' } })));
+            const on = (L.gameTheme || 'classic') === id;
+            return h('button', { type: 'button', role: 'radio', 'aria-checked': on ? 'true' : 'false', class: `style-opt${on ? ' on' : ''}`, 'data-gametheme': id, onclick: () => store.update(set((x) => (x.gameTheme = id))) }, sw, h('strong', {}, name), h('span', {}, blurb));
+          })),
+          L.themeColors ? b.toggle('Use the project theme’s colours on the board, rails and star power', g('followTheme', true), set((x, v) => (x.followTheme = v))) : null,
+          button('Use this theme on every highway', () => {
+            const cur = findLayer(store.get(), L.id) || L; // the theme picked since this panel was drawn
+            store.update((d) => d.layers.forEach((x) => x.type === 'game' && ((x.gameTheme = cur.gameTheme || 'classic'), (x.followTheme = cur.followTheme !== false))));
+          }, { variant: 'sm ghost' }),
+        ),
         section(
           'Look',
           b.range('Note speed', g('window', 1.6), set((x, v) => (x.window = v)), { min: 0.8, max: 3, step: 0.1, fmt: (v) => `${v.toFixed(1)} s on the highway` }),

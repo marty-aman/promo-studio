@@ -186,6 +186,17 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
   mirror / kaleidoscope.
 - Formats: 9:16, 4:5, 1:1, 16:9.
 
+**Captions** (Text tab)
+- Words on the video for people watching with the sound off: **Import .srt / .vtt** (formatting tags and
+  cue settings are dropped), or **Captions from the lyrics** (each lyric line that plays, in time; the lyric
+  line is then hidden so it doesn't show twice). They're on-screen texts on the Text row, so you can drag,
+  trim and edit them, and they burn into the export.
+- Five styles for all of them at once: Bold pop, Word by word, Boxed, Highlight, Film subtitle. They sit low
+  in the app layout's clear area. **Shift all** by ±0.1 or ±1 s.
+- **Download .srt / .vtt** (Text tab, or next to the exported video): the lyrics that play and the captions,
+  timed to the video, to upload as closed captions on YouTube, Facebook or LinkedIn. TikTok and Instagram
+  make their own auto captions in the app.
+
 **Lyrics**
 - Paste lyrics, then **tap-sync**: press Space as each line starts (and `.` to end a line early).
 - Fine-tune by dragging or resizing lyric blocks on the timeline, editing times in the list, or
@@ -463,6 +474,12 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
   sound starts, its fret from how bright it sounds. Optional **Rock arena** behind it (a lit stage over a
   crowd that jumps on the beat; also a background scene). Auto-sync lines it up. Original drawing, no game
   art or logos.
+  - **Themes:** Classic, Neon (glowing ring gems, synthwave colours), Inferno (scorched board, diamond gems,
+    fire), 8-bit arcade (square pixel gems, scanlines, a blocky score), Ice (frosted board, icy sparks) and
+    Mono (black and white with one accent). Each sets the frets, gems, board, rails, flames, HUD font and the
+    arena's light colours. With a project theme on, the board, rails and star power take its colours (a
+    switch turns that off). *Use this theme on every highway* matches the others; the Rhythm game template
+    card has its own theme menu.
 - **Visualizer:** reacts to any audio you give it: a stem (drums, bass, vocals…) or the song.
   Styles: water ripple (bends the picture on each hit), electricity, spectrum bars, circular spectrum,
   waveform, particles, glow pulse and speaker rings, plus ten that look like real things:
@@ -613,6 +630,9 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/midiviz.js` | MIDI notes layer: piano roll, falling keys, note bursts |
 | `js/page-drumconvert.js` | The Drum MIDI converter page |
 | `js/autosync.js`, `js/layersync.js` | Auto-sync of stems and charts to the song (FFT cross-correlation, unit tested) |
+| `js/subtitles.js` | Captions: .srt/.vtt in and out, caption styles, the lyrics and captions as cues in video time (unit tested) |
+| `js/rhythmgame.js`, `js/gamechart.js` | Rhythm game layer: charts from tabs, MIDI or stems, drawing, themes (unit tested) |
+| `js/songtemplates.js` | Templates from a song's files: rhythm game, music video + lyrics, raw footage + lyrics (unit tested) |
 | `js/lyricsfetch.js` | Lyrics for the chosen song: Songs & releases or LRCLIB, LRC parsing (unit tested) |
 | `js/drumkit.js` | The drum kit's layout (single or double bass), the Stage and metal finishes, shell wraps and effects (unit tested) |
 | `js/viz.js` | Audio visualizers: FFT analysis and the styles |
