@@ -197,7 +197,7 @@ export function createTimeline({ root, store, engine, ui }) {
       let label = L.name;
       let kind = 'layer';
       let handles = 'none';
-      if (L.type === 'tab' || L.type === 'drums') {
+      if (L.type === 'tab' || L.type === 'drums' || L.type === 'midi') {
         const rec = media.get(L.mediaId);
         const stem = L.type === 'drums' && L.source === 'audio';
         len = rec && rec.duration ? (stem ? rec.duration : rec.duration / (L.tempoScale || 1)) : 0;

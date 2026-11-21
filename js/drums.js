@@ -4,6 +4,7 @@ import { timedBeats } from './tab.js';
 import { glowPass, frost } from './canvasfx.js';
 import { energyEnvelope } from './core.js';
 import { kitLayout, drawStageKit, kitDoubleKick, KIT_TOMS } from './drumkit.js';
+import { laneFor } from './drummap.js';
 
 export const LANES = [
   { id: 'china', label: 'China', color: '#f472b6' },
@@ -127,6 +128,27 @@ export function drumTimelineFromScore(score, trackIndex) {
   return finish(hits, bars, duration, score.tempo);
 }
 
+/**
+ * Hits from a MIDI file's drums (see midi.js parseMidi): the notes of track `trackIndex` (-1 for every
+ * track), read with drum map `map` ('general_midi', 'superior_drummer3', 'addictive_drums2'…) so a file
+ * written for any drum engine lands on the right lanes. Velocity sets the hit strength.
+ */
+export function drumTimelineFromMidi(midi, trackIndex = -1, map = 'general_midi') {
+  const hits = [];
+  for (const n of midi.notes) {
+    if (trackIndex >= 0 && n.track !== trackIndex) continue;
+    const lane = laneFor(map, n.note);
+    if (lane) hits.push({ time: n.time, lane, vel: Math.max(0.3, Math.min(1, n.vel / 110)) });
+  }
+  return finish(hits, midi.bars || [], midi.duration, midi.tempo);
+}
+
+/** The MIDI track most likely to hold the drums: one on channel 10 or named like drums, else the busiest. */
+export function midiDrumTrack(midi) {
+  const withNotes = midi.tracks.filter((t) => t.notes);
+  return (withNotes.find((t) => t.isDrum) || [...withNotes].sort((a, b) => b.notes - a.notes)[0] || { index: -1 }).index;
+}
+
 function finish(hits, bars, duration, tempo) {
   hits.sort((a, b) => a.time - b.time);
   const present = new Set(hits.map((h) => h.lane));
@@ -216,7 +238,8 @@ export function cleanBleed(snares, others, window = 0.03) {
 
 export function defaultDrumLayer() {
   return {
-    source: 'gp', // gp | audio
+    source: 'gp', // gp | audio | midi
+    drumMap: 'general_midi', // for a MIDI file: which drum engine it was written for (drummap.js)
     mediaId: null,
     track: 0,
     sensitivity: 0.5,

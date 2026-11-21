@@ -13,6 +13,7 @@ import {
 } from './core.js';
 import { FILTER_PRESETS, PLATFORMS, isVisible, overlayClipAt } from './state.js';
 import { drawPlatformOverlay, overlaySupported } from './overlays.js';
+import { drawMidi } from './midiviz.js';
 import { drawTab } from './tab.js';
 import { drawDrums } from './drums.js';
 import { drawViz } from './viz.js';
@@ -1464,6 +1465,7 @@ export function renderFrame(ctx, W, H, project, t, env) {
     if (l.type === 'viz' && env.viz) drawViz(ctx, W, H, l, env.viz(l0), t, songT, visEnd, project.beats);
     else if (l.type === 'tab' && env.tab && l.mediaId) drawTab(ctx, W, H, l, env.tab(l.mediaId, l.track), t, songT, visEnd);
     else if (l.type === 'drums' && env.drums) drawDrums(ctx, W, H, l, env.drums(l0), t, songT, visEnd, project.beats && project.beats.period);
+    else if (l.type === 'midi' && env.midi && l.mediaId) drawMidi(ctx, W, H, l, env.midi(l0), t, songT);
     if (fadeOwn) ctx.restore();
     if (moving) ctx.restore();
   }

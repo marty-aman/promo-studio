@@ -531,7 +531,7 @@ export function applyTemplate(d, id, sources = []) {
   else d.lyricStyle.y = keepY;
   if (t.place) t.place(d, areaOf(d.layout));
   // band templates show only their own tab / drum / visualizer layers (the rest are hidden, not deleted)
-  if (t.needs) for (const l of d.layers || []) if (['tab', 'drums', 'viz'].includes(l.type) && !l.role) l.visible = false;
+  if (t.needs) for (const l of d.layers || []) if (['tab', 'drums', 'viz', 'midi'].includes(l.type) && !l.role) l.visible = false;
   (d.layers || []).forEach((l) => delete l.role);
   // a chosen theme keeps its colours and fonts on top of the template's layout and motion
   if (d.theme && d.theme.id) applyTheme(d, d.theme.id, { colors: d.theme.colors });

@@ -1341,3 +1341,18 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .mgr-covers td:nth-child(1) input { min-width: 140px; }
 .mgr-covers td:nth-child(3) input { min-width: 60px; max-width: 80px; }
 .mgr-covers td.bad input { border-color: var(--danger); }
+
+/* Drum MIDI converter page */
+.drumconv .dc-step { margin: 0 0 18px; }
+.dc-maps { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: end; max-width: 820px; }
+.dc-maps select, .dc-opts select { width: 100%; }
+.dc-opts { max-width: 820px; margin-top: 8px; }
+.dc-table td.n, .dc-table th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.dc-table td.mono { white-space: nowrap; }
+.dc-table tr.dc-dropped td, .dc-table tr.dc-unknown-removed td { color: var(--muted); }
+.dc-summary { margin: 0 0 8px; }
+.dc-viewer summary { cursor: pointer; font-weight: 600; }
+.dc-viewer table { max-width: 520px; }
+.link.on { font-weight: 700; text-decoration: underline; }
+@media (max-width: 640px) { .dc-maps { grid-template-columns: 1fr; } }
+.mgr-chip.warn { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }

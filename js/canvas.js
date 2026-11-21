@@ -170,7 +170,7 @@ export function applyCanvas(d, id, { length = CANVAS_MAX, srcLen } = {}) {
   d.endCard.enabled = false;
   d.texts = [];
   d.layerVis = { ...(d.layerVis || {}), lyrics: false };
-  for (const l of d.layers || []) if (['tab', 'drums', 'viz'].includes(l.type)) l.visible = false;
+  for (const l of d.layers || []) if (['tab', 'drums', 'viz', 'midi'].includes(l.type)) l.visible = false;
   Object.assign(d.look, { vignette: t.look.vignette, grain: t.look.grain, lightLeak: t.look.lightLeak, scanlines: t.look.scanlines, beatFlash: 0, letterbox: 0, loop: real, overlay: 'spotify', overlayClear: true });
   d.look.progress = { ...d.look.progress, enabled: false };
   d.template = id;

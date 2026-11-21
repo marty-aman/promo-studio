@@ -191,6 +191,14 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
 - Fine-tune by dragging or resizing lyric blocks on the timeline, editing times in the list, or
   "start/end at playhead". Shift all lines by ±0.1/0.5 s.
 - Import/export `.lrc` files.
+- **Filled in for the song you pick.** Choosing the song (Audio tab, or *Use as song*) fills the Lyrics tab:
+  - from the song in Songs & releases (matched by its song file or its title), with nothing sent anywhere;
+  - else timed lyrics from [LRCLIB](https://lrclib.net), a free open lyrics database: lines arrive already
+    in time with the song. Only the title, artist and length are sent. A song in your Covers list is looked
+    up under its original artist. An unreleased song of yours is never looked up by itself.
+  - Lyrics you typed or pasted are never replaced by picking a song; ones filled in for another song are.
+  - The Lyrics tab's **Lyrics for this song** box says where they came from, has *Use the lyrics from
+    “…”* and *Find timed lyrics online*, and switches for both automatic steps.
 - Lyric times are stored in *song time*, so choosing a different section of the song keeps them in sync.
 - Styles: 10 fonts (or upload your own), size, position, width, alignment, colors, outline, shadow,
   background box, ALL CAPS, per-line height override. 17 animations including pop, words rise,
@@ -380,8 +388,10 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
     shakes when it's played.
 
   Chord names (Em, G, C/G, E5, Am7…) are worked out from the notes.
-- **Drum chart:** from a Guitar Pro drum track or detected from a drum stem audio file (kick, snare,
-  hi-hat). Every style charts the whole kit: kick, snare, hi-hat, high tom, mid tom, floor tom, crash 1,
+- **Drum chart:** from a Guitar Pro drum track, a **MIDI file** (.mid), or detected from a drum stem audio file
+  (kick, snare, hi-hat). A MIDI file is read with the drum map it was written for (General MIDI, Superior
+  Drummer 3, EZdrummer, Addictive Drums 2, GetGood Drums, SSD5, BFD, Roland TD, Alesis… 160 in all), so
+  every note lands on the right drum; the best fits for its notes are suggested. Every style charts the whole kit: kick, snare, hi-hat, high tom, mid tom, floor tom, crash 1,
   crash 2, china and ride (GM 50/48 high tom, 47/45 mid tom, 43/41 floor tom, 49 crash 1, 57 and the
   55 splash crash 2, 52 china). Lane styles show every drum and cymbal for a Guitar Pro part, and only the
   found ones for a stem; *Show every drum and cymbal* changes that. **Kit pieces** (in the layer's
@@ -414,6 +424,16 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
   - **Glass lanes:** a frosted panel over your video with gradient capsules, trails and hit bursts.
 
   Choosing a style also moves the chart to a spot that suits it.
+- **MIDI notes** (Visualizer and Guitar Pro tabs): any MIDI part (keys, synths, bass, guitar, strings, a
+  melody) in time with the song, as a **piano roll** past a playhead, **falling keys** onto a keyboard that
+  lights up, or **note bursts** placed by pitch. Pick the tracks, colours by track, by note or one colour,
+  glow and placement. Dropping a .mid file in adds its drums as a drum chart and its other parts as MIDI notes.
+- **Auto-sync to the song:** every Guitar Pro tab, drum chart (Guitar Pro, MIDI or stem), MIDI notes layer
+  and visualizer driven by a stem has **Auto-sync to the song** under *Sync with the song*, and each tab has
+  *Auto-sync every layer here*. It listens: the song and the stem (or the chart's notes) become onset
+  curves, cross-correlated with an FFT, so it finds where the part starts and, for a chart, its tempo (the
+  file's, the song's detected BPM, and up to 3% either side). It says how sure the match is; undo puts it
+  back, and the manual nudges and *Put bar at the playhead* still work.
 - **Visualizer:** reacts to any audio you give it: a stem (drums, bass, vocals…) or the song.
   Styles: water ripple (bends the picture on each hit), electricity, spectrum bars, circular spectrum,
   waveform, particles, glow pulse and speaker rings, plus ten that look like real things:
@@ -447,6 +467,29 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
   you switch their sound on. Analysis runs once per file, so preview and export match.
 
 Old projects with a single guitar tab are moved into the layer list automatically.
+
+## Drum MIDI converter
+
+Start → *Inspiration, Tab Studio, Carousel and the drum converter* → **Drum MIDI converter** (or *Convert
+drum map* on a MIDI file in the media library). Open a drum .mid, pick what it was written for (the best
+fits for its notes are suggested) and what it should play on, out of 160 drum maps: drum software
+(Superior Drummer 3, EZdrummer 1–3, Addictive Drums 2, GetGood Drums kits, Steven Slate Drums 5, BFD,
+MixWave, Ugritone, MT Power Drum Kit, Native Instruments, Logic Drummer…), e-kits (Roland TD, Alesis,
+Yamaha DTX, Simmons, EFNote…), drum machines and General MIDI / Guitar Pro / MuseScore.
+
+- A table shows every note the file plays, its drum, how often, and where it goes: the same drum, a
+  stand-in (another stroke of the same drum first, then the nearest drum: a china on a stack or crash,
+  tom 4 on tom 3), or left out. Toms are spread in order when the destination has fewer, so fills still
+  run down the kit.
+- Options: the drum channel (channel 10, or every channel), what to do with drums the destination doesn't
+  have, and with notes the source map doesn't know.
+- **Download** the converted file, or add it to the media library for a drum chart. Only note numbers
+  change: timing, velocities, controllers and everything else in the file stay byte for byte. Nothing is
+  uploaded.
+- *Look up a drum map* lists any map's notes and drums.
+
+The drum maps are the engine tables of [remidi](https://github.com/nullcrimson/remidi) (MIT licence, see
+`vendor/remidi`); the conversion is in `js/drummap.js` and `js/midi.js`.
 
 ## Inspiration page
 
@@ -535,7 +578,13 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/soundlib.js` | Personal sound library stored in IndexedDB |
 | `js/soundindex.js` | The combined sound list: your clips, the pack and built-ins as one list, renames, tags, stars and filters (unit tested) |
 | `js/tab.js` | Guitar Pro tab parsing (via alphaTab), timing and drawing |
-| `js/drums.js` | Drum chart: GP drum tracks, drum-stem hit detection, lanes / highway / circle drawing |
+| `js/drums.js` | Drum chart: GP drum tracks, MIDI drums, drum-stem hit detection, lanes / highway / circle drawing |
+| `js/midi.js` | MIDI files: notes, tempo map, bars, and rewriting drum notes in place (unit tested) |
+| `js/drummap.js`, `js/drummaps-data.js` | 160 drum maps, stand-ins, converting drum MIDI between them (unit tested) |
+| `js/midiviz.js` | MIDI notes layer: piano roll, falling keys, note bursts |
+| `js/page-drumconvert.js` | The Drum MIDI converter page |
+| `js/autosync.js`, `js/layersync.js` | Auto-sync of stems and charts to the song (FFT cross-correlation, unit tested) |
+| `js/lyricsfetch.js` | Lyrics for the chosen song: Songs & releases or LRCLIB, LRC parsing (unit tested) |
 | `js/drumkit.js` | The drum kit's layout (single or double bass), the Stage and metal finishes, shell wraps and effects (unit tested) |
 | `js/viz.js` | Audio visualizers: FFT analysis and the styles |
 | `js/vizreal.js` | Realistic visualizers: VU meters, LED rack, oscilloscope, speaker, fire, spectrogram |
