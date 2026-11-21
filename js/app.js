@@ -17,7 +17,7 @@ import { kfTarget, kfSignature } from './panel-kf.js';
 import { createManager } from './manager/shell.js';
 import { createPhotoStudio } from './photo/page.js';
 import { sectionsExport } from './panel-sections.js';
-import { coverOf } from './manager/releases.js';
+import { coverOf, songCovers } from './manager/releases.js';
 import { addPhotos as addArtistPhotos } from './manager/photos.js';
 import { makeLayer, makeOverlayClip } from './panel-layers.js';
 import { studioSongFiles } from './manager/files.js';
@@ -901,6 +901,8 @@ async function fillLyrics(rec, { source = 'auto', force = false } = {}) {
   }
 }
 ui.onSongChosen = (rec) => fillLyrics(rec, { source: 'auto' });
+/** Cover art of this artist's songs, EPs and albums (Songs & releases), the edit's song first, for the End card picker. */
+ui.songCovers = () => (manager ? songCovers(manager.store.get(), { firstSongId: store.get().managerSongId || '' }).filter((c) => media.get(c.mediaId)) : []);
 ui.lyricsTools = {
   fill: (rec, opts) => fillLyrics(rec, opts),
   /** What the Lyrics tab can offer for the song in the edit. */

@@ -1994,10 +1994,22 @@ export function createPanels({ store, engine, ui }) {
   // ---------------------------------------------------------------- END CARD
   function buildEndCard(b) {
     const e = (fn) => (d, v) => fn(d.endCard, v);
-    const images = media.all().filter((m) => m.kind === 'image');
-    const coverSel = h('select', {}, h('option', { value: '' }, '— no cover —'), images.map((m) => h('option', { value: m.id }, m.name)));
+    // only the cover art of your songs, EPs and albums (Songs & releases), not every picture in the library
+    const covers = ui.songCovers ? ui.songCovers() : [];
+    const cur = store.get().endCard.coverMediaId;
+    const curRec = cur && !covers.some((c) => c.mediaId === cur) ? media.get(cur) : null;
+    const coverSel = h(
+      'select',
+      { 'aria-label': 'Cover art', 'data-k': 'ec-cover' },
+      h('option', { value: '' }, covers.length ? '— no cover —' : '— no song covers yet —'),
+      covers.map((c) => h('option', { value: c.mediaId }, c.label)),
+      curRec ? h('option', { value: curRec.id }, `${curRec.name} (not a song’s cover)`) : null,
+    );
     coverSel.addEventListener('change', () => store.update((d) => (d.endCard.coverMediaId = coverSel.value || null)));
     b._reg((p) => (coverSel.value = p.endCard.coverMediaId || ''));
+    const coverHint = covers.length
+      ? 'The covers of your songs, EPs and albums in Songs & releases. Add or change one on a song’s Overview or an EP or album page.'
+      : 'Cover art comes from your songs in Songs & releases: add one on a song’s Overview, or on an EP or album page. “Get info” from Spotify below also sets one.';
     const plats = h(
       'div',
       { class: 'checklist cols' },
@@ -2051,8 +2063,8 @@ export function createPanels({ store, engine, ui }) {
         'Call-to-action end card',
         b.toggle('Show end card', (p) => p.endCard.enabled, e((o, v) => (o.enabled = v))),
         b.range('Length', (p) => p.endCard.duration, e((o, v) => (o.duration = v)), { min: 1, max: 10, step: 0.1, fmt: (v) => `${v.toFixed(1)}s` }),
-        field('Cover art', coverSel, images.length ? null : 'Upload your cover image in the Video tab (My clips).'),
-        images.length ? null : button('Upload cover art', async () => {
+        field('Cover art', coverSel, coverHint),
+        covers.length ? null : button('Upload cover art', async () => {
           const [f] = await pickFiles('image/*', false);
           if (!f) return;
           try {
