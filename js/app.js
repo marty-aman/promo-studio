@@ -20,7 +20,7 @@ import { sectionsExport } from './panel-sections.js';
 import { coverOf, songCovers } from './manager/releases.js';
 import { addPhotos as addArtistPhotos } from './manager/photos.js';
 import { makeLayer, makeOverlayClip } from './panel-layers.js';
-import { studioSongFiles } from './manager/files.js';
+import { studioSongFiles, studioSongContext, addStems } from './manager/files.js';
 import { applyTheme, themeById } from './themes.js';
 import { loadSettings } from './state.js';
 import { findSong, titleFromFile, fetchLyrics } from './lyricsfetch.js';
@@ -902,6 +902,36 @@ async function fillLyrics(rec, { source = 'auto', force = false } = {}) {
 }
 ui.onSongChosen = (rec) => fillLyrics(rec, { source: 'auto' });
 /** Cover art of this artist's songs, EPs and albums (Songs & releases), the edit's song first, for the End card picker. */
+/** The edit's song in Songs & releases, your songs with a song file, and the current song's stems and tabs. */
+ui.songContext = () => {
+  if (!manager) return null;
+  const p = store.get();
+  return studioSongContext(manager.store.get(), { songId: p.managerSongId || '', audioId: p.song ? p.song.mediaId : '', info: (id) => media.get(id), findSong });
+};
+/** Put one of your songs in the edit: its song file, and the edit linked to it (stems, tabs, lyrics follow). */
+ui.chooseSong = (songId) => {
+  const m = manager.store.get();
+  const s = m.songs.find((x) => x.id === songId);
+  const rec = s && s.audioId && media.get(s.audioId);
+  if (!rec) return;
+  store.update((d) => {
+    d.managerSongId = s.id;
+    if (!d.endCard.title || d.endCard.title === 'Song Title') d.endCard.title = s.title;
+    if ((!d.endCard.artist || d.endCard.artist === 'Artist Name') && m.band.name) d.endCard.artist = m.band.name;
+  });
+  panels.actions.useSong(rec);
+};
+/** Files uploaded in the studio for the current song: add them to its stems in Songs & releases too. */
+ui.addStemsToSong = (recs) => {
+  const ctx = ui.songContext();
+  if (!ctx || !ctx.song) return 0;
+  let n = 0;
+  manager.store.update((d) => {
+    const s = d.songs.find((x) => x.id === ctx.song.id);
+    if (s) n = addStems(s, recs);
+  });
+  return n;
+};
 ui.songCovers = () => (manager ? songCovers(manager.store.get(), { firstSongId: store.get().managerSongId || '' }).filter((c) => media.get(c.mediaId)) : []);
 ui.lyricsTools = {
   fill: (rec, opts) => fillLyrics(rec, opts),

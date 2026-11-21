@@ -148,3 +148,23 @@ export function studioSongFiles(songs, info) {
     .filter((s) => s.video || s.footage.length || s.stems.length || s.tabs.length)
     .sort((a, b) => (b.releaseDate || '').localeCompare(a.releaseDate || '') || a.title.localeCompare(b.title));
 }
+
+/**
+ * What the Video Studio offers for the song in the edit: your songs that have a song file, and the
+ * current song (the edit's Manager song, else the one using the edit's song file) with its stems (grouped
+ * by part, drums first) and Guitar Pro tabs. `info(id)` is the media record or null (only files still in
+ * the library are listed); `findSong(songs, rec)` matches a song file to a song by file or title.
+ * Returns { song, songs: [{ id, title, mediaId }], stems: [{ mediaId, role, label }], tabs: [mediaId] }.
+ */
+export function studioSongContext(m, { songId = '', audioId = '', info = () => null, findSong = () => null } = {}) {
+  const all = (m && m.songs) || [];
+  const rec = audioId ? info(audioId) : null;
+  const song = (songId && all.find((s) => s.id === songId)) || (rec && findSong(all, rec)) || null;
+  const songs = all.filter((s) => s.audioId && info(s.audioId)).map((s) => ({ id: s.id, title: s.title, mediaId: s.audioId }));
+  const f = song && song.files ? song.files : null;
+  const stems = f
+    ? groupStems(f.stems).flatMap((g) => g.stems).filter((st) => info(st.mediaId)).map((st) => ({ mediaId: st.mediaId, role: st.role, label: `${stemRoleLabel(st.role)}: ${stemName(st, info(st.mediaId).name)}` }))
+    : [];
+  const tabs = f ? (f.tabs || []).map((t) => t.mediaId).filter((id) => info(id)) : [];
+  return { song, songs, stems, tabs };
+}
