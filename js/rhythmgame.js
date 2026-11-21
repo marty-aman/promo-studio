@@ -16,6 +16,37 @@ export const PAD_COLORS = ['#ef4444', '#facc15', '#3b82f6', '#22c55e'];
 export const KICK_COLOR = '#f97316';
 export const STAR_COLOR = '#7dd3fc';
 
+/**
+ * Looks for the highway. lanes: five fret colours; pads: four drum pads; kick, star (star power), board
+ * (top and bottom), grain (the streaks), rail, flame (the core of each burst), spark, hud (panel), font,
+ * gem: 'round' | 'square' (pixel) | 'diamond' | 'flat', scan: CRT lines, arena: the backdrop's two colours.
+ */
+export const GAME_THEMES = {
+  classic: { name: 'Classic', blurb: 'Green, red, yellow, blue, orange frets on a purple-black board', lanes: FRET_COLORS, pads: PAD_COLORS, kick: KICK_COLOR, star: STAR_COLOR, board: ['rgba(18,14,30,0.94)', 'rgba(28,22,44,0.98)'], grain: ['#3b2a55', '#56407a'], rail: '#a78bfa', flame: '#ffd27a', spark: '#fff3c4', hud: 'rgba(8,6,14,0.82)', font: 'Montserrat, "Arial Black", Impact, sans-serif', gem: 'round', arena: ['#ff2bd6', '#2b6bff'] },
+  neon: { name: 'Neon', blurb: 'Glowing outlines on black, synthwave pink and cyan', lanes: ['#39ff14', '#ff2079', '#fff01f', '#00e5ff', '#bc13fe'], pads: ['#ff2079', '#fff01f', '#00e5ff', '#39ff14'], kick: '#bc13fe', star: '#ffffff', board: ['rgba(4,0,12,0.92)', 'rgba(10,0,24,0.97)'], grain: ['#ff2079', '#00e5ff'], rail: '#ff2079', flame: '#ff7ad9', spark: '#b8f7ff', hud: 'rgba(6,0,16,0.86)', font: 'Montserrat, "Arial Black", sans-serif', gem: 'ring', arena: ['#ff2079', '#00e5ff'] },
+  inferno: { name: 'Inferno', blurb: 'Scorched metal board, chrome gems, roaring fire', lanes: ['#16a34a', '#dc2626', '#eab308', '#2563eb', '#ea580c'], pads: ['#dc2626', '#eab308', '#2563eb', '#16a34a'], kick: '#f97316', star: '#fde68a', board: ['rgba(20,6,2,0.95)', 'rgba(48,14,6,0.98)'], grain: ['#5a1d0a', '#8a2c0c'], rail: '#f97316', flame: '#ff6a00', spark: '#ffd166', hud: 'rgba(20,6,2,0.88)', font: 'Impact, "Arial Black", sans-serif', gem: 'diamond', arena: ['#ff4d00', '#ffb000'] },
+  arcade: { name: '8-bit arcade', blurb: 'Square pixel gems, scanlines and a blocky score', lanes: ['#00d26a', '#ff3b3b', '#ffd23f', '#3b82ff', '#ff8c1a'], pads: ['#ff3b3b', '#ffd23f', '#3b82ff', '#00d26a'], kick: '#ff8c1a', star: '#7df9ff', board: ['rgba(0,8,32,0.95)', 'rgba(0,16,56,0.98)'], grain: ['#0b2a6b', '#123a8f'], rail: '#7df9ff', flame: '#ffffff', spark: '#ffd23f', hud: 'rgba(0,6,24,0.9)', font: '"Courier New", ui-monospace, monospace', gem: 'square', scan: true, arena: ['#3b82ff', '#ff3b3b'] },
+  ice: { name: 'Ice', blurb: 'Frosted glass board, cool tones, icy sparks', lanes: ['#5eead4', '#f0abfc', '#fef08a', '#93c5fd', '#fdba74'], pads: ['#f0abfc', '#fef08a', '#93c5fd', '#5eead4'], kick: '#c4b5fd', star: '#ffffff', board: ['rgba(10,24,40,0.88)', 'rgba(24,48,72,0.94)'], grain: ['#335a7a', '#4c7aa0'], rail: '#bae6fd', flame: '#e0f2fe', spark: '#ffffff', hud: 'rgba(8,20,34,0.82)', font: 'Montserrat, sans-serif', gem: 'round', arena: ['#38bdf8', '#a78bfa'] },
+  mono: { name: 'Mono', blurb: 'Black and white with one accent colour: clean and minimal', lanes: ['#ffffff', '#d4d4d8', '#a1a1aa', '#d4d4d8', '#ffffff'], pads: ['#ffffff', '#d4d4d8', '#a1a1aa', '#ffffff'], kick: '#e0182d', star: '#e0182d', board: ['rgba(6,6,6,0.94)', 'rgba(16,16,16,0.98)'], grain: ['#222222', '#2e2e2e'], rail: '#ffffff', flame: '#ffffff', spark: '#ffffff', hud: 'rgba(0,0,0,0.85)', font: '"Bebas Neue", Impact, sans-serif', gem: 'flat', arena: ['#e0182d', '#ffffff'] },
+};
+export const GAME_THEME_LIST = Object.entries(GAME_THEMES).map(([id, t]) => [id, t.name, t.blurb]);
+
+/**
+ * The theme a layer draws with: its preset, with the project theme's colours on the board, rails and star
+ * when it follows the artist's theme (layer.followTheme and layer.themeColors from themes.js).
+ */
+export function gameTheme(layer) {
+  const base = GAME_THEMES[layer && layer.gameTheme] || GAME_THEMES.classic;
+  const c = layer && layer.followTheme !== false && layer.themeColors;
+  if (!c) return base;
+  const hexA = (hex, a) => rgbaHex(hex, a);
+  return { ...base, board: [hexA(c.bg, 0.94), hexA(c.deep || c.bg, 0.97)], grain: [c.deep || base.grain[0], c.accent || base.grain[1]], rail: c.accent || base.rail, star: c.light || base.star, kick: c.accent || base.kick, hud: hexA(c.bg, 0.86), arena: [c.accent || base.arena[0], c.light || base.arena[1]] };
+}
+const rgbaHex = (hex, a) => {
+  const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || '');
+  return m ? `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${a})` : `rgba(10,10,16,${a})`;
+};
+
 export function defaultGameLayer() {
   return {
     source: 'tab', // tab | midi | stem
@@ -37,6 +68,8 @@ export function defaultGameLayer() {
     starPower: true,
     flames: true,
     backdrop: 'none', // none | arena (draws the arena behind the highway, full frame)
+    gameTheme: 'classic', // see GAME_THEMES
+    followTheme: true, // take the project theme's colours (when it has one) on the board, rails and star
     label: '',
   };
 }
@@ -197,7 +230,10 @@ export function drawGame(ctx, W, H, layer, chart, t, songTime, { beat = 0, drawA
   const dt = (songTime - (layer.offset || 0)) * (layer.tempoScale || 1);
   const drums = layer.instrument === 'drums';
   const lanes = drums ? 4 : 5;
-  const colors = drums ? PAD_COLORS : FRET_COLORS;
+  const T = gameTheme(layer);
+  const colors = drums ? T.pads : T.lanes;
+  const STAR = T.star;
+  const KICK = T.kick;
   const bw = (W * (layer.width ?? 70)) / 100; // board width at the strike line
   const bh = (H * (layer.height ?? 64)) / 100;
   const cx = (W * (layer.x ?? 50)) / 100;
@@ -219,8 +255,8 @@ export function drawGame(ctx, W, H, layer, chart, t, songTime, { beat = 0, drawA
   const farY = Y(1.05);
   const g = ctx.createLinearGradient(0, farY, 0, yBot);
   g.addColorStop(0, 'rgba(10,8,18,0)');
-  g.addColorStop(0.15, 'rgba(18,14,30,0.94)');
-  g.addColorStop(1, 'rgba(28,22,44,0.98)');
+  g.addColorStop(0.15, T.board[0]);
+  g.addColorStop(1, T.board[1]);
   ctx.fillStyle = g;
   ctx.beginPath();
   ctx.moveTo(cx - half(1.05), farY);
@@ -236,7 +272,7 @@ export function drawGame(ctx, W, H, layer, chart, t, songTime, { beat = 0, drawA
   for (let k = 0; k < 40; k++) {
     const u = (((k / 40 - dt / win / 3) % 1) + 1) % 1;
     const y = Y(u);
-    ctx.fillStyle = k % 3 ? '#3b2a55' : '#56407a';
+    ctx.fillStyle = k % 3 ? T.grain[0] : T.grain[1];
     ctx.fillRect(cx - half(u), y, half(u) * 2, Math.max(1, (yStrike - farY) * 0.004 * (1 - P(u) * 0.7)));
   }
   ctx.restore();
@@ -264,7 +300,7 @@ export function drawGame(ctx, W, H, layer, chart, t, songTime, { beat = 0, drawA
     ctx.stroke();
   }
   // glowing side rails (blue with star power)
-  const rail = spOn ? STAR_COLOR : '#a78bfa';
+  const rail = spOn ? STAR : T.rail;
   ctx.strokeStyle = rgba(rail, spOn ? 0.95 : 0.6);
   ctx.lineWidth = Math.max(2, bw * 0.012);
   ctx.shadowColor = rail;
@@ -308,7 +344,7 @@ export function drawGame(ctx, W, H, layer, chart, t, songTime, { beat = 0, drawA
     ctx.fill();
   }
   if (drums) {
-    ctx.fillStyle = kickHit ? mix(KICK_COLOR, 0.4 * kickHit) : rgba(KICK_COLOR, 0.35);
+    ctx.fillStyle = kickHit ? mix(KICK, 0.4 * kickHit) : rgba(KICK, 0.35);
     ctx.fillRect(cx - bw / 2, yStrike + fretR * 0.75, bw, Math.max(3, fretR * 0.22));
   }
 
@@ -321,7 +357,7 @@ export function drawGame(ctx, W, H, layer, chart, t, songTime, { beat = 0, drawA
     const u1 = Math.min(1.05, uOf(gm.time + gm.len));
     if (u1 <= 0 || u0 >= 1.05) continue;
     const held = dt >= gm.time && dt < gm.time + gm.len;
-    const c = spOn || gm.sp ? STAR_COLOR : colors[gm.lane];
+    const c = spOn || gm.sp ? STAR : colors[gm.lane];
     ctx.strokeStyle = held ? mix(c, 0.3) : c;
     ctx.lineCap = 'round';
     ctx.shadowColor = c;
@@ -349,7 +385,7 @@ export function drawGame(ctx, W, H, layer, chart, t, songTime, { beat = 0, drawA
     if (gm.lane < 0) {
       // kick: a bar across the highway
       const y = Y(u);
-      ctx.fillStyle = spOn ? STAR_COLOR : KICK_COLOR;
+      ctx.fillStyle = spOn ? STAR : KICK;
       ctx.fillRect(cx - half(u) * 0.96, y - fretR * 0.12 * sc, half(u) * 1.92, Math.max(2, fretR * 0.24 * sc));
       ctx.globalAlpha = 1;
       continue;
@@ -357,7 +393,7 @@ export function drawGame(ctx, W, H, layer, chart, t, songTime, { beat = 0, drawA
     const x = laneX(gm.lane, u);
     const y = Y(u);
     const r = fretR * sc;
-    const c = spOn || gm.sp ? STAR_COLOR : colors[gm.lane];
+    const c = spOn || gm.sp ? STAR : colors[gm.lane];
     if (gm.star && !spOn) {
       ctx.shadowColor = '#ffffff';
       ctx.shadowBlur = r * 0.9;
@@ -367,23 +403,53 @@ export function drawGame(ctx, W, H, layer, chart, t, songTime, { beat = 0, drawA
     ctx.ellipse(x, y + r * 0.12, r * 0.98, r * 0.55, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fill();
-    // body
+    // body, in the theme's gem shape
+    const wide = drums && gm.cymbal ? 1.13 : 1; // cymbal gems are flatter, wider
+    const tall = drums && gm.cymbal ? 0.76 : 1;
     ctx.beginPath();
-    if (drums && gm.cymbal) {
-      // cymbal gems are flatter, wider ovals
-      ctx.ellipse(x, y, r * 1.02, r * 0.38, 0, 0, Math.PI * 2);
-    } else ctx.ellipse(x, y, r * 0.9, r * 0.5, 0, 0, Math.PI * 2);
-    ctx.fillStyle = c;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    // rim and shine
-    ctx.lineWidth = Math.max(1, r * 0.14);
-    ctx.strokeStyle = '#ffffff';
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.ellipse(x - r * 0.18, y - r * 0.12, r * 0.38, r * 0.14, -0.2, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.fill();
+    if (T.gem === 'square') {
+      const w = r * 1.5 * wide;
+      const hh = r * 0.8 * tall;
+      ctx.rect(Math.round(x - w / 2), Math.round(y - hh / 2), Math.round(w), Math.round(hh));
+    } else if (T.gem === 'diamond') {
+      ctx.moveTo(x, y - r * 0.55 * tall);
+      ctx.lineTo(x + r * 0.95 * wide, y);
+      ctx.lineTo(x, y + r * 0.55 * tall);
+      ctx.lineTo(x - r * 0.95 * wide, y);
+      ctx.closePath();
+    } else if (T.gem === 'flat') ctx.ellipse(x, y, r * 0.95 * wide, r * 0.32 * tall, 0, 0, Math.PI * 2);
+    else ctx.ellipse(x, y, r * 0.9 * wide, r * 0.5 * tall, 0, 0, Math.PI * 2);
+    if (T.gem === 'ring') {
+      // neon: a glowing outline with a dark centre
+      ctx.fillStyle = 'rgba(0,0,0,0.8)';
+      ctx.fill();
+      ctx.shadowColor = c;
+      ctx.shadowBlur = r * 0.9;
+      ctx.lineWidth = Math.max(1.5, r * 0.26);
+      ctx.strokeStyle = c;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = Math.max(1, r * 0.08);
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = c;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = Math.max(1, r * (T.gem === 'square' ? 0.18 : 0.14));
+      ctx.strokeStyle = T.gem === 'diamond' ? '#e5e7eb' : T.gem === 'square' ? '#000000' : '#ffffff';
+      ctx.stroke();
+      if (T.gem === 'round' || T.gem === 'diamond') {
+        // shine
+        ctx.beginPath();
+        ctx.ellipse(x - r * 0.18, y - r * 0.12, r * 0.38, r * 0.14, -0.2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.fill();
+      } else if (T.gem === 'square') {
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.fillRect(Math.round(x - r * 0.6), Math.round(y - r * 0.32), Math.max(2, Math.round(r * 0.3)), Math.max(2, Math.round(r * 0.18)));
+      }
+    }
     ctx.globalAlpha = 1;
   }
 
@@ -396,12 +462,12 @@ export function drawGame(ctx, W, H, layer, chart, t, songTime, { beat = 0, drawA
       if (age < 0 || age > 0.28) continue;
       const k = 1 - age / 0.28;
       const xs = gm.lane < 0 ? [cx] : [laneX(gm.lane, 0)];
-      const c = spOn ? STAR_COLOR : gm.lane < 0 ? KICK_COLOR : colors[gm.lane];
+      const c = spOn ? STAR : gm.lane < 0 ? KICK : colors[gm.lane];
       for (const x of xs) {
         const h = fretR * (1.6 + 2.2 * (1 - k));
         const fl = ctx.createRadialGradient(x, yStrike, 0, x, yStrike - h * 0.5, h);
         fl.addColorStop(0, rgba('#ffffff', 0.9 * k));
-        fl.addColorStop(0.25, rgba('#ffd27a', 0.75 * k));
+        fl.addColorStop(0.25, rgba(T.flame, 0.75 * k));
         fl.addColorStop(0.6, rgba(c, 0.45 * k));
         fl.addColorStop(1, rgba(c, 0));
         ctx.fillStyle = fl;
@@ -412,7 +478,7 @@ export function drawGame(ctx, W, H, layer, chart, t, songTime, { beat = 0, drawA
         for (let s = 0; s < 5; s++) {
           const a = -Math.PI / 2 + (s - 2) * 0.35 + Math.sin(gm.time * 97 + s) * 0.2;
           const d = fretR * (0.6 + 3 * (1 - k)) * (0.6 + ((s * 37) % 10) / 20);
-          ctx.fillStyle = rgba('#fff3c4', k);
+          ctx.fillStyle = rgba(T.spark, k);
           ctx.fillRect(x + Math.cos(a) * d, yStrike + Math.sin(a) * d, Math.max(1, fretR * 0.12), Math.max(1, fretR * 0.12));
         }
       }
@@ -421,23 +487,30 @@ export function drawGame(ctx, W, H, layer, chart, t, songTime, { beat = 0, drawA
   }
 
   // ---- HUD: score, streak multiplier, star power meter, rock meter
-  if (layer.hud !== false) drawHud(ctx, W, H, layer, st, { cx, bw, yBot, fretR, dt, beat, spOn });
+  if (T.scan) {
+    // CRT scanlines over the highway
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    const step = Math.max(2, Math.round(H / 360));
+    for (let yy = Math.round(farY); yy < yBot; yy += step * 2) ctx.fillRect(cx - bw / 2, yy, bw, step);
+  }
+  if (layer.hud !== false) drawHud(ctx, W, H, layer, st, { cx, bw, yBot, fretR, dt, beat, spOn, T });
   ctx.restore();
 }
 
-function drawHud(ctx, W, H, layer, st, { cx, bw, yBot, fretR, dt, spOn }) {
+function drawHud(ctx, W, H, layer, st, { cx, bw, yBot, fretR, dt, spOn, T }) {
+  const STAR_COLOR = T.star;
   // a panel under the highway, as wide as it: rock meter | score and star power | multiplier
   const ph = Math.max(18, bw * 0.17);
   const top = yBot + ph * 0.12;
   const s = ph / 2.2;
-  const font = (px, w = 800) => `${w} ${Math.round(px)}px Montserrat, "Arial Black", Impact, sans-serif`;
+  const font = (px, w = 800) => `${w} ${Math.round(px)}px ${T.font}`;
   const x0 = cx - bw / 2;
-  ctx.fillStyle = 'rgba(8,6,14,0.82)';
+  ctx.fillStyle = T.hud;
   ctx.beginPath();
   if (ctx.roundRect) ctx.roundRect(x0, top, bw, ph, ph * 0.18);
   else ctx.rect(x0, top, bw, ph);
   ctx.fill();
-  ctx.strokeStyle = spOn ? STAR_COLOR : 'rgba(167,139,250,0.55)';
+  ctx.strokeStyle = spOn ? STAR_COLOR : rgba(T.rail, 0.55);
   ctx.lineWidth = Math.max(1, ph * 0.04);
   ctx.stroke();
   const my = top + ph / 2;

@@ -1360,3 +1360,7 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 /* templates from the song's files */
 .tpl-uses { margin: 2px 0 4px; padding-left: 16px; color: var(--muted); }
 .tpl-card.off .tpl-thumb { opacity: 0.35; }
+/* rhythm game themes */
+.game-themes .style-opt { display: grid; gap: 3px; }
+.game-swatch { display: flex; gap: 3px; justify-content: center; padding: 5px 4px; border-radius: 4px; border: 1px solid; }
+.game-swatch i { width: 11px; height: 7px; display: block; }

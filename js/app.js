@@ -965,8 +965,8 @@ ui.songTemplateContext = () => {
   };
 };
 /** Make a song template, then line its highways up with the song by listening. Returns the facts, or throws. */
-ui.applySongTemplate = (id) => {
-  const ctx = ui.songTemplateContext();
+ui.applySongTemplate = (id, opts = {}) => {
+  const ctx = { ...ui.songTemplateContext(), ...opts };
   let facts = [];
   store.update((d) => (facts = applySongTemplate(d, id, ctx)));
   if (id === 'st-game') {

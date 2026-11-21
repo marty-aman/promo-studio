@@ -14,7 +14,7 @@ import {
 import { FILTER_PRESETS, PLATFORMS, isVisible, overlayClipAt } from './state.js';
 import { drawPlatformOverlay, overlaySupported } from './overlays.js';
 import { drawMidi } from './midiviz.js';
-import { drawGame } from './rhythmgame.js';
+import { drawGame, gameTheme } from './rhythmgame.js';
 import { drawTab } from './tab.js';
 import { drawDrums } from './drums.js';
 import { drawViz } from './viz.js';
@@ -1421,7 +1421,10 @@ export function renderFrame(ctx, W, H, project, t, env) {
 
   // a rhythm game layer can bring its own arena behind everything (clips, if any, play on top)
   const arena = layers.find((l) => l.type === 'game' && l.backdrop === 'arena');
-  if (arena) drawBackdrop(ctx, W, H, { kind: 'scene', scene: 'arena', color: arena.arenaColor || '#ff2bd6', color2: arena.arenaColor2 || '#2b6bff' }, t, beat);
+  if (arena) {
+    const [c1, c2] = gameTheme(arena).arena;
+    drawBackdrop(ctx, W, H, { kind: 'scene', scene: 'arena', color: c1, color2: c2 }, t, beat);
+  }
   if (isVisible(project, 'video')) drawVideoLane(ctx, W, H, project, t, env);
   // video layers sit directly on the picture, so the look (vignette, grain…) covers them too
   for (const l of layers) {

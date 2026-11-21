@@ -168,6 +168,8 @@ export function themeLayer(L, theme, c) {
     L.chrome = { bg0: c.bg, bg1: mix(c.bg, c.deep, 0.55), bg2: c.deep, road: c.bg, grid: c.accent, glow: c.accent, edge: c.accent, shell: mix(c.bg, c.deep, 0.6), kickShell: c.deep };
   } else if (L.type === 'viz') {
     Object.assign(L, { color: c.accent, color2: c.light, classic: false });
+  } else if (L.type === 'game') {
+    L.themeColors = { bg: c.bg, deep: c.deep, accent: c.accent, light: c.light }; // used while “Follow the project theme” is on
   } else if (L.type === 'video' && theme.grade) {
     for (const clip of L.clips || []) clip.grade = { preset: 'custom', ...theme.grade(c) };
   }

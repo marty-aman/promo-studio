@@ -141,7 +141,7 @@ function placeIn(L, A, fy, fh, fw = 0.96) {
   L.y = +((A.y0 + A.h * fy) * 100).toFixed(1);
 }
 
-function areaOf(layout) {
+export function areaOf(layout) {
   const [x0, y0, x1, y1] = AREAS[layout] || AREAS.full;
   return { x0, y0, x1, y1, cx: (x0 + x1) / 2, w: x1 - x0, h: y1 - y0 };
 }
