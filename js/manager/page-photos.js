@@ -4,7 +4,7 @@
 // the press kit / profile / logo buttons for each photo). Only one page of photos is drawn at a time.
 import { h, icon, button, iconButton, toast, pickFiles, download } from '../dom.js';
 import { driveButton } from '../gdrive.js';
-import { addPhotos, filterPhotos, photoTags, toggleEpkPhoto, parseTags, EPK_PHOTO_MAX, newFolder, subfolders, folderPath, photosIn, deleteFolder, movePhotos, moveFolder, PAGE_SIZES, loadPageSize, savePageSize, paginate } from './photos.js';
+import { addPhotos, filterPhotos, photoTags, toggleEpkPhoto, parseTags, EPK_PHOTO_MAX, newFolder, subfolders, folderPath, photosIn, deleteFolder, movePhotos, moveFolder, PAGE_SIZES, loadPageSize, savePageSize, paginate, tagPhotos, parseTagEdit, clickSelect } from './photos.js';
 
 const MODE_KEY = 'pvm.photos.mode';
 const loadMode = () => {
@@ -14,7 +14,7 @@ const loadMode = () => {
     return 'browse';
   }
 };
-export const photosUI = { q: '', tag: '', starred: false, epkOnly: false, busy: false, open: null, folder: '', page: 1, size: 0, selected: new Set(), everywhere: false, mode: '', history: [], expanded: new Set(), details: false };
+export const photosUI = { q: '', tag: '', starred: false, epkOnly: false, busy: false, open: null, folder: '', page: 1, size: 0, selected: new Set(), everywhere: false, mode: '', history: [], expanded: new Set(), details: false, anchor: null };
 
 const IMAGE_ACCEPT = 'image/*,.jpg,.jpeg,.png,.webp,.gif,.heic';
 
@@ -170,6 +170,13 @@ export function buildPhotos(ctx) {
     return el;
   };
   const count = (id) => photosIn(m.photos, folders, id, { deep: true }).length;
+  /** Tag every photo in a folder (and, if you say so, in the folders inside it). */
+  const tagFolder = (fo) => {
+    const own = photosIn(m.photos, folders, fo.id);
+    const deep = photosIn(m.photos, folders, fo.id, { deep: true });
+    const inside = deep.length > own.length && confirm(`“${fo.name}” has ${deep.length - own.length} more photo${deep.length - own.length === 1 ? '' : 's'} in its folders. Tag those too?\n\nOK: all ${deep.length}. Cancel: just the ${own.length} directly in “${fo.name}”.`);
+    tagMany((inside ? deep : own).map((p) => p.id), `in “${fo.name}”${inside ? ' and its folders' : ''}`);
+  };
 
   // ---- the folder tree
   const treeItem = (fo, depth) => {
@@ -206,7 +213,7 @@ export function buildPhotos(ctx) {
       dropTarget(h('button', { type: 'button', class: `link${ui.folder ? '' : ' on'}`, onclick: () => openFolder('') }, icon('home', 13), 'All photos'), ''),
       ...pathOf(ui.folder).flatMap((fo) => [h('span', { class: 'muted' }, '›'), dropTarget(h('button', { type: 'button', class: `link${fo.id === ui.folder ? ' on' : ''}`, onclick: () => openFolder(fo.id) }, fo.name), fo.id)]),
     ),
-    cur ? h('div', { class: 'row' }, button('Rename', () => rename(cur), { iconName: 'type', variant: 'sm ghost' }), button('Delete folder', () => remove(cur), { iconName: 'trash', variant: 'sm ghost' })) : null,
+    cur ? h('div', { class: 'row' }, button('Tag all…', () => tagFolder(cur), { iconName: 'type', variant: 'sm', title: 'Add a tag to every photo in this folder' }), button('Rename', () => rename(cur), { iconName: 'type', variant: 'sm ghost' }), button('Delete folder', () => remove(cur), { iconName: 'trash', variant: 'sm ghost' })) : null,
   );
 
   // ---- folders inside this one, as folders you open
@@ -226,7 +233,7 @@ export function buildPhotos(ctx) {
             h('strong', {}, fo.name),
             h('span', { class: 'muted tiny' }, `${inside.length} photo${inside.length === 1 ? '' : 's'}${nSub ? ` · ${nSub} folder${nSub === 1 ? '' : 's'}` : ''}`),
           ),
-          h('div', { class: 'mgr-folder-acts' }, iconButton('type', `Rename ${fo.name}`, () => rename(fo), 'ghost'), iconButton('trash', `Delete the folder ${fo.name}`, () => remove(fo), 'ghost')),
+          h('div', { class: 'mgr-folder-acts' }, button('#', () => tagFolder(fo), { variant: 'sm ghost', title: `Tag every photo in ${fo.name}` }), iconButton('type', `Rename ${fo.name}`, () => rename(fo), 'ghost'), iconButton('trash', `Delete the folder ${fo.name}`, () => remove(fo), 'ghost')),
         );
         el.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/x-pvm-folder', fo.id));
         return dropTarget(el, fo.id);
@@ -245,8 +252,37 @@ export function buildPhotos(ctx) {
     sel.clear();
     toast(`Moved ${n} photo${n === 1 ? '' : 's'} to ${to ? `“${folderName(to)}”` : 'All photos'}`);
   });
+  const redraw = () => (ctx.refresh ? ctx.refresh() : rerender()); // keeps your place on the page
+  const order = shown.map((p) => p.id);
+  /** Tick a photo: Shift ticks the run from the last one, Ctrl or Cmd toggles one. */
+  const select = (id, e) => {
+    const out = clickSelect(sel, order, id, { shift: e.shiftKey, anchor: ui.anchor });
+    sel.clear();
+    out.selected.forEach((x) => sel.add(x));
+    ui.anchor = out.anchor;
+    redraw();
+  };
+  /** Ask for tags to add (and "-tag" to take off), then put them on `ids`. */
+  const tagMany = (ids, where) => {
+    if (!ids.length) return toast('No photos there to tag.', 'error');
+    const text = prompt(`Tags for ${ids.length} photo${ids.length === 1 ? '' : 's'}${where ? ` ${where}` : ''}.\nSeparate with commas. Put a minus in front to take a tag off (e.g. live, 2026, -old).`, '');
+    if (!text || !text.trim()) return;
+    const { add, remove } = parseTagEdit(text);
+    let n = 0;
+    ctx.update((d) => (n = tagPhotos(d, ids, add, remove)));
+    toast(n ? `${[add.length && `Added ${add.map((t) => `#${t}`).join(' ')}`, remove.length && `took off ${remove.map((t) => `#${t}`).join(' ')}`].filter(Boolean).join(', ')} on ${n} photo${n === 1 ? '' : 's'}` : 'Those photos already had those tags.');
+  };
   const selBar = sel.size
-    ? h('div', { class: 'mgr-selbar' }, h('strong', {}, `${sel.size} ticked`), moveSel, button('Tick this page', () => (pg.items.forEach((p) => sel.add(p.id)), rerender()), { variant: 'sm ghost' }), button('Clear', () => (sel.clear(), rerender()), { variant: 'sm ghost' }))
+    ? h(
+        'div',
+        { class: 'mgr-selbar' },
+        h('strong', {}, `${sel.size} ticked`),
+        moveSel,
+        button('Tag…', () => tagMany([...sel], 'ticked'), { iconName: 'type', variant: 'sm', title: 'Add or take off tags on every ticked photo' }),
+        button(`Tick all ${shown.length}`, () => (shown.forEach((p) => sel.add(p.id)), redraw()), { variant: 'sm ghost', title: filtering ? 'Every match, on every page' : 'Every photo here, on every page' }),
+        button('Clear', () => (sel.clear(), (ui.anchor = null), redraw()), { variant: 'sm ghost' }),
+        h('span', { class: 'muted tiny' }, 'Shift-click ticks a run · Ctrl/⌘-click adds one'),
+      )
     : null;
 
   // ---- one photo: the picture with its star, tick and badges (both views)
@@ -279,11 +315,19 @@ export function buildPhotos(ctx) {
     const isLogo = band.logoId === p.mediaId;
     const isProfile = band.photoId === p.mediaId;
     const tick = h('input', { type: 'checkbox', checked: sel.has(p.id), 'aria-label': `Tick ${p.caption || x.name}` });
-    tick.addEventListener('change', () => (tick.checked ? sel.add(p.id) : sel.delete(p.id), rerender()));
+    // the tick handles its own click (so Shift and Ctrl/Cmd work on it too)
+    tick.addEventListener('click', (e) => (e.preventDefault(), select(p.id, e)));
     return h(
       'div',
       { class: 'mgr-ph-img' },
-      h('button', { type: 'button', class: 'mgr-ph-open', onclick: () => ((ui.open = p.id), rerender()), 'aria-label': `View ${p.caption || x.name}` }, h('img', { src: x.thumb || x.url, alt: p.caption || '', loading: 'lazy', decoding: 'async' })),
+      h('button', {
+        type: 'button',
+        class: 'mgr-ph-open',
+        // Shift, Ctrl or Cmd click ticks instead of opening; so does a plain click while photos are ticked
+        onclick: (e) => (e.shiftKey || e.metaKey || e.ctrlKey || sel.size ? select(p.id, e) : ((ui.open = p.id), rerender())),
+        'aria-label': `View ${p.caption || x.name}`,
+        title: sel.size ? 'Click to tick or untick (Shift for a run)' : 'Open. Shift or Ctrl/⌘-click to tick',
+      }, h('img', { src: x.thumb || x.url, alt: p.caption || '', loading: 'lazy', decoding: 'async' })),
       h('label', { class: 'mgr-ph-tick' }, tick),
       h('button', { type: 'button', class: `mgr-ph-star${p.favorite ? ' on' : ''}`, 'aria-pressed': p.favorite ? 'true' : 'false', 'aria-label': p.favorite ? 'Unstar' : 'Star', onclick: () => ctx.update(P(p.id, (y) => (y.favorite = !y.favorite))) }, p.favorite ? '★' : '☆'),
       inKit || isLogo || isProfile ? h('span', { class: 'mgr-ph-badges' }, isProfile ? h('span', {}, 'Profile') : null, inKit ? h('span', {}, 'Press kit') : null, isLogo ? h('span', {}, 'Logo') : null) : null,

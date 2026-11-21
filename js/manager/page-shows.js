@@ -5,6 +5,7 @@ import { SHOW_STATUSES, newShow, niceDate, daysBetween, addDays, mid } from './m
 import { showTodo, todoDue } from './planner.js';
 import { exportPDF } from './pdf.js';
 import { showSheetHTML } from './docs.js';
+import { setlistTimes, songSeconds, fmtTime } from './setlist.js';
 
 const BILLING = [['headline', 'Headliner'], ['support', 'Support'], ['opener', 'Opener'], ['festival', 'Festival'], ['other', 'Other']];
 const label = (list, k) => (list.find(([v]) => v === k) || [k, k])[1];
@@ -61,7 +62,44 @@ function showList(ctx) {
   );
 }
 
+const GAPS = [[0, 'No gaps'], [10, '10 s between songs'], [20, '20 s between songs'], [30, '30 s between songs'], [60, '1 min between songs']];
+
+/** Under the setlist: each song's length, when it starts, and how long the set runs. */
+function setlistBox(ctx, show, S, dur) {
+  const m = ctx.store.get();
+  const t = setlistTimes(show.setlist, m.songs, dur, { gap: +show.setGap || 0 });
+  if (!t.rows.length) return null;
+  const gap = h('select', { 'aria-label': 'Time between songs', 'data-k': `sgap-${show.id}` }, GAPS.map(([v, l]) => h('option', { value: String(v), selected: (+show.setGap || 0) === v }, l)));
+  gap.addEventListener('change', () => ctx.update(S((s) => (s.setGap = +gap.value))));
+  return h(
+    'div',
+    { class: 'mgr-setlen' },
+    h(
+      'ol',
+      { class: 'mgr-setlist' },
+      t.rows.map((r) =>
+        h(
+          'li',
+          { class: r.seconds ? '' : 'nolen' },
+          h('span', { class: 'mgr-track-n' }, String(r.n)),
+          r.song ? h('button', { type: 'button', class: 'link', onclick: () => ctx.go('songs', r.song.id, 'overview'), title: 'Open the song' }, r.title) : h('span', {}, r.title),
+          h('span', { class: 'mono muted' }, fmtTime(r.from)),
+          h('strong', { class: 'mono' }, r.seconds ? fmtTime(r.seconds) : '?'),
+        ),
+      ),
+    ),
+    h(
+      'div',
+      { class: 'mgr-setlen-total' },
+      h('span', {}, 'Set length ', h('strong', { class: 'mono' }, t.text), ` · ${t.rows.length} song${t.rows.length === 1 ? '' : 's'}${t.gaps ? ` (${fmtTime(t.music)} of music)` : ''}`),
+      gap,
+    ),
+    t.missing ? h('p', { class: 'muted tiny' }, `${t.missing} song${t.missing === 1 ? ' has' : 's have'} no length yet: add it on the song’s Overview (Length), give it a song file, or type a time after it here (“Jam 2:30”).`) : null,
+  );
+}
+
 function showPage(ctx, show) {
+  const dur = (id) => ctx.studio.mediaInfo(id)?.duration || 0;
   const f = ctx.form;
   const m = ctx.store.get();
   const S = (fn) => (d, v) => {
@@ -136,7 +174,7 @@ function showPage(ctx, show) {
       'header',
       { class: 'mgr-head' },
       h('div', {}, h('h1', {}, show.venue || 'New show'), h('p', { class: 'muted' }, show.date ? `${niceDate(show.date)}${show.date >= ctx.today() ? ` · in ${daysBetween(ctx.today(), show.date)} days` : ''}` : 'No date yet')),
-      h('div', { class: 'row' }, button('Copy for the band chat', copy, { iconName: 'copy', variant: 'sm' }), button('Make a poster', () => ctx.studio.openPhoto('show', { showId: show.id }), { iconName: 'image', variant: 'sm', title: 'A gig poster for this show in the Photo Studio' }), button('Export show sheet PDF', () => (exportPDF(showSheetHTML({ ...show, billing: label(BILLING, show.billing), status: label(SHOW_STATUSES, show.status) }, m.band), `${show.venue || 'Show'} ${show.date || ''}`.trim()), toast('Pick “Save as PDF” as the printer to get a PDF.')), { iconName: 'print', variant: 'sm' }), button(show.plan ? 'Show plan' : 'Plan the night', () => ctx.go('planner', show.id, 'plan'), { iconName: 'clipboard', variant: 'sm ghost', title: 'Run of show: set times, changeovers and the setlist with timings' }), iconButton('trash', 'Delete this show', remove, 'ghost danger')),
+      h('div', { class: 'row' }, button('Copy for the band chat', copy, { iconName: 'copy', variant: 'sm' }), button('Make a poster', () => ctx.studio.openPhoto('show', { showId: show.id }), { iconName: 'image', variant: 'sm', title: 'A gig poster for this show in the Photo Studio' }), button('Export show sheet PDF', () => (exportPDF(showSheetHTML({ ...show, billing: label(BILLING, show.billing), status: label(SHOW_STATUSES, show.status) }, m.band, { times: setlistTimes(show.setlist, m.songs, dur, { gap: +show.setGap || 0 }) }), `${show.venue || 'Show'} ${show.date || ''}`.trim()), toast('Pick “Save as PDF” as the printer to get a PDF.')), { iconName: 'print', variant: 'sm' }), button(show.plan ? 'Show plan' : 'Plan the night', () => ctx.go('planner', show.id, 'plan'), { iconName: 'clipboard', variant: 'sm ghost', title: 'Run of show: set times, changeovers and the setlist with timings' }), iconButton('trash', 'Delete this show', remove, 'ghost danger')),
     ),
     bandNames,
     venueNames,
@@ -168,8 +206,12 @@ function showPage(ctx, show) {
         lineup,
         h('div', { class: 'row' }, button('Add a band', () => ctx.update(S((s) => s.lineup.push({ id: mid('lu'), name: '', time: '' }))), { iconName: 'plus', variant: 'sm ghost' }), show.lineup.some((b) => b.name === m.band.name) ? null : button(`Add ${m.band.name}`, () => ctx.update(S((s) => s.lineup.push({ id: mid('lu'), name: m.band.name, time: s.setTime || '' }))), { variant: 'sm ghost' })),
         h('h2', {}, 'Setlist'),
-        f.text(`sset-${show.id}`, '', show.setlist, S((s, v) => (s.setlist = v)), { rows: 7, placeholder: 'One song per line' }),
-        m.songs.length ? h('div', { class: 'chips' }, m.songs.map((sg) => button(sg.title, () => ctx.update(S((s) => (s.setlist = `${s.setlist ? `${s.setlist.trimEnd()}\n` : ''}${sg.title}`))), { variant: 'chip' }))) : null,
+        f.text(`sset-${show.id}`, '', show.setlist, S((s, v) => (s.setlist = v)), { rows: 7, placeholder: 'One song per line. A line can carry its own time: “Jam 2:30”' }),
+        m.songs.length ? h('div', { class: 'chips' }, m.songs.map((sg) => {
+          const sec = songSeconds(sg, dur);
+          return button(sec ? `${sg.title} · ${fmtTime(sec)}` : sg.title, () => ctx.update(S((s) => (s.setlist = `${s.setlist ? `${s.setlist.trimEnd()}\n` : ''}${sg.title}`))), { variant: 'chip' });
+        })) : null,
+        setlistBox(ctx, show, S, dur),
         h('h2', {}, 'After the show'),
         h('div', { class: 'mgr-three' }, f.text(`spay-${show.id}`, 'We were paid', show.settlement.pay, S((s, v) => (s.settlement.pay = v)), { type: 'number', placeholder: '$' }), f.text(`smer-${show.id}`, 'Merch sales', show.settlement.merch, S((s, v) => (s.settlement.merch = v)), { type: 'number', placeholder: '$' }), f.text(`scost-${show.id}`, 'Costs', show.settlement.costs, S((s, v) => (s.settlement.costs = v)), { type: 'number', placeholder: 'gas, food…' })),
         show.settlement.pay !== '' || show.settlement.merch !== '' || show.settlement.costs !== '' ? h('p', { class: `mgr-net ${net >= 0 ? 'ok' : 'bad'}` }, `Net: ${net < 0 ? '−' : ''}$${Math.abs(net).toFixed(2)}`) : null,
