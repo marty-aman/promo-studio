@@ -7,6 +7,9 @@ import { MIDI_ACCEPT, noteCounts } from './midi.js';
 import { guessEngines, engineGroups, noteName } from './drummap.js';
 import { defaultMidiLayer, midiNotesFor, MIDI_STYLES, MIDI_PLACEMENT, MIDI_COLOR_MODES } from './midiviz.js';
 import { syncLayer, syncKind, SURE_TEXT } from './layersync.js';
+import { defaultGameLayer, INSTRUMENTS } from './rhythmgame.js';
+import { gameChart } from './gamechart.js';
+import { isBassTrack } from './tab.js';
 import { midiDrumTrack } from './drums.js';
 
 /** A drum layer's track and drum map for a MIDI file: the drum track, and the map its notes fit best. */
@@ -59,6 +62,12 @@ function makeLayerRaw(p, type, t = 0) {
     return gp
       ? { ...defaultDrumLayer(), ...base, source: 'gp', mediaId: gp.id, track: gp.drumTracks[0].index, offset: +timelineToSong(0, p.song).toFixed(3) }
       : { ...defaultDrumLayer(), ...base, source: 'audio', mediaId: stem ? stem.id : null, offset: 0 };
+  }
+  if (type === 'game') {
+    // the song's guitar part: a Guitar Pro guitar track, else a guitar stem
+    const tab = all.find((m) => m.kind === 'tab' && m.tracks && m.tracks.some((t) => !isBassTrack(t)));
+    if (tab) return { ...defaultGameLayer(), ...base, source: 'tab', mediaId: tab.id, track: tab.tracks.find((t) => !isBassTrack(t)).index, offset: +timelineToSong(0, p.song).toFixed(3), backdrop: (p.clips || []).length ? 'none' : 'arena' };
+    return { ...defaultGameLayer(), ...base, source: 'stem', mediaId: null, backdrop: (p.clips || []).length ? 'none' : 'arena' };
   }
   if (type === 'midi') {
     const rec = all.find((m) => m.kind === 'midi' && m.midi && m.midi.tracks.some((t) => t.notes && !t.isDrum)) || all.find((m) => m.kind === 'midi');
@@ -190,6 +199,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
     drums: () => button(types ? 'Add a drum chart' : 'Drum chart', () => add('drums'), { iconName: 'activity', variant: types ? 'sm primary' : 'sm' }),
     viz: () => button(types ? 'Add a visualizer' : 'Visualizer', () => add('viz'), { iconName: 'volume', variant: types ? 'sm primary' : 'sm' }),
     midi: () => button(types ? 'Add MIDI notes' : 'MIDI notes', () => add('midi'), { iconName: 'music', variant: types ? 'sm' : 'sm' }),
+    game: () => button(types ? 'Add a rhythm game highway' : 'Rhythm game', () => add('game'), { iconName: 'guitar', variant: 'sm', title: 'A Guitar Hero style note highway played in time with the song' }),
   };
   const allRows = () =>
     fold(
@@ -220,7 +230,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
   return h(
     'div',
     {},
-    section('Add a layer', h('div', { class: 'add-layer' }, ADD.video(), ADD.tab(), ADD.drums(), ADD.viz(), ADD.midi())),
+    section('Add a layer', h('div', { class: 'add-layer' }, ADD.video(), ADD.tab(), ADD.drums(), ADD.viz(), ADD.midi(), ADD.game())),
     section('Layer stack (top first)', list),
     selAny ? h('div', { class: 'layer-settings' }, settingsFor(selAny), animateFor(selAny)) : h('p', { class: 'muted tiny' }, 'Select a layer to edit it. You can also click a layer name on the timeline.'),
     section('Always-there rows', h('p', { class: 'muted tiny' }, 'Hide a row to leave it out of the preview and the export. Hiding audio mutes it.'), fixed),
@@ -630,6 +640,62 @@ export function buildLayersPanel(b, ctx, opts = {}) {
           h('div', { class: 'grid3' }, LANES.filter((ln) => pieceOn(L, ln.id)).map((ln) => b.color(ln.label, get((x) => laneColorOf(x, ln.id)), set((x, v) => (x.colors = { ...(x.colors || {}), [ln.id]: v }))))),
           h('div', { class: 'grid2' }, b.color('Background', g('bg'), set((x, v) => (x.bg = v))), b.range('Background opacity', g('bgOpacity', 0.55), set((x, v) => (x.bgOpacity = v)), { min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` })),
           b.toggle('Show drum names', g('showLabels', true), set((x, v) => (x.showLabels = v))),
+        ),
+      );
+    }
+
+    // ---- rhythm game layer
+    if (L.type === 'game') {
+      const g = (k, def) => get((x) => x[k] ?? def);
+      const drums = L.instrument === 'drums';
+      const sc = ui.songContext ? ui.songContext() : null;
+      const all = media.all();
+      const pool = L.source === 'stem'
+        ? all.filter((m) => m.kind === 'audio' && !(p.song && m.id === p.song.mediaId))
+        : L.source === 'midi' ? all.filter((m) => m.kind === 'midi')
+          : all.filter((m) => m.kind === 'tab' && (drums ? m.drumTracks && m.drumTracks.length : m.tracks && m.tracks.length));
+      const songIds = L.source === 'stem' && sc ? sc.stems.map((x) => x.mediaId) : L.source === 'tab' && sc ? sc.tabs : null;
+      const fs = songIds ? forSong(pool, songIds, L.mediaId) : { list: pool };
+      const files = [...fs.list, ...(fs.keep ? [fs.keep] : [])];
+      const stemLabel = (m) => (sc && sc.stems.find((x) => x.mediaId === m.id)?.label) || m.name;
+      const fileSel = h('select', { 'aria-label': 'Notes from' }, h('option', { value: '' }, '— choose a file —'), files.map((m) => h('option', { value: m.id, selected: m.id === L.mediaId }, fs.keep === m ? `${m.name} (not this song’s)` : L.source === 'stem' ? stemLabel(m) : m.name)));
+      fileSel.addEventListener('change', () => store.update(set((x) => {
+        x.mediaId = fileSel.value || null;
+        const r = media.get(x.mediaId);
+        if (r && x.source === 'tab') x.track = drums ? (r.drumTracks[0] || { index: 0 }).index : (r.tracks.find((t) => (x.instrument === 'bass') === isBassTrack(t)) || r.tracks[0]).index;
+        if (r && x.source === 'midi') Object.assign(x, drums ? midiDrumDefaults(r.midi) : { track: (r.midi.tracks.find((t) => t.notes && !t.isDrum) || { index: -1 }).index });
+        if (x.source === 'stem') x.offset = 0;
+      })));
+      const rec = media.get(L.mediaId);
+      const trackSel = rec && L.source === 'tab'
+        ? b.select('Track', () => String(findLayer(store.get(), L.id)?.track ?? 0), set((x, v) => (x.track = parseInt(v, 10))), (drums ? rec.drumTracks : rec.tracks).map((t) => [String(t.index), t.name]))
+        : rec && L.source === 'midi' && rec.midi
+          ? b.select('Track', () => String(findLayer(store.get(), L.id)?.track ?? -1), set((x, v) => (x.track = parseInt(v, 10))), [['-1', 'Every track'], ...rec.midi.tracks.filter((t) => t.notes).map((t) => [String(t.index), `${t.name} · ${t.notes} notes`])])
+          : null;
+      const chart = rec ? gameChart(L, { bpm: p.beats ? p.beats.bpm : 0, onReady: () => ui.refreshPanels(true) }) : null;
+      return h(
+        'div',
+        {},
+        common,
+        b.segmented('Instrument', g('instrument', 'guitar'), set((x, v) => ((x.instrument = v), (x.mediaId = null), (x.label = x.label && INSTRUMENTS.some(([, l]) => l === x.label) ? INSTRUMENTS.find(([k]) => k === v)[1] : x.label))), INSTRUMENTS),
+        b.segmented('Notes come from', g('source', 'tab'), set((x, v) => ((x.source = v), (x.mediaId = null), (x.offset = v === 'stem' ? 0 : +timelineToSong(0, store.get().song).toFixed(3)))), [['tab', 'Guitar Pro'], ['midi', 'MIDI'], ['stem', 'Stem (audio)']]),
+        field(L.source === 'stem' ? 'Stem' : L.source === 'midi' ? 'MIDI file' : 'Guitar Pro file', fileSel, L.source === 'stem' ? (drums ? 'Kick, snare and hi-hat are found by listening.' : 'A gem wherever a new note starts; its fret from how bright it sounds. A chart (Guitar Pro or MIDI) is more exact.') : null),
+        songIds ? songNote(fs, L.source === 'stem' ? 'Stems' : 'Guitar Pro tabs') : null,
+        trackSel,
+        L.source === 'midi' && drums && rec ? b.select('Drum map', g('drumMap', 'general_midi'), set((x, v) => (x.drumMap = v)), engineGroups().flatMap(([, list]) => list).map((e) => [e.id, e.name])) : null,
+        L.source === 'stem' ? b.range('Note sensitivity', g('sensitivity', 0.5), set((x, v) => (x.sensitivity = Math.round(v * 20) / 20)), { min: 0.1, max: 0.9, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` }) : null,
+        h('p', { class: 'muted tiny' }, chart === undefined ? 'Listening to the stem…' : chart ? `${chart.notes} notes on the highway.` : rec ? 'No notes found in it.' : 'Pick the file the notes come from.'),
+        rec ? syncTools(() => chart || null, L.source === 'stem') : null,
+        visibleRange(),
+        section(
+          'Look',
+          b.range('Note speed', g('window', 1.6), set((x, v) => (x.window = v)), { min: 0.8, max: 3, step: 0.1, fmt: (v) => `${v.toFixed(1)} s on the highway` }),
+          b.text('Label under the highway', g('label', ''), set((x, v) => (x.label = v)), { placeholder: 'e.g. GUITAR, or the player’s name' }),
+          b.toggle('Score, multiplier, star power and rock meter', g('hud', true), set((x, v) => (x.hud = v))),
+          b.toggle('Star power stretches (blue notes, double score)', g('starPower', true), set((x, v) => (x.starPower = v))),
+          b.toggle('Flames on every hit', g('flames', true), set((x, v) => (x.flames = v))),
+          b.toggle('Rock arena behind it (stage lights and a jumping crowd)', () => findLayer(store.get(), L.id)?.backdrop === 'arena', set((x, v) => (x.backdrop = v ? 'arena' : 'none'))),
+          placement({ y: 60 }),
         ),
       );
     }

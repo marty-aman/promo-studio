@@ -138,6 +138,7 @@ export const LAYER_TYPES = {
   drums: { label: 'Drum chart', icon: 'activity' },
   viz: { label: 'Visualizer', icon: 'volume' },
   midi: { label: 'MIDI notes', icon: 'music' },
+  game: { label: 'Rhythm game', icon: 'guitar' },
 };
 
 /** Is a fixed row (video, text, lyrics, song, endcard, audio:<id>) or a layer visible? */

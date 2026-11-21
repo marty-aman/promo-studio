@@ -1356,3 +1356,7 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .link.on { font-weight: 700; text-decoration: underline; }
 @media (max-width: 640px) { .dc-maps { grid-template-columns: 1fr; } }
 .mgr-chip.warn { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+
+/* templates from the song's files */
+.tpl-uses { margin: 2px 0 4px; padding-left: 16px; color: var(--muted); }
+.tpl-card.off .tpl-thumb { opacity: 0.35; }

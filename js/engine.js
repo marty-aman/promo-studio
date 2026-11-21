@@ -2,6 +2,7 @@
 import { ASPECTS, layoutClips, fadeGain, clamp, timelineToSong } from './core.js';
 import { media, clipElement, pruneClipElements, tabTimeline, drumTimeline, drumHitsFromStem, vizFeatures } from './media.js';
 import { midiNotesFor } from './midiviz.js';
+import { gameChart } from './gamechart.js';
 import { isVisible } from './state.js';
 import { renderFrame } from './renderer.js';
 import { matteFor, preparePerson, onMatteChange } from './bgremove.js';
@@ -444,6 +445,7 @@ export class Engine {
         }
         return drumTimeline(media.get(l.mediaId), l.track, l.drumMap);
       },
+      game: (l) => gameChart(l, { bpm: this.project.beats ? this.project.beats.bpm : 0, onReady: () => !this.playing && this.render() }) || null,
       midi: (l) => {
         const rec = media.get(l.mediaId);
         return rec && rec.midi ? midiNotesFor(rec.midi, l.tracks) : null;

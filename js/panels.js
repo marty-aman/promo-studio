@@ -48,6 +48,7 @@ import { exportVideo, pickMimeType } from './engine.js';
 import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS, MASK_SHAPES, GRADE_PRESETS, renderFrame } from './renderer.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate, tabIntoLayout, lyricsIntoLayout, tabSources, templateNeeds } from './templates.js';
+import { SONG_TEMPLATES, songTemplateReady, applySongTemplate } from './songtemplates.js';
 import { CANVAS_TEMPLATES, CANVAS_MIN, CANVAS_MAX, canvasTemplate, applyCanvas, undoCanvas, canvasIssues, clampCanvasLength, isCanvas } from './canvas.js';
 
 /** The Spotify Canvas loop length picked in the Templates tab (not saved). */
@@ -303,7 +304,7 @@ export function createPanels({ store, engine, ui }) {
     youtube: ['video', 'video-youtube'],
     sounds: ['audio', 'audio-sounds'],
   };
-  const LAYER_HOME = { video: ['video', 'video-layers'], viz: ['visualizer'], tab: ['guitarpro'], drums: ['guitarpro'], midi: ['visualizer'] };
+  const LAYER_HOME = { video: ['video', 'video-layers'], viz: ['visualizer'], tab: ['guitarpro'], drums: ['guitarpro'], midi: ['visualizer'], game: ['guitarpro'] };
   /** Which tab (and fold) an id opens. `layers` goes to the tab for the selected layer's kind. */
   function resolveTab(id) {
     if (id === 'layers') {
@@ -553,7 +554,7 @@ export function createPanels({ store, engine, ui }) {
   }
   function buildGuitarTab(b) {
     return buildLayersPanel(b, layerCtx(), {
-      types: ['tab', 'drums', 'midi'],
+      types: ['tab', 'drums', 'midi', 'game'],
       intro: 'Guitar, bass and drum parts from Guitar Pro files, MIDI files (drums from any drum software) or a drum stem, in time with the song.',
       empty: 'No tab or drum layers yet.',
       after: section(
@@ -747,6 +748,7 @@ export function createPanels({ store, engine, ui }) {
       'div',
       {},
       isCanvas(p) ? canvasSect : null,
+      songTemplatesSection(),
       themeSection(p, previewT),
       section(
         'Layout for the app you post to',
@@ -761,6 +763,57 @@ export function createPanels({ store, engine, ui }) {
         h('div', { class: 'tpl-grid' }, cards),
       ),
       isCanvas(p) ? null : canvasSect,
+    );
+  }
+
+  // ---------------------------------------------------------------- TEMPLATES FROM THE SONG'S FILES
+  /** Rhythm game, music video + lyrics, raw footage + lyrics: built from the current song's own files. */
+  function songTemplatesSection() {
+    const ctx = ui.songTemplateContext ? ui.songTemplateContext() : null;
+    const cards = SONG_TEMPLATES.map((tpl) => {
+      const r = songTemplateReady(tpl.id, ctx);
+      const c = h('canvas', { width: 108, height: 192, class: 'tpl-thumb', 'aria-hidden': 'true' });
+      if (r.ok) {
+        requestAnimationFrame(() => {
+          try {
+            const draft = structuredClone(store.get());
+            applySongTemplate(draft, tpl.id, ctx);
+            draft.look.overlay = 'off';
+            draft.endCard.enabled = false;
+            renderFrame(c.getContext('2d'), c.width, c.height, draft, tpl.id === 'st-game' ? 6 : 2, engine.env(false));
+          } catch (e) {
+            console.warn('song template preview failed', e);
+          }
+        });
+      }
+      const on = store.get().template === tpl.id;
+      return h(
+        'div',
+        { class: `tpl-card${on ? ' on' : ''}${r.ok ? '' : ' off'}`, 'data-songtpl': tpl.id },
+        c,
+        h(
+          'div',
+          { class: 'tpl-info' },
+          h('strong', {}, tpl.name),
+          h('span', { class: 'muted tiny' }, tpl.blurb),
+          r.ok ? h('ul', { class: 'tpl-uses tiny' }, r.uses.map((u) => h('li', {}, u))) : h('span', { class: 'tpl-needs tiny' }, r.missing),
+          r.ok
+            ? button(on ? 'Applied · re-apply' : 'Use this template', () => {
+                try {
+                  const facts = ui.applySongTemplate(tpl.id);
+                  toast(`“${tpl.name}” for “${ctx.song.title}”: ${facts.join('. ')}. Undo (Ctrl+Z) to go back.`, 'info', 9000);
+                } catch (e) {
+                  toast(e.message, 'error', 6000);
+                }
+              }, { variant: `sm${on ? '' : ' primary'}` })
+            : ctx && ctx.song ? button('Open the song’s files', () => ui.openSongFiles(ctx.song.id), { variant: 'sm ghost' }) : null,
+        ),
+      );
+    });
+    return section(
+      'From your song’s files',
+      h('p', { class: 'muted small' }, ctx && ctx.song ? `Made from “${ctx.song.title}” and the files on its Files tab in Songs & releases. Each ends on the song’s end card.` : 'Pick one of your songs in the Audio tab: these templates are made from its tabs, MIDI, stems, music video and footage, and end on its end card.'),
+      h('div', { class: 'tpl-grid' }, cards),
     );
   }
 

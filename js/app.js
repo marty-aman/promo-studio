@@ -1,5 +1,7 @@
 // App shell: layout, wiring, keyboard shortcuts and autosave.
-import { ASPECTS, clipAt, splitClip, formatTime, clamp, linesFromText, timelineToSong, uid } from './core.js';
+import { ASPECTS, clipAt, splitClip, formatTime, clamp, linesFromText, timelineToSong, uid, detectBeats } from './core.js';
+import { gameParts, applySongTemplate } from './songtemplates.js';
+import { syncLayer } from './layersync.js';
 import { createStore, newProject, loadProject, saveProject, FONTS, findClip } from './state.js';
 import { media, restoreMedia, addMedia, kindOf } from './media.js';
 import { Engine } from './engine.js';
@@ -931,6 +933,57 @@ ui.addStemsToSong = (recs) => {
     if (s) n = addStems(s, recs);
   });
   return n;
+};
+/** What the song templates can use for the song in the edit (null when the edit isn't one of your songs). */
+const beatsFor = new Map();
+ui.songTemplateContext = () => {
+  const sc = ui.songContext();
+  if (!sc || !sc.song) return sc ? { song: null } : null;
+  const m = manager.store.get();
+  const s = sc.song;
+  const p = store.get();
+  const audio = (s.audioId && media.get(s.audioId)) || (p.song && media.get(p.song.mediaId)) || null;
+  if (audio && audio.envelope && !beatsFor.has(audio.id)) beatsFor.set(audio.id, detectBeats(audio.envelope, audio.envRate || 100));
+  const f = s.files || {};
+  const vrec = f.video && media.get(f.video.mediaId);
+  const footage = (f.footage || []).map((c) => media.get(c.mediaId)).filter((r) => r && (r.kind === 'video' || r.kind === 'image'));
+  const key = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  const midis = media.all().filter((r) => r.kind === 'midi' && key(s.title).length >= 3 && key(r.name).includes(key(s.title)));
+  const tabs = sc.tabs.map((id) => media.get(id)).filter(Boolean);
+  const stems = (f.stems || []).map((st) => ({ rec: media.get(st.mediaId), role: st.role })).filter((x) => x.rec);
+  return {
+    song: s,
+    band: m.band.name || '',
+    audio,
+    beats: audio ? beatsFor.get(audio.id) || null : null,
+    video: vrec && vrec.kind === 'video' ? { rec: vrec, offset: f.video.offset || 0 } : null,
+    footage,
+    parts: gameParts({ tabs, midis, stems }),
+    cover: coverOf(s, m.releases || []),
+    hasLyrics: p.lyrics.length > 0,
+    today: new Date().toISOString().slice(0, 10),
+  };
+};
+/** Make a song template, then line its highways up with the song by listening. Returns the facts, or throws. */
+ui.applySongTemplate = (id) => {
+  const ctx = ui.songTemplateContext();
+  let facts = [];
+  store.update((d) => (facts = applySongTemplate(d, id, ctx)));
+  if (id === 'st-game') {
+    const synced = [];
+    const patches = new Map();
+    const p = store.get();
+    for (const L of p.layers.filter((l) => l.type === 'game' && l.visible !== false)) {
+      const r = syncLayer(p, L);
+      if (!r.error) (patches.set(L.id, r.patch), synced.push(r.sure === 'unsure' ? `${L.label || L.name} (check it)` : L.label || L.name));
+    }
+    if (patches.size) store.update((d) => d.layers.forEach((x) => patches.has(x.id) && Object.assign(x, patches.get(x.id))));
+    if (synced.length) facts.push(`Auto-synced to the song: ${synced.join(', ')}`);
+    else facts.push('Stems are still being analysed: press Auto-sync on each highway in a moment');
+  }
+  engine.seek(0);
+  ui.refreshPanels(true);
+  return facts;
 };
 ui.songCovers = () => (manager ? songCovers(manager.store.get(), { firstSongId: store.get().managerSongId || '' }).filter((c) => media.get(c.mediaId)) : []);
 ui.lyricsTools = {

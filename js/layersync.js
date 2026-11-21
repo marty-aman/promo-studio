@@ -2,6 +2,7 @@
 // change on it. Used by each layer's "Auto-sync to the song" and by "Auto-sync every layer".
 import { media, tabTimeline, drumTimeline } from './media.js';
 import { midiNotesFor } from './midiviz.js';
+import { gameChart } from './gamechart.js';
 import { syncStem, syncChart, chartHits } from './autosync.js';
 import { formatTime } from './core.js';
 
@@ -10,6 +11,7 @@ export function syncKind(p, L) {
   if (!L) return null;
   if (L.type === 'viz') return L.source && L.source !== 'song' && media.get(L.source) ? 'stem' : null;
   if (L.type === 'drums') return !L.mediaId ? null : L.source === 'audio' ? 'stem' : 'chart';
+  if (L.type === 'game') return !L.mediaId ? null : L.source === 'stem' ? 'stem' : 'chart';
   if (L.type === 'tab' || L.type === 'midi') return L.mediaId ? 'chart' : null;
   return null;
 }
@@ -19,6 +21,7 @@ function chartData(L) {
   if (!rec) return null;
   if (L.type === 'tab') return tabTimeline(rec, L.track);
   if (L.type === 'midi') return rec.midi ? midiNotesFor(rec.midi, L.tracks) : null;
+  if (L.type === 'game') return gameChart(L) || null;
   return drumTimeline(rec, L.track, L.drumMap);
 }
 

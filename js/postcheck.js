@@ -69,7 +69,8 @@ export function postCheck(p) {
   }
 
   // too much at once
-  const busy = layers.filter((L) => L.type !== 'video').length;
+  // rhythm game highways are meant to sit side by side (a band's parts), so they don't count
+  const busy = layers.filter((L) => L.type !== 'video' && L.type !== 'game').length;
   if (busy >= 3) add('busy', 'warn', `A lot on screen (${busy} layers)`, 'Three or more charts and visualizers at once compete with the band. Keep one or two, or show them at different times.', { kind: 'tab', tab: 'video', fold: 'all-layers' });
 
   // end card

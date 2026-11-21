@@ -7,7 +7,8 @@
 //              | { kind: 'tab', tab, fold? } | { kind: 'lyricIdeas' } | { kind: 'postcheck' }
 
 const visible = (L) => L.visible !== false;
-const overlays = (p) => (p.layers || []).filter((L) => L.type !== 'video' && visible(L));
+// rhythm game highways are meant to sit side by side (a band's parts), so they don't count as clutter
+const overlays = (p) => (p.layers || []).filter((L) => L.type !== 'video' && L.type !== 'game' && visible(L));
 
 /** Where a layer sits vertically, in % of the frame: [top, bottom]. */
 function span(L) {
