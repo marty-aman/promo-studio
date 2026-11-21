@@ -3,6 +3,18 @@
 import { uid, timelineToSong, songToTimeline, formatTime } from './core.js';
 import { LAYER_TYPES, isVisible, findLayer } from './state.js';
 import { media, tabTimeline, drumTimeline, drumHitsFromStem, vizFeatures } from './media.js';
+import { MIDI_ACCEPT, noteCounts } from './midi.js';
+import { guessEngines, engineGroups, noteName } from './drummap.js';
+import { defaultMidiLayer, midiNotesFor, MIDI_STYLES, MIDI_PLACEMENT, MIDI_COLOR_MODES } from './midiviz.js';
+import { syncLayer, syncKind, SURE_TEXT } from './layersync.js';
+import { midiDrumTrack } from './drums.js';
+
+/** A drum layer's track and drum map for a MIDI file: the drum track, and the map its notes fit best. */
+export function midiDrumDefaults(midi) {
+  const track = midiDrumTrack(midi);
+  const best = guessEngines(noteCounts(midi, { tracks: track >= 0 ? [track] : null }), 1)[0];
+  return { track, drumMap: best && best.fit >= 0.9 ? best.engine.id : 'general_midi' };
+}
 import { defaultTabLayer } from './tab.js';
 import { defaultDrumLayer, LANES, DRUM_STYLES, STYLE_PLACEMENT, FIXED_PIECES, KIT_PRESETS, pieceOn, laneColorOf } from './drums.js';
 import { TAB_STYLES, TAB_PLACEMENT, stringColor } from './tabviz.js';
@@ -47,6 +59,10 @@ function makeLayerRaw(p, type, t = 0) {
     return gp
       ? { ...defaultDrumLayer(), ...base, source: 'gp', mediaId: gp.id, track: gp.drumTracks[0].index, offset: +timelineToSong(0, p.song).toFixed(3) }
       : { ...defaultDrumLayer(), ...base, source: 'audio', mediaId: stem ? stem.id : null, offset: 0 };
+  }
+  if (type === 'midi') {
+    const rec = all.find((m) => m.kind === 'midi' && m.midi && m.midi.tracks.some((t) => t.notes && !t.isDrum)) || all.find((m) => m.kind === 'midi');
+    return { ...defaultMidiLayer(), ...base, mediaId: rec ? rec.id : null, offset: +timelineToSong(0, p.song).toFixed(3) };
   }
   return { ...defaultVizLayer(), ...base };
 }
@@ -105,7 +121,8 @@ export function buildLayersPanel(b, ctx, opts = {}) {
     });
     ui.select({ type: 'layer', id: layer.id });
     if (type === 'tab' && !layer.mediaId) toast('Upload a Guitar Pro file in this layer’s settings.');
-    if (type === 'drums' && !layer.mediaId) toast('Pick a Guitar Pro drum track or a drum stem in this layer’s settings.');
+    if (type === 'drums' && !layer.mediaId) toast('Pick a Guitar Pro drum track, a MIDI file or a drum stem in this layer’s settings.');
+    if (type === 'midi' && !layer.mediaId) toast('Upload a MIDI file (.mid) in this layer’s settings.');
   };
 
   const move = (id, dir) =>
@@ -172,6 +189,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
     tab: () => button(types ? 'Add a guitar or bass tab' : 'Guitar tab', () => add('tab'), { iconName: 'guitar', variant: types ? 'sm primary' : 'sm' }),
     drums: () => button(types ? 'Add a drum chart' : 'Drum chart', () => add('drums'), { iconName: 'activity', variant: types ? 'sm primary' : 'sm' }),
     viz: () => button(types ? 'Add a visualizer' : 'Visualizer', () => add('viz'), { iconName: 'volume', variant: types ? 'sm primary' : 'sm' }),
+    midi: () => button(types ? 'Add MIDI notes' : 'MIDI notes', () => add('midi'), { iconName: 'music', variant: types ? 'sm' : 'sm' }),
   };
   const allRows = () =>
     fold(
@@ -180,6 +198,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       { open: false, hint: 'Order, show or hide everything' },
       h('p', { class: 'muted tiny' }, 'Top of the list draws on top. Video layers always sit under tab, drum and visualizer layers.'),
       makeList(() => true),
+      (p.layers || []).some((L) => syncKind(p, L)) && p.song ? button('Auto-sync every layer to the song', () => autoSyncAll(), { iconName: 'activity', variant: 'sm' }) : null,
       h('h4', { class: 'sub' }, 'Always-there rows'),
       h('p', { class: 'muted tiny' }, 'Hide a row to leave it out of the preview and the export. Hiding audio mutes it.'),
       fixed,
@@ -191,6 +210,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       { class: 'layer-tab' },
       opts.intro ? h('p', { class: 'muted small' }, opts.intro) : null,
       h('div', { class: 'add-layer' }, types.map((t) => ADD[t]())),
+      (p.layers || []).filter((L) => mine(L) && syncKind(p, L)).length > 1 && p.song ? h('div', { class: 'row' }, button('Auto-sync every layer here to the song', () => autoSyncAll(mine), { iconName: 'activity', variant: 'sm', title: 'Line up each chart, stem and stem visualizer on this tab with the song' })) : null,
       list,
       sel ? h('div', { class: 'layer-settings' }, settingsFor(sel), animateFor(sel)) : (p.layers || []).some(mine) ? h('p', { class: 'muted tiny' }, 'Select one to edit it. You can also click its name on the timeline.') : null,
       opts.after || null,
@@ -200,11 +220,41 @@ export function buildLayersPanel(b, ctx, opts = {}) {
   return h(
     'div',
     {},
-    section('Add a layer', h('div', { class: 'add-layer' }, ADD.video(), ADD.tab(), ADD.drums(), ADD.viz())),
+    section('Add a layer', h('div', { class: 'add-layer' }, ADD.video(), ADD.tab(), ADD.drums(), ADD.viz(), ADD.midi())),
     section('Layer stack (top first)', list),
     selAny ? h('div', { class: 'layer-settings' }, settingsFor(selAny), animateFor(selAny)) : h('p', { class: 'muted tiny' }, 'Select a layer to edit it. You can also click a layer name on the timeline.'),
     section('Always-there rows', h('p', { class: 'muted tiny' }, 'Hide a row to leave it out of the preview and the export. Hiding audio mutes it.'), fixed),
   );
+
+  /** "Auto-sync to the song" for one layer: listens to the song and lines the layer up with it. */
+  function autoSyncRow(L) {
+    const run = () => {
+      const r = syncLayer(store.get(), findLayer(store.get(), L.id));
+      if (r.error) return toast(r.error, 'error', 5000);
+      store.update((d) => {
+        const x = d.layers.find((y) => y.id === L.id);
+        if (x) Object.assign(x, r.patch);
+      });
+      toast(`${r.text}: ${SURE_TEXT[r.sure]}.`, r.sure === 'unsure' ? 'error' : 'info', 7000);
+    };
+    return h('div', { class: 'row autosync' }, button('Auto-sync to the song', run, { iconName: 'activity', variant: 'sm primary', title: 'Listen to the song and line this up with it: where it starts and, for a chart, its tempo' }), h('span', { class: 'muted tiny' }, 'Listens to the song and lines it up. Undo (Ctrl+Z) if it’s off.'));
+  }
+  /** Auto-sync every chart, stem and stem visualizer in the project (only those the filter keeps). */
+  function autoSyncAll(filter = () => true) {
+    const pp = store.get();
+    const targets = (pp.layers || []).filter((L) => filter(L) && syncKind(pp, L));
+    if (!targets.length) return toast('No charts or stems to sync yet.', 'error');
+    const done = [];
+    const failed = [];
+    const patches = new Map();
+    for (const L of targets) {
+      const r = syncLayer(pp, L);
+      if (r.error) failed.push(`${L.name}: ${r.error}`);
+      else (patches.set(L.id, r.patch), done.push(`${r.text}${r.sure === 'sure' ? '' : ' (check it)'}`));
+    }
+    if (patches.size) store.update((d) => d.layers.forEach((x) => patches.has(x.id) && Object.assign(x, patches.get(x.id))));
+    toast([done.length ? `Synced ${done.length}: ${done.join('; ')}.` : '', failed.length ? `Not synced: ${failed.join('; ')}` : ''].filter(Boolean).join(' '), failed.length && !done.length ? 'error' : 'info', 9000);
+  }
 
   // the keyframe list (sliders that animate are in each type's settings)
   function animateFor(L) {
@@ -294,6 +344,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       };
       return section(
         'Sync with the song',
+        autoSyncRow(L),
         isStem
           ? h('p', { class: 'muted tiny' }, 'Stems normally start with the song, so 0 is right. Nudge if the stem was exported with a different start.')
           : h('p', { class: 'muted tiny' }, 'Move the playhead to where this part starts in the song, then put a bar there. Drag the layer’s block on the timeline to fine-tune.'),
@@ -442,34 +493,56 @@ export function buildLayersPanel(b, ctx, opts = {}) {
     if (L.type === 'drums') {
       const gpFiles = media.all().filter((m) => m.kind === 'tab' && m.drumTracks && m.drumTracks.length);
       const stems = media.all().filter((m) => m.kind === 'audio' || m.kind === 'video');
+      const midiFiles = media.all().filter((m) => m.kind === 'midi');
       const g = (k, def) => get((x) => x[k] ?? def);
       const rec = media.get(L.mediaId);
       const isStem = L.source === 'audio';
+      const isMidi = L.source === 'midi';
       let status = null;
       if (isStem && rec) {
         const data = drumHitsFromStem(rec, L.sensitivity, () => ui.refreshPanels(true));
         status = h('p', { class: 'muted tiny' }, data === undefined ? 'Listening to the stem for kick, snare and hi-hat hits…' : data ? `${data.hits.length} hits found: ${data.lanes.map((l) => `${data.hits.filter((x) => x.lane === l).length} ${l}`).join(', ')}.` : 'Could not read this file.');
       }
-      const fileSel = h('select', {}, h('option', { value: '' }, isStem ? '— choose a drum stem —' : '— choose a Guitar Pro file —'), (isStem ? stems : gpFiles).map((m) => h('option', { value: m.id, selected: m.id === L.mediaId }, m.name)));
+      const fileSel = h('select', {}, h('option', { value: '' }, isStem ? '— choose a drum stem —' : isMidi ? '— choose a MIDI file —' : '— choose a Guitar Pro file —'), (isStem ? stems : isMidi ? midiFiles : gpFiles).map((m) => h('option', { value: m.id, selected: m.id === L.mediaId }, m.name)));
       fileSel.addEventListener('change', () => store.update(set((x) => {
         x.mediaId = fileSel.value || null;
         const r = media.get(fileSel.value);
-        if (!isStem && r) x.track = r.drumTracks[0].index;
+        if (isMidi && r && r.midi) Object.assign(x, midiDrumDefaults(r.midi));
+        else if (!isStem && r) x.track = r.drumTracks[0].index;
       })));
       const tl = () => {
         const x = findLayer(store.get(), L.id);
-        return x && x.source === 'gp' ? drumTimeline(media.get(x.mediaId), x.track) : null;
+        return x && (x.source === 'gp' || x.source === 'midi') ? drumTimeline(media.get(x.mediaId), x.track, x.drumMap) : null;
+      };
+      // a MIDI file: which track, and which drum engine it was written for
+      const midiBits = () => {
+        if (!isMidi || !rec || !rec.midi) return null;
+        const used = noteCounts(rec.midi, { tracks: L.track >= 0 ? [L.track] : null });
+        const guesses = guessEngines(used, 3);
+        const mapSel = h('select', { 'aria-label': 'Drum map the MIDI was written for' }, engineGroups().map(([vendor, list]) => h('optgroup', { label: vendor }, list.map((e) => h('option', { value: e.id, selected: e.id === (L.drumMap || 'general_midi') }, e.name)))));
+        mapSel.addEventListener('change', () => store.update(set((x) => (x.drumMap = mapSel.value))));
+        const data = tl();
+        return h(
+          'div',
+          {},
+          b.select('MIDI track', () => String(findLayer(store.get(), L.id)?.track ?? -1), set((x, v) => (x.track = parseInt(v, 10))), [['-1', 'Every track'], ...rec.midi.tracks.filter((t) => t.notes).map((t) => [String(t.index), `${t.name} · ${t.notes} notes${t.channels.length ? ` · ch ${t.channels.map((c) => c + 1).join(', ')}` : ''}`])]),
+          field('Written for (drum map)', mapSel, 'Which drum software or e-kit the MIDI was made for, so each note lands on the right drum. Convert it to another map on the Drum MIDI converter page.'),
+          guesses.length ? h('p', { class: 'muted tiny' }, 'Best fits for its notes: ', guesses.map((x, i) => [i ? ', ' : '', h('button', { type: 'button', class: 'link', onclick: () => store.update(set((y) => (y.drumMap = x.engine.id))) }, `${x.engine.short || x.engine.name} (${Math.round(x.fit * 100)}%)`)])) : null,
+          data ? h('p', { class: 'muted tiny' }, `${data.hits.length} hits on ${data.lanes.length} drums${data.tempo ? ` · ${data.tempo} BPM in the file` : ''}.`) : null,
+        );
       };
       return h(
         'div',
         {},
         common,
-        b.segmented('Notes come from', g('source', 'gp'), set((x, v) => ((x.source = v), (x.mediaId = null), (x.offset = v === 'gp' ? +timelineToSong(0, store.get().song).toFixed(3) : 0))), [['gp', 'Guitar Pro drum track'], ['audio', 'Drum stem (audio)']]),
-        field(isStem ? 'Drum stem' : 'Guitar Pro file', fileSel),
+        b.segmented('Notes come from', g('source', 'gp'), set((x, v) => ((x.source = v), (x.mediaId = null), (x.offset = v !== 'audio' ? +timelineToSong(0, store.get().song).toFixed(3) : 0))), [['gp', 'Guitar Pro drum track'], ['midi', 'MIDI file'], ['audio', 'Drum stem (audio)']]),
+        field(isStem ? 'Drum stem' : isMidi ? 'MIDI file' : 'Guitar Pro file', fileSel),
         isStem
           ? button('Upload a drum stem', async () => importFiles(await pickFiles('audio/*', true)), { iconName: 'upload', variant: 'ghost sm' })
-          : button('Upload Guitar Pro file', async () => importFiles(await pickFiles(TAB_ACCEPT, false), { drumLayer: L.id }), { iconName: 'upload', variant: 'ghost sm' }),
-        !isStem && rec ? b.select('Drum track', () => String(findLayer(store.get(), L.id)?.track ?? 0), set((x, v) => (x.track = parseInt(v, 10))), rec.drumTracks.map((tr) => [String(tr.index), tr.name])) : null,
+          : isMidi ? button('Upload a MIDI file', async () => importFiles(await pickFiles(MIDI_ACCEPT, false), { drumLayer: L.id }), { iconName: 'upload', variant: 'ghost sm' })
+            : button('Upload Guitar Pro file', async () => importFiles(await pickFiles(TAB_ACCEPT, false), { drumLayer: L.id }), { iconName: 'upload', variant: 'ghost sm' }),
+        midiBits(),
+        !isStem && !isMidi && rec && rec.drumTracks ? b.select('Drum track', () => String(findLayer(store.get(), L.id)?.track ?? 0), set((x, v) => (x.track = parseInt(v, 10))), rec.drumTracks.map((tr) => [String(tr.index), tr.name])) : null,
         isStem ? b.range('Hit sensitivity', g('sensitivity', 0.5), set((x, v) => (x.sensitivity = Math.round(v * 20) / 20)), { min: 0.05, max: 0.95, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` }) : null,
         status,
         isStem ? h('p', { class: 'muted tiny' }, 'Works best with an isolated drum track. Detection finds kick, snare and hi-hat only; for toms and cymbals use a Guitar Pro drum track.') : null,
@@ -524,6 +597,59 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       );
     }
 
+    // ---- MIDI notes layer
+    if (L.type === 'midi') {
+      const g = (k, def) => get((x) => x[k] ?? def);
+      const files = media.all().filter((m) => m.kind === 'midi');
+      const rec = media.get(L.mediaId);
+      const fileSel = h('select', {}, h('option', { value: '' }, '— choose a MIDI file —'), files.map((m) => h('option', { value: m.id, selected: m.id === L.mediaId }, m.name)));
+      fileSel.addEventListener('change', () => store.update(set((x) => ((x.mediaId = fileSel.value || null), (x.tracks = [])))));
+      const tl = () => {
+        const x = findLayer(store.get(), L.id);
+        const r = x && media.get(x.mediaId);
+        return r && r.midi ? midiNotesFor(r.midi, x.tracks) : null;
+      };
+      const data = tl();
+      const withNotes = rec && rec.midi ? rec.midi.tracks.filter((t) => t.notes) : [];
+      const chosen = (L.tracks || []).length ? L.tracks : data ? data.tracks : [];
+      return h(
+        'div',
+        {},
+        common,
+        field('MIDI file', fileSel, 'A .mid exported from your DAW, Guitar Pro or MuseScore: keys, synths, bass, guitar, strings, a vocal melody…'),
+        button('Upload a MIDI file', async () => importFiles(await pickFiles(MIDI_ACCEPT, false), { midiLayer: L.id }), { iconName: 'upload', variant: 'ghost sm' }),
+        withNotes.length
+          ? section(
+              'Tracks',
+              h('p', { class: 'muted tiny' }, 'Tick the parts to show. With none ticked, every part that isn’t drums shows (drums go on a Drum chart layer).'),
+              h('div', { class: 'grid2' }, withNotes.map((t) => b.toggle(`${t.name}${t.isDrum ? ' (drums)' : ''} · ${t.notes}`, () => chosen.includes(t.index), set((x, v) => {
+                const cur = new Set((x.tracks || []).length ? x.tracks : chosen);
+                if (v) cur.add(t.index);
+                else cur.delete(t.index);
+                x.tracks = [...cur].sort((a, z) => a - z);
+              })))),
+            )
+          : null,
+        data ? h('p', { class: 'muted tiny' }, `${data.notes.length} notes from ${noteName(data.low)} to ${noteName(data.high)}${data.tempo ? ` · ${data.tempo} BPM in the file` : ''}.`) : rec ? h('p', { class: 'muted tiny' }, 'This file has no notes on the tracks picked.') : null,
+        h('div', { class: 'lbl' }, 'Style'),
+        h('div', { class: 'style-grid', role: 'radiogroup', 'aria-label': 'MIDI notes style' }, MIDI_STYLES.map(([id, label, hint]) =>
+          h('button', { type: 'button', role: 'radio', 'aria-checked': L.style === id ? 'true' : 'false', class: `style-opt${L.style === id ? ' on' : ''}`, onclick: () => store.update(set((x) => ((x.style = id), Object.assign(x, MIDI_PLACEMENT[id])))) }, h('strong', {}, label), h('span', {}, hint)),
+        )),
+        rec ? syncTools(() => (tl() ? { ...tl(), bars: tl().bars } : null), false) : null,
+        visibleRange(),
+        section(
+          'Look',
+          L.style === 'bursts' ? null : b.range('Seconds on screen', g('window', 4), set((x, v) => (x.window = v)), { min: 1, max: 12, step: 0.5, fmt: (v) => `${v}s` }),
+          L.style === 'roll' ? b.range('Playhead', g('playhead', 25), set((x, v) => (x.playhead = v)), { min: 5, max: 80, step: 1, fmt: (v) => `${v}%` }) : null,
+          b.select('Colours', g('colorMode', 'track'), set((x, v) => (x.colorMode = v)), MIDI_COLOR_MODES),
+          L.colorMode === 'single' ? b.color('Colour', g('color', '#4dd2ff'), set((x, v) => (x.color = v))) : null,
+          b.range('Glow', g('glow', 0.8), set((x, v) => (x.glow = v)), { min: 0, max: 1.5, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` }),
+          placement({ y: 30 }),
+          h('div', { class: 'grid2' }, b.color('Background', g('bg', '#000000'), set((x, v) => (x.bg = v))), b.range('Background opacity', g('bgOpacity', 0.45), set((x, v) => (x.bgOpacity = v)), { min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` })),
+        ),
+      );
+    }
+
     // ---- visualizer layer
     const g = (k, def) => get((x) => x[k] ?? def);
     const sources = media.all().filter((m) => m.kind === 'audio' || m.kind === 'video');
@@ -544,6 +670,13 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       {},
       common,
       field('Reacts to', srcSel, 'Pick a stem (drums, bass, vocals…) or the whole song. Upload stems in the Audio tab.'),
+      L.source && L.source !== 'song' && media.get(L.source)
+        ? section(
+            'Sync with the song',
+            autoSyncRow(L),
+            b.number('Stem starts at (song seconds)', g('offset', 0), set((x, v) => ((x.offset = v), (x.userSync = true))), { step: 0.01 }),
+          )
+        : null,
       button('Upload stems', async () => importFiles(await pickFiles('audio/*', true)), { iconName: 'upload', variant: 'ghost sm' }),
       h('p', { class: 'muted tiny' }, !recV ? (isPoly(L.style) ? 'Audio is optional for this style: it only adds a glow on loud moments.' : 'No audio chosen yet.') : feat === undefined ? 'Analysing the audio…' : feat ? `Ready: ${feat.duration.toFixed(1)}s analysed.` : 'Could not read this audio file.'),
       section('Style', styleGrid),

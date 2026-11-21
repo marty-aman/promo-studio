@@ -123,6 +123,7 @@ export function normalizeDoc(raw) {
   d.slides = clamp(num(raw.slides, 0) | 0, 0, 10);
   if (d.slides === 1) d.slides = 0;
   d.bg = str(raw.bg, '#111111', 40);
+  d.showId = str(raw.showId, '', 60); // a show poster remembers its show, so it can be put on it
   d.layers = (Array.isArray(raw.layers) ? raw.layers : [])
     .filter((L) => L && LAYER_TYPES.includes(L.type))
     .map((L) => {

@@ -38,7 +38,8 @@ theme and logo (set under Press kit → Branding for promos) on the edit. Older 
 | **Home** | The next show and the next release (with checklist progress), what's working in your content, anything overdue, and the next two weeks day by day |
 | **Songs** | A page per song. *Overview*: status, release date, an **Instrumental** tick (no vocals: the Lyrics tab steps aside, the video shoot ideas come from the title, post plans skip lyric hooks, and the press release and pitches call it an instrumental), BPM, key, the song file (pick one from the Video Studio's library or **Upload from computer** right there: MP3, WAV, M4A, OGG or FLAC; it's saved with your media and used by **Make a promo**), and links to Spotify, Apple Music, YouTube, YouTube Music, Deezer, Tidal, Amazon Music, SoundCloud and Bandcamp. Type the song's ISRC and **Find links** looks it up: Deezer and MusicBrainz match the ISRC exactly (MusicBrainz often lists Spotify and Tidal too), Apple Music is matched by title and length, YouTube uses your YouTube key from the Content page, and every other service gets a search link. Add a free Spotify app's client ID and secret (kept in this browser) for an exact Spotify match. Pick **Use** per link or **Use all**. No ISRC? Type the release's **UPC** (its barcode) and **Find the release**: Deezer, MusicBrainz and Apple Music list its tracks with their ISRCs; pick the song and its links are found from there. An EP or album page has **Find tracks by UPC**, which fills in the title, type, date, label and cover and gives every song on it its ISRC and track number (adding songs it doesn't have yet). Each song also has a **Length** (blank uses its song file's length) for setlists. *Lyrics*: the words, and the lines that work best as on-screen hooks. *Overview* also has the song's EP or album, its track number and its **cover art**. *Sections*: the song's intro, verses, choruses and so on with their times, typed or pasted as a list ("0:42 Chorus", "Chorus 0:42–1:10", "[1:10] Bridge"), plus where the song starts in its music video. In the Video Studio, **Export → Song sections** exports any of them in one go (one file, or a .zip): cut from the edit as you made it, as a promo of each section with your look and end card, or cut from the music video in sync. *Files*: the song's **Guitar Pro tab** (Guitar Pro 3–8 or MusicXML; shows its tracks; **Add to the video** puts it on the edit as a tab or drum chart, **Open in Tab Studio** opens it for fixing), its **stems** (upload several at once; the part (drums, percussion, bass, guitar, keys, lead vocals, backing vocals, FX, click or other) is guessed from the file name and can be changed; stems are grouped by part, can be moved up and down within a part, and can be given their own name without renaming the file; play each one; send a drum or percussion stem to the editor as a drum chart, or any stem as a visualizer or an extra audio track), its **music video** (where it's at: idea, planned, shot, editing, complete or released, with a one-click **Mark complete**; a finished video shows as **✓ Video** on the song's card and in its Overview; play it, add it to the video track or as picture-in-picture), and **raw footage** (videos and photos with a note each; add one, all, or picture-in-picture). Files are stored with the Video Studio's media in this browser; removing one from a song keeps it in the library. The Video Studio's Video tab lists them under **From your songs**. *Video shoot*: music video concepts from the lyrics (with the words they came from), then the plan (date, call time, locations, crew, shot list, wardrobe, props, budget) and a printable call sheet. *Release*: a 22-step checklist counted back from release day (upload 5 weeks ahead, Spotify editorial pitch 30 days ahead, pre-save, press, short-form batch, premiere, follow-ups); change the date and every task moves. *Content*: a short-form plan around release day from the posting playbook. *Playlists*: tag the sound (genres, mood, energy, vocals, "for fans of"); the lyric themes are found from the words; get suggested playlists from a built-in list of about 50 editorial playlists on Spotify, Apple Music, Amazon Music and Deezer, each with why it fits and a search link, plus playlist types to search for. Hide built-ins that no longer exist and add your own playlists and curators (shared by every artist). *Press release*: a full release (FOR IMMEDIATE RELEASE … ###), a short version for blogs and a radio/DJ blurb, drafted from the song, the press kit and confirmed shows; add the story, a quote, label and credits, edit any draft, copy it, download it or print it to PDF. *Pitching*: the Spotify for Artists pitch with a live 500-character counter, the pitch deadline (7 days before release) and what to pick in the form; a short note to an independent curator (copy or open in email); a **SubmitHub and Groover** box (neither has a public API for artists, so it opens the site, gives you a short pitch to paste, and logs the campaign with what you spent); and a pitch tracker (service, status, sent date, cost, follow-up a week later that shows on Home and the Calendar). **Make a promo** puts the song's title, lyrics and file into the Video Studio. |
 | **Songs & releases** | One page with three sections: **Albums**, **EPs** and **Songs** (every song, saying which EP or album it's on; a chip shows only the ones on neither). Each EP and album opens its own page with (deluxe, live and compilation releases count as albums): cover art, release date, label, UPC and notes, and an ordered tracklist. Add songs from the release or pick the release on a song's Overview (or start a new EP or album from there); reorder tracks; **Give every track this release date**. A song shows its EP's or album's cover until it has its own. Covers warn when they aren't the 3000 × 3000 square stores want. **Design a post** opens the Photo Studio with the release's title and cover. |
-| **Shows** | Upcoming and past shows: date, status, venue, load-in, doors, set time, billing, tickets, deal, contact, notes, lineup, setlist (each song's length, when it starts and the **set length**, with time between songs if you want it; a line can carry its own time, like "Jam 2:30"), a to-do list counted back from the show (pitch, confirm, flyer, tickets, promo posts, advance, settle), the settlement (pay, merch, costs, net) and a summary to paste in the band chat |
+| **Shows** | Upcoming and past shows: date, status, venue, load-in, doors, set time, billing, tickets, deal, contact, notes, the **poster** (upload it, take it from Google Drive or pick one you have, or design one in the Photo Studio and press **Use as the show's poster** there; it shows on the show and as a thumbnail in the list), lineup, setlist (each song's length, when it starts and the **set length**, with time between songs if you want it; a line can carry its own time, like "Jam 2:30"; a line that isn't one of your songs gets a length box that saves it to your **Covers**), a to-do list counted back from the show (pitch, confirm, flyer, tickets, promo posts, advance, settle), the settlement (pay, merch, costs, net) and a summary to paste in the band chat. Shows move to **Past** the day after their date, with how many you played, the venues, cities and net, and a wall of their posters; **Log a past show** adds one you played before using Band Manager. Venues marked Played show on the press kit. |
+| **Covers** (on Songs & releases) | Songs by other artists you play live: title, original artist, length, key or tuning, notes, and how many shows they're on. They're setlist chips on every show and count in the set length and the show planner's run of show, like your own songs. |
 | **Show planner** | *Venues*: a researched starter list of 29 Seattle-area rooms (Seattle, Tacoma, Everett, Bellingham, Olympia) with capacity, ages, genres, how each one says to book, the booking email or form, links and sources. Filter by size, city and all-ages, enter how many people you bring to see which rooms fit, and write a **pitch email** from your profile, songs and dates (copy it or open it in your email app). *Bands*: scene bands with their official accounts. *Build a show*: pick a date, a room and bands, see the break-even and the expected crowd, and create the show with its to-do list. *Contacts*: promoters, sound, photo, press, radio and curators. *Show plan*: the run of show for any show: doors, when the first band starts, each band's set and changeover, the curfew (with a warning when the night runs over), and your setlist with song lengths (filled from the songs' audio files) and the clock time each song starts. *Stage plot* (each piece drawn from above as on a real plot: the kit with its heads, hoops and bronze cymbals, cabinets with grille cloth and speakers, mic stands, keyboards, wedges, in-ear packs, power strips, a carpeted riser): start from a four-piece, five-piece or trio-with-tracks layout and drag drums, amps, keys, mics, DIs, tracks, wedges, in-ears, power and the riser around the stage (arrow keys nudge the selected piece); name pieces ("Lead vocal: Sam"); the **input list** (channel, mic or DI, stand) and **monitor mixes** are made from it, with backline and engineer notes. Researched entries say "Check before you reach out" until you tick them. |
 | **Tours** | Plan a run city by city. Find each city on OpenStreetMap, set its date and status (looking, pitched, on hold, confirmed, dropped), and see the drive from the last stop (straight line × 1.25 at about 55 mph: a rough guess). **Find venues** searches OpenStreetMap for music venues, nightclubs, concert halls and places tagged with live music near the city (address, website, phone and email when listed), or **Where similar bands played** looks up the bands in your "for fans of" list on setlist.fm (free API key) and lists the rooms they played in that city. Shortlisted venues go into the shared venue list marked "Check before you reach out". Each stop has a guarantee, merch, gas (worked out from your cost per mile unless you type it) and lodging, and the tour shows the totals. **Confirm here** makes the stop a confirmed show with its to-do list. |
 | **Content** | Every planned and posted short across songs: type, app, status, link and stats. Paste a YouTube or Shorts link and **Fetch YouTube stats** reads views, likes, comments and length with a free YouTube Data API key. TikTok and Instagram only share stats with approved apps, so type the numbers from the post's insights, or **Import stats (CSV)** from TikTok Studio or Meta Business Suite exports (rows are matched to your posts by link). *What works best* ranks types of post, apps, days and lengths by shares, saves, comments and likes per view, and says it in plain words. |
@@ -190,6 +191,14 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
 - Fine-tune by dragging or resizing lyric blocks on the timeline, editing times in the list, or
   "start/end at playhead". Shift all lines by ±0.1/0.5 s.
 - Import/export `.lrc` files.
+- **Filled in for the song you pick.** Choosing the song (Audio tab, or *Use as song*) fills the Lyrics tab:
+  - from the song in Songs & releases (matched by its song file or its title), with nothing sent anywhere;
+  - else timed lyrics from [LRCLIB](https://lrclib.net), a free open lyrics database: lines arrive already
+    in time with the song. Only the title, artist and length are sent. A song in your Covers list is looked
+    up under its original artist. An unreleased song of yours is never looked up by itself.
+  - Lyrics you typed or pasted are never replaced by picking a song; ones filled in for another song are.
+  - The Lyrics tab's **Lyrics for this song** box says where they came from, has *Use the lyrics from
+    “…”* and *Find timed lyrics online*, and switches for both automatic steps.
 - Lyric times are stored in *song time*, so choosing a different section of the song keeps them in sync.
 - Styles: 10 fonts (or upload your own), size, position, width, alignment, colors, outline, shadow,
   background box, ALL CAPS, per-line height override. 17 animations including pop, words rise,
@@ -379,8 +388,10 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
     shakes when it's played.
 
   Chord names (Em, G, C/G, E5, Am7…) are worked out from the notes.
-- **Drum chart:** from a Guitar Pro drum track or detected from a drum stem audio file (kick, snare,
-  hi-hat). Every style charts the whole kit: kick, snare, hi-hat, high tom, mid tom, floor tom, crash 1,
+- **Drum chart:** from a Guitar Pro drum track, a **MIDI file** (.mid), or detected from a drum stem audio file
+  (kick, snare, hi-hat). A MIDI file is read with the drum map it was written for (General MIDI, Superior
+  Drummer 3, EZdrummer, Addictive Drums 2, GetGood Drums, SSD5, BFD, Roland TD, Alesis… 160 in all), so
+  every note lands on the right drum; the best fits for its notes are suggested. Every style charts the whole kit: kick, snare, hi-hat, high tom, mid tom, floor tom, crash 1,
   crash 2, china and ride (GM 50/48 high tom, 47/45 mid tom, 43/41 floor tom, 49 crash 1, 57 and the
   55 splash crash 2, 52 china). Lane styles show every drum and cymbal for a Guitar Pro part, and only the
   found ones for a stem; *Show every drum and cymbal* changes that. **Kit pieces** (in the layer's
@@ -413,6 +424,16 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
   - **Glass lanes:** a frosted panel over your video with gradient capsules, trails and hit bursts.
 
   Choosing a style also moves the chart to a spot that suits it.
+- **MIDI notes** (Visualizer and Guitar Pro tabs): any MIDI part (keys, synths, bass, guitar, strings, a
+  melody) in time with the song, as a **piano roll** past a playhead, **falling keys** onto a keyboard that
+  lights up, or **note bursts** placed by pitch. Pick the tracks, colours by track, by note or one colour,
+  glow and placement. Dropping a .mid file in adds its drums as a drum chart and its other parts as MIDI notes.
+- **Auto-sync to the song:** every Guitar Pro tab, drum chart (Guitar Pro, MIDI or stem), MIDI notes layer
+  and visualizer driven by a stem has **Auto-sync to the song** under *Sync with the song*, and each tab has
+  *Auto-sync every layer here*. It listens: the song and the stem (or the chart's notes) become onset
+  curves, cross-correlated with an FFT, so it finds where the part starts and, for a chart, its tempo (the
+  file's, the song's detected BPM, and up to 3% either side). It says how sure the match is; undo puts it
+  back, and the manual nudges and *Put bar at the playhead* still work.
 - **Visualizer:** reacts to any audio you give it: a stem (drums, bass, vocals…) or the song.
   Styles: water ripple (bends the picture on each hit), electricity, spectrum bars, circular spectrum,
   waveform, particles, glow pulse and speaker rings, plus ten that look like real things:
@@ -446,6 +467,29 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
   you switch their sound on. Analysis runs once per file, so preview and export match.
 
 Old projects with a single guitar tab are moved into the layer list automatically.
+
+## Drum MIDI converter
+
+Start → *Inspiration, Tab Studio, Carousel and the drum converter* → **Drum MIDI converter** (or *Convert
+drum map* on a MIDI file in the media library). Open a drum .mid, pick what it was written for (the best
+fits for its notes are suggested) and what it should play on, out of 160 drum maps: drum software
+(Superior Drummer 3, EZdrummer 1–3, Addictive Drums 2, GetGood Drums kits, Steven Slate Drums 5, BFD,
+MixWave, Ugritone, MT Power Drum Kit, Native Instruments, Logic Drummer…), e-kits (Roland TD, Alesis,
+Yamaha DTX, Simmons, EFNote…), drum machines and General MIDI / Guitar Pro / MuseScore.
+
+- A table shows every note the file plays, its drum, how often, and where it goes: the same drum, a
+  stand-in (another stroke of the same drum first, then the nearest drum: a china on a stack or crash,
+  tom 4 on tom 3), or left out. Toms are spread in order when the destination has fewer, so fills still
+  run down the kit.
+- Options: the drum channel (channel 10, or every channel), what to do with drums the destination doesn't
+  have, and with notes the source map doesn't know.
+- **Download** the converted file, or add it to the media library for a drum chart. Only note numbers
+  change: timing, velocities, controllers and everything else in the file stay byte for byte. Nothing is
+  uploaded.
+- *Look up a drum map* lists any map's notes and drums.
+
+The drum maps are the engine tables of [remidi](https://github.com/nullcrimson/remidi) (MIT licence, see
+`vendor/remidi`); the conversion is in `js/drummap.js` and `js/midi.js`.
 
 ## Inspiration page
 
@@ -534,7 +578,13 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/soundlib.js` | Personal sound library stored in IndexedDB |
 | `js/soundindex.js` | The combined sound list: your clips, the pack and built-ins as one list, renames, tags, stars and filters (unit tested) |
 | `js/tab.js` | Guitar Pro tab parsing (via alphaTab), timing and drawing |
-| `js/drums.js` | Drum chart: GP drum tracks, drum-stem hit detection, lanes / highway / circle drawing |
+| `js/drums.js` | Drum chart: GP drum tracks, MIDI drums, drum-stem hit detection, lanes / highway / circle drawing |
+| `js/midi.js` | MIDI files: notes, tempo map, bars, and rewriting drum notes in place (unit tested) |
+| `js/drummap.js`, `js/drummaps-data.js` | 160 drum maps, stand-ins, converting drum MIDI between them (unit tested) |
+| `js/midiviz.js` | MIDI notes layer: piano roll, falling keys, note bursts |
+| `js/page-drumconvert.js` | The Drum MIDI converter page |
+| `js/autosync.js`, `js/layersync.js` | Auto-sync of stems and charts to the song (FFT cross-correlation, unit tested) |
+| `js/lyricsfetch.js` | Lyrics for the chosen song: Songs & releases or LRCLIB, LRC parsing (unit tested) |
 | `js/drumkit.js` | The drum kit's layout (single or double bass), the Stage and metal finishes, shell wraps and effects (unit tested) |
 | `js/viz.js` | Audio visualizers: FFT analysis and the styles |
 | `js/vizreal.js` | Realistic visualizers: VU meters, LED rack, oscilloscope, speaker, fire, spectrogram |
@@ -548,6 +598,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/manager/shell.js` | The Manager workspace: nav, artist switcher, store, backup and restore |
 | `js/manager/isrc.js` | ISRC → links: MusicBrainz, Deezer (JSONP in a sandboxed iframe), Spotify, iTunes and YouTube lookups, matching and search links (unit tested) |
 | `js/manager/page-links.js` | The song's Links section with the ISRC lookup |
+| `js/manager/covers.js` | Cover songs played live, adding one from a setlist line, and what setlists are timed from (unit tested) |
 | `js/manager/files.js` | A song's stems (parts, names, grouping, order), music video and its status, raw footage, stem part guessing, the Video Studio list (unit tested) |
 | `js/manager/page-files.js` | The song's Files tab |
 | `js/manager/photos.js` | An artist's photos: adding, filters, tags, the press kit's four photos and credits (unit tested) |

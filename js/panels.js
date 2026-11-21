@@ -23,7 +23,9 @@ import {
   clamp,
 } from './core.js';
 import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSettings, saveSettings, loadTemplates, saveTemplates, findClip, findLayer, LAYER_TYPES } from './state.js';
-import { buildLayersPanel, makeLayer, TAB_ACCEPT } from './panel-layers.js';
+import { buildLayersPanel, makeLayer, TAB_ACCEPT, midiDrumDefaults } from './panel-layers.js';
+import { MIDI_ACCEPT } from './midi.js';
+import { drumConvertState } from './page-drumconvert.js';
 import { driveButton } from './gdrive.js';
 import { lyricIdeas, applyLyricIdea } from './lyricideas.js';
 import { tipSettings, saveTipSettings } from './panel-tips.js';
@@ -155,6 +157,7 @@ export function createPanels({ store, engine, ui }) {
         d.beats = null;
       });
       toast('Song set. Use “Find the hook” in the Audio tab to pick the best section.');
+      if (ui.onSongChosen) ui.onSongChosen(rec); // fill the lyrics for it
     },
     addAudioTrack(rec) {
       store.update((d) => {
@@ -213,6 +216,45 @@ export function createPanels({ store, engine, ui }) {
       ui.select({ type: 'layer', id: selectId });
       ui.openTab('layers');
     },
+    /** A MIDI file: its drums as a drum chart, its other parts as MIDI notes (or into the layer it was uploaded for). */
+    useMidi(rec, into = {}) {
+      const m = rec.midi;
+      if (!m) return;
+      const hasDrums = m.tracks.some((t) => t.notes && t.isDrum);
+      const hasParts = m.tracks.some((t) => t.notes && !t.isDrum);
+      let selectId = null;
+      const made = [];
+      store.update((d) => {
+        const off = +timelineToSong(0, d.song).toFixed(3);
+        const target = into.drumLayer || into.midiLayer ? d.layers.find((l) => l.id === (into.drumLayer || into.midiLayer)) : null;
+        if (target && target.type === 'drums') {
+          Object.assign(target, { source: 'midi', mediaId: rec.id, ...midiDrumDefaults(m), offset: target.mediaId ? target.offset : off });
+          selectId = target.id;
+          return;
+        }
+        if (target && target.type === 'midi') {
+          Object.assign(target, { mediaId: rec.id, tracks: [], offset: target.mediaId ? target.offset : off });
+          selectId = target.id;
+          return;
+        }
+        if (hasDrums || !hasParts) {
+          const L = { ...makeLayer(d, 'drums'), source: 'midi', mediaId: rec.id, ...midiDrumDefaults(m), offset: off };
+          d.layers.push(L);
+          selectId = L.id;
+          made.push('a drum chart');
+        }
+        if (hasParts) {
+          const L = { ...makeLayer(d, 'midi'), mediaId: rec.id, tracks: [], offset: off };
+          d.layers.push(L);
+          selectId = selectId || L.id;
+          made.push('MIDI notes');
+        }
+        if (d.layout && d.layout !== 'full') tabIntoLayout(d);
+      });
+      toast(made.length ? `“${rec.name}” is on the video as ${made.join(' and ')}. Use Auto-sync to line it up with the song.` : `“${rec.name}” is on its layer.`, 'info', 6000);
+      ui.select({ type: 'layer', id: selectId });
+      ui.openTab(made.includes('a drum chart') || !made.length ? 'guitarpro' : 'visualizer');
+    },
   };
 
   async function importFiles(files, into = {}) {
@@ -225,6 +267,7 @@ export function createPanels({ store, engine, ui }) {
         const p = store.get();
         if (rec.kind === 'audio' && !p.song) actions.useSong(rec);
         else if (rec.kind === 'tab') actions.useTab(rec, into);
+        else if (rec.kind === 'midi') actions.useMidi(rec, into);
         else if (rec.kind === 'video' || (rec.kind === 'image' && p.clips.length === 0 && !/cover|art/i.test(f.name))) actions.addClip(rec);
         else if (rec.kind === 'image' && /cover|art/i.test(f.name)) actions.useCover(rec);
         else if (rec.kind === 'font') toast(`Font “${rec.family}” is ready in every font menu`);
@@ -260,12 +303,12 @@ export function createPanels({ store, engine, ui }) {
     youtube: ['video', 'video-youtube'],
     sounds: ['audio', 'audio-sounds'],
   };
-  const LAYER_HOME = { video: ['video', 'video-layers'], viz: ['visualizer'], tab: ['guitarpro'], drums: ['guitarpro'] };
+  const LAYER_HOME = { video: ['video', 'video-layers'], viz: ['visualizer'], tab: ['guitarpro'], drums: ['guitarpro'], midi: ['visualizer'] };
   /** Which tab (and fold) an id opens. `layers` goes to the tab for the selected layer's kind. */
   function resolveTab(id) {
     if (id === 'layers') {
       const L = ui.selection && ui.selection.type === 'layer' ? (store.get().layers || []).find((x) => x.id === ui.selection.id) : null;
-      return L ? LAYER_HOME[L.type] : ['video', 'video-layers'];
+      return (L && LAYER_HOME[L.type]) || ['video', 'video-layers'];
     }
     return TAB_ALIASES[id] || [id];
   }
@@ -367,7 +410,7 @@ export function createPanels({ store, engine, ui }) {
       fold('start-mine', 'My templates', { open: false, hint: 'Save this edit to reuse' }, () => buildMyTemplates()),
       fold(
         'start-more',
-        'Inspiration, Tab Studio and Carousel',
+        'Inspiration, Tab Studio, Carousel and the drum converter',
         { open: false },
         h(
           'div',
@@ -375,6 +418,7 @@ export function createPanels({ store, engine, ui }) {
           page('inspiration', 'wand', 'Inspiration', 'Trends for your niche, the posting playbook, captions and hooks'),
           page('tabstudio', 'guitar', 'Tab Studio', 'Write or fix Guitar Pro tabs, or make one from a stem'),
           page('carousel', 'image', 'Carousel', 'Photo carousels for Instagram and TikTok'),
+          page('drumconvert', 'activity', 'Drum MIDI converter', 'Move drum MIDI between Superior Drummer, EZdrummer, Addictive Drums, GGD, GM and 150 more maps'),
         ),
       ),
     );
@@ -502,15 +546,15 @@ export function createPanels({ store, engine, ui }) {
   }
   function buildVizTab(b) {
     return buildLayersPanel(b, layerCtx(), {
-      types: ['viz'],
-      intro: 'Visuals that react to your song or a stem: ripples, spectrums, VU meters, fire and more.',
+      types: ['viz', 'midi'],
+      intro: 'Visuals that react to your song or a stem (ripples, spectrums, VU meters, fire and more), or that play a MIDI part: a piano roll, falling keys or note bursts.',
       empty: 'No visualizers yet.',
     });
   }
   function buildGuitarTab(b) {
     return buildLayersPanel(b, layerCtx(), {
-      types: ['tab', 'drums'],
-      intro: 'Guitar, bass and drum parts from Guitar Pro files (or a drum stem), in time with the song.',
+      types: ['tab', 'drums', 'midi'],
+      intro: 'Guitar, bass and drum parts from Guitar Pro files, MIDI files (drums from any drum software) or a drum stem, in time with the song.',
       empty: 'No tab or drum layers yet.',
       after: section(
         'Tab Studio',
@@ -1293,10 +1337,10 @@ export function createPanels({ store, engine, ui }) {
       h('strong', {}, 'Drop files here or click to upload'),
       h('span', { class: 'muted' }, 'Video, images, your song (MP3/WAV), cover art, logo, a font or a Guitar Pro tab. Files stay on your computer.'),
     );
-    const open = async () => importFiles(await pickFiles(`video/*,image/*,audio/*,.ttf,.otf,.woff,.woff2,${TAB_ACCEPT}`));
+    const open = async () => importFiles(await pickFiles(`video/*,image/*,audio/*,.ttf,.otf,.woff,.woff2,${TAB_ACCEPT},${MIDI_ACCEPT}`));
     drop.addEventListener('click', open);
     drop.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), open()));
-    const fromDrive = driveButton(`video/*,image/*,audio/*,${TAB_ACCEPT}`, true, (files) => importFiles(files));
+    const fromDrive = driveButton(`video/*,image/*,audio/*,${TAB_ACCEPT},${MIDI_ACCEPT}`, true, (files) => importFiles(files));
 
     const items = media.all();
     const grid = h('div', { class: 'media-grid' });
@@ -1311,6 +1355,7 @@ export function createPanels({ store, engine, ui }) {
         acts.push(button('Watermark', () => actions.useWatermark(rec), { iconName: 'image', variant: 'sm' }));
       }
       if (rec.kind === 'tab') acts.push(button('Show on video', () => actions.useTab(rec), { iconName: 'guitar', variant: 'sm' }));
+      if (rec.kind === 'midi') acts.push(button('Show on video', () => actions.useMidi(rec), { iconName: 'music', variant: 'sm' }), button('Convert drum map', () => ((drumConvertState.pick = rec.id), (drumConvertState.bytes = null), (drumConvertState.from = ''), ui.openTab('drumconvert')), { variant: 'sm ghost' }));
       grid.append(
         h(
           'div',
@@ -1318,7 +1363,7 @@ export function createPanels({ store, engine, ui }) {
           h(
             'div',
             { class: `thumb kind-${rec.kind}` },
-            rec.thumb ? h('img', { src: rec.thumb, alt: '' }) : icon(rec.kind === 'audio' ? 'music' : rec.kind === 'font' ? 'type' : rec.kind === 'tab' ? 'guitar' : 'file', 26),
+            rec.thumb ? h('img', { src: rec.thumb, alt: '' }) : icon(rec.kind === 'audio' || rec.kind === 'midi' ? 'music' : rec.kind === 'font' ? 'type' : rec.kind === 'tab' ? 'guitar' : 'file', 26),
             h('span', { class: 'badge' }, rec.kind === 'font' ? 'font' : isFinite(rec.duration) && rec.duration ? formatTime(rec.duration, false) : rec.kind),
           ),
           h('div', { class: 'media-name', title: rec.name }, rec.name),
@@ -1539,6 +1584,45 @@ export function createPanels({ store, engine, ui }) {
   }
 
   // ---------------------------------------------------------------- LYRICS
+  /** The Lyrics tab's "Lyrics for this song": fill them from Songs & releases or LRCLIB, and the auto settings. */
+  function lyricsSourceBox() {
+    const p = store.get();
+    const rec = p.song && media.get(p.song.mediaId);
+    const tools = ui.lyricsTools;
+    if (!tools) return null;
+    const info = rec ? tools.info(rec) : {};
+    const from = p.lyricsFrom;
+    const fill = (source) => {
+      if (p.lyrics.length && !p.lyricsFrom && !confirm('Replace the lyrics you typed or pasted? Undo (Ctrl+Z) brings them back.')) return;
+      tools.fill(rec, { source, force: true });
+    };
+    const auto = h('input', { type: 'checkbox', checked: settings.autoLyrics !== false });
+    auto.addEventListener('change', () => ((settings.autoLyrics = auto.checked), saveSettings(settings), ui.refreshPanels(true)));
+    const online = h('input', { type: 'checkbox', checked: settings.autoLyricsOnline !== false, disabled: settings.autoLyrics === false });
+    online.addEventListener('change', () => ((settings.autoLyricsOnline = online.checked), saveSettings(settings)));
+    const said = from
+      ? from.source === 'lrclib'
+        ? `From LRCLIB: “${from.title}” by ${from.artist}${from.timed ? ', timed' : ''}.`
+        : `From Songs & releases: “${from.title}”.`
+      : p.lyrics.length ? 'Typed or pasted by you.' : 'None yet.';
+    return section(
+      'Lyrics for this song',
+      rec ? h('p', { class: 'small' }, h('strong', {}, rec.name), info.song ? ` · “${info.song.title}” in Songs & releases${info.instrumental ? ' (instrumental)' : ''}` : ' · not on a song in Songs & releases') : h('p', { class: 'muted small' }, 'Pick the song in the Audio tab and its lyrics are filled in here.'),
+      h('p', { class: 'muted tiny' }, `Now: ${said}`),
+      rec
+        ? h(
+            'div',
+            { class: 'row wrap' },
+            info.hasLyrics ? button(`Use the lyrics from “${info.song.title}”`, () => fill('manager'), { iconName: 'mic', variant: 'sm' }) : null,
+            button('Find timed lyrics online', () => fill('online'), { iconName: 'search', variant: 'sm', title: 'Look the song up on LRCLIB, a free lyrics database with line timings' }),
+          )
+        : null,
+      h('label', { class: 'toggle' }, auto, h('span', {}, 'Fill in the lyrics when I pick a song')),
+      h('label', { class: 'toggle' }, online, h('span', {}, 'If it isn’t in Songs & releases, or is released but has no lyrics there, look it up on LRCLIB')),
+      h('p', { class: 'muted tiny' }, 'Your own lyrics come from the song in Songs & releases and never leave this browser, and an unreleased song is never looked up by itself. An online lookup sends only the title, artist and length to ', h('a', { href: 'https://lrclib.net', target: '_blank', rel: 'noopener noreferrer' }, 'lrclib.net'), '. Lyrics you typed or pasted are never replaced by picking a song.'),
+    );
+  }
+
   function buildLyrics(b) {
     const p = store.get();
     const paste = h('textarea', { rows: 6, placeholder: 'Paste your lyrics here, one line per row…\n\nBlank lines are skipped.' });
@@ -1551,6 +1635,7 @@ export function createPanels({ store, engine, ui }) {
         const start = timelineToSong(0, d.song) + 0.5;
         const fresh = linesFromText(lines.join('\n'), start, 2.5);
         d.lyrics = fresh.map((l, i) => (old[i] ? { ...old[i], text: l.text } : l));
+        d.lyricsFrom = null; // yours now: picking another song won't replace them
       });
       sync.cursor = 0;
       toast(`${lines.length} lines ready. Next: tap along to sync them.`);
@@ -1640,6 +1725,7 @@ export function createPanels({ store, engine, ui }) {
     return h(
       'div',
       {},
+      lyricsSourceBox(),
       section(
         '1 · Lyrics',
         paste,

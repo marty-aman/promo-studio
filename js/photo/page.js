@@ -25,7 +25,7 @@ const TEXT_PRESETS = [
 
 /**
  * `studio` hooks from the app: images(), get(id) → media record, upload(files) → [{ id, name }],
- * addBlob(blob, name, attribution) → record, saveToLibrary(blobs, names), context() → { band,
+ * addBlob(blob, name, attribution) → record, saveToLibrary(blobs, names), setShowPoster(showId, mediaId), context() → { band,
  * songs, shows, tours, colors, font, logo, photoIds, today }, fonts() → uploaded font families.
  */
 export function createPhotoStudio({ root, studio }) {
@@ -407,6 +407,7 @@ export function createPhotoStudio({ root, studio }) {
     const use = (tp) => {
       if (tp.needs === 'photo' && !photo) toast('No photo picked: the template has an empty photo layer. Click it and pick one from Photos.', 'info', 5000);
       const doc = tp.build(ctx());
+      if (tp.needs === 'show' && t.showId) doc.showId = t.showId;
       openDoc(doc, { isNew: true });
       toast(`New design: ${doc.name}. Everything is editable.`);
     };
@@ -653,6 +654,7 @@ export function createPhotoStudio({ root, studio }) {
       iconButton('zoomIn', 'Zoom in', () => ((ui.zoom = (ui.zoom || scale) * 1.25), draw()), 'ghost'),
       h('div', { class: 'spacer' }),
       h('span', { class: 'muted tiny' }, `${doc.w}×${doc.h}${doc.slides > 1 ? ` · ${doc.slides} slides of ${Math.round(doc.w / doc.slides)}×${doc.h}` : ''}`),
+      posterShow(doc) ? button('Use as the show’s poster', usePoster, { iconName: 'check', variant: 'sm', title: `Save it to the media library and put it on the show at ${posterShow(doc).venue || 'this venue'}` }) : null,
       button('Save to media', saveToLibrary, { iconName: 'image', variant: 'sm', title: 'Add the finished image(s) to the media library, the Photos page and the Video Studio' }),
       button('JPG', () => exportImages('image/jpeg'), { iconName: 'download', variant: 'sm' }),
       button(doc.slides > 1 ? `PNG · ${doc.slides} slides` : 'PNG', () => exportImages('image/png'), { iconName: 'download', variant: 'sm primary' }),
@@ -679,6 +681,20 @@ export function createPhotoStudio({ root, studio }) {
     }
     toast(out.length > 1 ? `Downloading ${out.length} slides. Post them in order and they line up.` : `Downloading ${out[0].name}`);
     lastExport.files = out;
+  }
+  /** The show a poster design was made for (when it still exists). */
+  function posterShow(doc) {
+    return doc.showId ? studio.context().shows.find((s) => s.id === doc.showId) || null : null;
+  }
+  async function usePoster() {
+    const doc = store.get();
+    const show = posterShow(doc);
+    if (!show) return;
+    const [first] = await images('image/png');
+    if (!first) return;
+    const [rec] = await studio.saveToLibrary([first.blob], [first.name]);
+    studio.setShowPoster(show.id, rec.id);
+    toast(`Poster saved and put on the show at ${show.venue || 'the venue'}${show.date ? ` (${show.date})` : ''}.`, 'info', 5000);
   }
   async function saveToLibrary() {
     const out = await images('image/png');

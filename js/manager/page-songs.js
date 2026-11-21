@@ -10,6 +10,8 @@ import { pitchStats } from './press.js';
 import { linksSection } from './page-links.js';
 import { filesTab } from './page-files.js';
 import { fileCounts, videoDone, videoStatusLabel } from './files.js';
+import { newCover, tidyLength } from './covers.js';
+import { setlistTimes } from './setlist.js';
 import { sectionsTab } from './page-sections.js';
 import { coverPicker } from './page-cover.js';
 import { releaseCard } from './page-releases.js';
@@ -36,7 +38,7 @@ export function buildSongs(ctx) {
   return song ? songPage(ctx, song) : songList(ctx);
 }
 
-export const songsUI = { show: 'all' };
+export const songsUI = { show: 'all', scrollTo: '' };
 const ALBUM_TYPES = ['album', 'deluxe', 'live', 'comp'];
 
 function songList(ctx) {
@@ -111,7 +113,66 @@ function songList(ctx) {
           )
         : h('div', { class: 'mgr-empty' }, h('p', {}, m.songs.length ? 'Every song is on an EP or album.' : 'No songs yet.'), m.songs.length ? null : button('Add your first song', add, { iconName: 'plus', variant: 'primary' })),
     ),
+    coversSection(ctx),
   );
+}
+
+/** Covers you play live: not releases, but with a length so setlists can time them. */
+function coversSection(ctx) {
+  const m = ctx.store.get();
+  const f = ctx.form;
+  const covers = m.covers || [];
+  const C = (id, fn) => (d, v) => {
+    const c = (d.covers || []).find((x) => x.id === id);
+    if (c) fn(c, v);
+  };
+  // how many shows each cover is on, matched the way setlists match titles
+  const onShows = (c) => (m.shows || []).filter((sh) => setlistTimes(sh.setlist, [{ title: c.title, length: '' }]).rows.some((r) => r.song)).length;
+  const add = () => {
+    const c = newCover();
+    ctx.update((d) => (d.covers ||= []).push(c));
+    requestAnimationFrame(() => document.querySelector(`[data-k="cv-t-${c.id}"]`)?.select());
+  };
+  const el = h(
+    'section',
+    { class: 'mgr-sect mgr-music-sect', id: 'mgr-covers' },
+    h('div', { class: 'mgr-sect-head' }, h('h2', {}, `Covers · ${covers.length}`), button('Add a cover', add, { iconName: 'plus', variant: 'sm' })),
+    h('p', { class: 'muted small' }, 'Songs by other artists you play live. Give each a length and setlists count it in the set time, like your own songs. Typing a length next to a setlist line on a show adds it here too.'),
+    covers.length
+      ? h(
+          'div',
+          { class: 'mgr-table-wrap' },
+          h(
+            'table',
+            { class: 'mgr-table compact mgr-covers' },
+            h('thead', {}, h('tr', {}, h('th', {}, 'Song'), h('th', {}, 'Original artist'), h('th', {}, 'Length'), h('th', {}, 'Key / tuning'), h('th', {}, 'Notes'), h('th', {}, 'Shows'), h('th', {}))),
+            h(
+              'tbody',
+              {},
+              covers.map((c) => {
+                const bad = c.length && !/^\d{1,2}:\d{2}$/.test(c.length);
+                return h(
+                  'tr',
+                  {},
+                  h('td', {}, f.text(`cv-t-${c.id}`, '', c.title, C(c.id, (x, v) => (x.title = v.trim() || x.title)))),
+                  h('td', {}, f.text(`cv-a-${c.id}`, '', c.artist, C(c.id, (x, v) => (x.artist = v.trim())), { placeholder: 'e.g. Deftones' })),
+                  h('td', { class: bad ? 'bad' : '' }, f.text(`cv-l-${c.id}`, '', c.length, C(c.id, (x, v) => (x.length = tidyLength(v))), { placeholder: '3:45' }), bad ? h('span', { class: 'tiny warn-text' }, 'Type it like 3:45') : null),
+                  h('td', {}, f.text(`cv-k-${c.id}`, '', c.key, C(c.id, (x, v) => (x.key = v.trim())), { placeholder: 'e.g. Drop C' })),
+                  h('td', {}, f.text(`cv-n-${c.id}`, '', c.notes, C(c.id, (x, v) => (x.notes = v)), { placeholder: 'Who sings, changes we make…' })),
+                  h('td', { class: 'muted small' }, String(onShows(c))),
+                  h('td', {}, iconButton('trash', `Remove the cover “${c.title}”`, () => ctx.update((d) => (d.covers = d.covers.filter((x) => x.id !== c.id))), 'ghost')),
+                );
+              }),
+            ),
+          ),
+        )
+      : h('p', { class: 'muted small' }, 'No covers yet.'),
+  );
+  if (songsUI.scrollTo === 'covers') {
+    songsUI.scrollTo = '';
+    requestAnimationFrame(() => el.scrollIntoView({ block: 'start' }));
+  }
+  return el;
 }
 
 function songPage(ctx, song) {

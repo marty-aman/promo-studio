@@ -7,6 +7,7 @@ import { normalizePhotos, normalizeFolders } from './photos.js';
 import { normalizeTours } from './tours.js';
 import { newStats, normalizeStats } from './stats.js';
 import { normalizeReleases, normalizeSections } from './releases.js';
+import { normalizeCovers } from './covers.js';
 
 export const MANAGER_KEY = 'pvm.manager.v1';
 export const MANAGER_VERSION = 1;
@@ -122,7 +123,7 @@ export function newSong(title = 'New song') {
 }
 
 export function newShow(date = '') {
-  return { id: mid('show'), date, doors: '', setTime: '', loadIn: '', venueId: null, venue: '', city: 'Seattle', billing: 'support', lineup: [], status: 'idea', tickets: '', price: '', deal: '', contact: '', setlist: '', notes: '', todo: [], settlement: { gross: '', pay: '', merch: '', costs: '' } };
+  return { id: mid('show'), date, doors: '', setTime: '', loadIn: '', venueId: null, venue: '', city: 'Seattle', billing: 'support', lineup: [], status: 'idea', tickets: '', price: '', deal: '', contact: '', setlist: '', notes: '', posterId: null, todo: [], settlement: { gross: '', pay: '', merch: '', costs: '' } };
 }
 
 export function newManager() {
@@ -130,6 +131,7 @@ export function newManager() {
     version: MANAGER_VERSION,
     band: { name: 'Arc Flash', city: 'Seattle', genres: 'alt-metal, emocore', bio: '', links: {} },
     songs: [],
+    covers: [], // cover songs played live: { id, title, artist, length, key, notes } (see covers.js)
     shows: [],
     venues: [],
     bands: [],
@@ -168,7 +170,8 @@ export function normalizeManager(raw) {
   m.band.epkPhotos = Array.isArray(m.band.epkPhotos) ? m.band.epkPhotos.filter((x) => typeof x === 'string').slice(0, 4) : [];
   m.playlists = list(raw.playlists);
   m.playlistsOff = Array.isArray(raw.playlistsOff) ? raw.playlistsOff.filter((x) => typeof x === 'string') : [];
-  m.shows = m.shows.map((s) => ({ ...newShow(), ...s, settlement: { ...newShow().settlement, ...(s.settlement || {}) } }));
+  m.shows = m.shows.map((s) => ({ ...newShow(), ...s, posterId: typeof s.posterId === 'string' && s.posterId ? s.posterId : null, settlement: { ...newShow().settlement, ...(s.settlement || {}) } }));
+  m.covers = normalizeCovers(raw.covers);
   m.seeded = raw.seeded && typeof raw.seeded === 'object' ? raw.seeded : {};
   return m;
 }

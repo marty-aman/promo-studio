@@ -1,6 +1,7 @@
 // Playback clock, media synchronisation, audio mixing and rendering.
 import { ASPECTS, layoutClips, fadeGain, clamp, timelineToSong } from './core.js';
 import { media, clipElement, pruneClipElements, tabTimeline, drumTimeline, drumHitsFromStem, vizFeatures } from './media.js';
+import { midiNotesFor } from './midiviz.js';
 import { isVisible } from './state.js';
 import { renderFrame } from './renderer.js';
 import { matteFor, preparePerson, onMatteChange } from './bgremove.js';
@@ -441,7 +442,11 @@ export class Engine {
           const v = drumHitsFromStem(media.get(l.mediaId), l.sensitivity, () => !this.playing && this.render());
           return v || null;
         }
-        return drumTimeline(media.get(l.mediaId), l.track);
+        return drumTimeline(media.get(l.mediaId), l.track, l.drumMap);
+      },
+      midi: (l) => {
+        const rec = media.get(l.mediaId);
+        return rec && rec.midi ? midiNotesFor(rec.midi, l.tracks) : null;
       },
       viz: (l) => {
         const p = this.project;

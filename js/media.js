@@ -2,9 +2,10 @@
 import { uid, computePeaks, energyEnvelope } from './core.js';
 import { mediaDB } from './state.js';
 import { TAB_EXTENSIONS, parseTabBytes, tabTracks, buildTabTimeline } from './tab.js';
-import { drumTracks, drumTimelineFromScore, drumHitsFromAudio } from './drums.js';
+import { drumTracks, drumTimelineFromScore, drumHitsFromAudio, drumTimelineFromMidi } from './drums.js';
 import { analyseAudioBlob } from './viz.js';
 import { ensureMattes } from './bgremove.js';
+import { MIDI_EXTENSIONS, parseMidi } from './midi.js';
 
 const library = new Map(); // id -> record
 const listeners = new Set();
@@ -21,6 +22,7 @@ export const media = {
 
 export function kindOf(type, name = '') {
   if (TAB_EXTENSIONS.test(name) || type === 'application/x-guitar-pro') return 'tab';
+  if (MIDI_EXTENSIONS.test(name) || /^audio\/(x-)?midi$/.test(type)) return 'midi'; // before audio: MIDI files are typed audio/midi
   if (type.startsWith('video/')) return 'video';
   if (type.startsWith('image/')) return 'image';
   if (type.startsWith('audio/')) return 'audio';
@@ -30,6 +32,23 @@ export function kindOf(type, name = '') {
 
 function loadElement(rec) {
   return new Promise((resolve) => {
+    if (rec.kind === 'midi') {
+      rec.blob
+        .arrayBuffer()
+        .then((buf) => {
+          const midi = parseMidi(new Uint8Array(buf));
+          if (!midi.notes.length) throw new Error('no notes');
+          rec.midi = midi;
+          rec.duration = midi.duration;
+          rec.drumTimelines = new Map();
+          resolve(true);
+        })
+        .catch((e) => {
+          console.warn('MIDI parse failed', e);
+          resolve(false);
+        });
+      return;
+    }
     if (rec.kind === 'tab') {
       rec.blob
         .arrayBuffer()
@@ -103,8 +122,17 @@ export function tabTimeline(rec, trackIndex) {
   return tl;
 }
 
-/** Drum hits from a Guitar Pro percussion track (cached per track). */
-export function drumTimeline(rec, trackIndex) {
+/** Drum hits from a Guitar Pro percussion track, or from a MIDI file's drums read with drum map `map` (cached). */
+export function drumTimeline(rec, trackIndex, map = 'general_midi') {
+  if (rec && rec.kind === 'midi' && rec.midi) {
+    const key = `${trackIndex}|${map}`;
+    let tl = rec.drumTimelines.get(key);
+    if (!tl) {
+      tl = drumTimelineFromMidi(rec.midi, trackIndex, map);
+      rec.drumTimelines.set(key, tl);
+    }
+    return tl;
+  }
   if (!rec || rec.kind !== 'tab' || !rec.score) return null;
   let tl = rec.drumTimelines.get(trackIndex);
   if (!tl) {
@@ -243,6 +271,7 @@ export async function addMedia(blob, name, meta = {}, { persist = true, id = nul
   if (!ok) {
     URL.revokeObjectURL(rec.url);
     if (kind === 'tab') throw new Error(`Could not read ${name}. Guitar Pro 3–8 (.gp3/.gp4/.gp5/.gpx/.gp) and MusicXML files with a guitar, bass or drum track are supported.`);
+    if (kind === 'midi') throw new Error(`Could not read ${name}: it isn’t a MIDI file with notes in it.`);
     throw new Error(`Could not open ${name}. Your browser may not support this format.`);
   }
   if (kind === 'audio' || (kind === 'video' && meta.analyse)) await analyseAudio(rec);

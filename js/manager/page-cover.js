@@ -7,9 +7,10 @@ const IMAGE_ACCEPT = 'image/*,.jpg,.jpeg,.png,.webp';
 
 /**
  * `current`: the cover's media id (or null). `inherited`: a cover shown greyed when this one is
- * blank (a song showing its album's). `set(id)` saves the choice.
+ * blank (a song showing its album's). `set(id)` saves the choice. `poster: true` makes it a show
+ * poster picker: a portrait frame and no streaming-store size advice.
  */
-export function coverPicker(ctx, { key, current, inherited = null, inheritedFrom = '', set, label = 'Cover art' }) {
+export function coverPicker(ctx, { key, current, inherited = null, inheritedFrom = '', set, label = 'Cover art', poster = false, hint = '' }) {
   const st = ctx.studio;
   const info = current ? st.mediaInfo(current) : null;
   const inh = !info && inherited ? st.mediaInfo(inherited) : null;
@@ -20,6 +21,7 @@ export function coverPicker(ctx, { key, current, inherited = null, inheritedFrom
     if (!added.length) return toast(`“${skipped[0] || 'That file'}” isn’t a picture.`, 'error');
     set(added[0].id);
     const img = st.mediaInfo(added[0].id);
+    if (poster) return toast(`${label} added`);
     toast(img && img.width && img.width < 3000 ? `Cover added. Stores ask for at least 3000 × 3000 px; this one is ${img.width} × ${img.height}.` : 'Cover added');
   };
   const lib = st.libraryFiles(['image']);
@@ -33,13 +35,13 @@ export function coverPicker(ctx, { key, current, inherited = null, inheritedFrom
   const shown = info || inh;
   return h(
     'div',
-    { class: 'mgr-cover-pick' },
-    h('div', { class: `mgr-cover${shown ? '' : ' empty'}${inh ? ' inherited' : ''}` }, shown ? h('img', { src: shown.url, alt: `${label}` }) : h('span', {}, icon('disc', 28), h('span', { class: 'tiny' }, 'No cover'))),
+    { class: `mgr-cover-pick${poster ? ' poster' : ''}` },
+    h('div', { class: `mgr-cover${shown ? '' : ' empty'}${inh ? ' inherited' : ''}` }, shown ? (poster ? h('a', { href: shown.url, target: '_blank', rel: 'noopener noreferrer', title: 'Open full size' }, h('img', { src: shown.url, alt: `${label}` })) : h('img', { src: shown.url, alt: `${label}` })) : h('span', {}, icon(poster ? 'image' : 'disc', 28), h('span', { class: 'tiny' }, poster ? 'No poster' : 'No cover'))),
     h(
       'div',
       { class: 'mgr-cover-acts' },
       h('strong', { class: 'small' }, label),
-      inh ? h('span', { class: 'muted tiny' }, `Using the cover of ${inheritedFrom}. Add one to give this song its own.`) : info && info.width ? h('span', { class: `tiny ${info.width < 3000 || info.width !== info.height ? 'warn-text' : 'muted'}` }, `${info.width} × ${info.height}${info.width !== info.height ? ' · stores want a square' : info.width < 3000 ? ' · stores want 3000 × 3000' : ''}`) : h('span', { class: 'muted tiny' }, 'Square, 3000 × 3000 px is what the stores want.'),
+      poster ? h('span', { class: 'muted tiny' }, info && info.width ? `${info.width} × ${info.height}` : hint) : inh ? h('span', { class: 'muted tiny' }, `Using the cover of ${inheritedFrom}. Add one to give this song its own.`) : info && info.width ? h('span', { class: `tiny ${info.width < 3000 || info.width !== info.height ? 'warn-text' : 'muted'}` }, `${info.width} × ${info.height}${info.width !== info.height ? ' · stores want a square' : info.width < 3000 ? ' · stores want 3000 × 3000' : ''}`) : h('span', { class: 'muted tiny' }, 'Square, 3000 × 3000 px is what the stores want.'),
       h('div', { class: 'row' }, button(info ? 'Replace' : 'Upload', () => take(), { iconName: 'upload', variant: 'sm' }), driveButton(IMAGE_ACCEPT, false, (fs) => take(fs)), info ? button('Remove', () => set(null), { variant: 'sm ghost' }) : null),
       sel,
     ),

@@ -1,5 +1,5 @@
 // App shell: layout, wiring, keyboard shortcuts and autosave.
-import { ASPECTS, clipAt, splitClip, formatTime, clamp, linesFromText, timelineToSong } from './core.js';
+import { ASPECTS, clipAt, splitClip, formatTime, clamp, linesFromText, timelineToSong, uid } from './core.js';
 import { createStore, newProject, loadProject, saveProject, FONTS, findClip } from './state.js';
 import { media, restoreMedia, addMedia, kindOf } from './media.js';
 import { Engine } from './engine.js';
@@ -9,6 +9,7 @@ import { h, icon, iconButton, button, toast, setFold, Binder } from './dom.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { buildInspirationPage } from './page-inspiration.js';
 import { buildTabStudio, openInTabStudio } from './page-tabstudio.js';
+import { buildDrumConvertPage } from './page-drumconvert.js';
 import { buildCarouselPage } from './page-carousel.js';
 import { createPostCheck } from './panel-postcheck.js';
 import { createTips } from './panel-tips.js';
@@ -22,6 +23,8 @@ import { makeLayer, makeOverlayClip } from './panel-layers.js';
 import { studioSongFiles } from './manager/files.js';
 import { applyTheme, themeById } from './themes.js';
 import { loadSettings } from './state.js';
+import { findSong, titleFromFile, fetchLyrics } from './lyricsfetch.js';
+import { findCover } from './manager/covers.js';
 
 const store = createStore(loadProject() || newProject());
 let manager = null; // the Manager workspace (created below)
@@ -285,6 +288,7 @@ const PAGES = {
   inspiration: { label: 'Inspiration', icon: 'wand', build: () => buildInspirationPage({ store, engine, ui, settings: loadSettings(), panels }) },
   tabstudio: { label: 'Tab Studio', icon: 'guitar', build: () => buildTabStudio({ store, engine, ui, panels }) },
   carousel: { label: 'Carousel', icon: 'image', build: () => buildCarouselPage({ store, engine, ui, panels, settings: loadSettings() }) },
+  drumconvert: { label: 'Drum MIDI converter', icon: 'activity', build: () => buildDrumConvertPage({ store, engine, ui, panels }) },
 };
 function showPage() {
   const pg = PAGES[ui.tab];
@@ -695,7 +699,10 @@ manager = createManager({
         const band = manager.store.get().band.name;
         if (band) d.endCard.artist = band;
         d.artistId = manager.currentArtist();
-        if (song.lyrics.trim()) d.lyrics = linesFromText(song.lyrics, +(timelineToSong(0, d.song) + 0.5).toFixed(2), 2.5);
+        if (song.lyrics.trim()) {
+          d.lyrics = linesFromText(song.lyrics, +(timelineToSong(0, d.song) + 0.5).toFixed(2), 2.5);
+          d.lyricsFrom = { mediaId: rec ? rec.id : null, source: 'manager', title: song.title };
+        }
         d.managerSongId = song.id;
         const cover = coverOf(song, manager.store.get().releases || []);
         if (cover && media.get(cover)) d.endCard.coverMediaId = cover;
@@ -811,10 +818,98 @@ photo = createPhotoStudio({
       ui.refreshPanels(true);
       return added;
     },
+    /** Put an image from the library on a show as its poster. */
+    setShowPoster(showId, mediaId) {
+      manager.store.update((d) => {
+        const s = d.shows.find((x) => x.id === showId);
+        if (s) s.posterId = mediaId;
+      });
+    },
     context: photoContext,
   },
 });
 media.onChange(() => mode === 'photo' && photo.mediaChanged());
+// ------------------------------------------------------------ lyrics for the chosen song
+/**
+ * Fill the Lyrics tab for a song file. source: 'auto' (when a song is picked: your own lyrics from Songs &
+ * releases, else timed lyrics from LRCLIB if that's on), 'manager' or 'online' (the Lyrics tab's buttons).
+ * Lyrics you typed or pasted are only replaced when `force` is set; lyrics filled in for another song are.
+ */
+async function fillLyrics(rec, { source = 'auto', force = false } = {}) {
+  await Promise.resolve(); // let the caller's own update (e.g. Make a promo) land first
+  if (!rec) return null;
+  const s = loadSettings();
+  if (source === 'auto' && s.autoLyrics === false) return null;
+  const p = store.get();
+  const from = p.lyricsFrom;
+  if (p.lyrics.length && !force) {
+    if (!from || from.mediaId === rec.id) {
+      if (source !== 'auto') toast('This edit already has lyrics. Use the button again after clearing them, or pick “Replace”.', 'error', 5000);
+      return 'kept';
+    }
+  }
+  const m = manager.store.get();
+  const song = findSong(m.songs, rec);
+  const still = () => store.get().song && store.get().song.mediaId === rec.id;
+  const startAt = () => +(timelineToSong(0, store.get().song) + 0.5).toFixed(2);
+  if (song && song.instrumental && source === 'auto') {
+    if (p.lyrics.length && from) store.update((d) => ((d.lyrics = []), (d.lyricsFrom = null)));
+    return 'instrumental';
+  }
+  if (source !== 'online' && song && song.lyrics.trim()) {
+    store.update((d) => {
+      d.lyrics = linesFromText(song.lyrics, startAt(), 2.5);
+      d.lyricsFrom = { mediaId: rec.id, source: 'manager', title: song.title };
+    });
+    toast(`Lyrics for “${song.title}” filled in from Songs & releases. Tap along to time them, or try “Find timed lyrics online”.`, 'info', 6000);
+    ui.refreshPanels(true);
+    return 'manager';
+  }
+  if (source === 'manager') {
+    toast(song ? `“${song.title}” has no lyrics in Songs & releases yet.` : 'This song file isn’t on a song in Songs & releases.', 'error', 5000);
+    return null;
+  }
+  if (source === 'auto' && s.autoLyricsOnline === false) return null;
+  // never send an unreleased song's title to LRCLIB by itself (it can't have it anyway); the button still can
+  const today = new Date().toISOString().slice(0, 10);
+  if (source === 'auto' && song && !(song.status === 'released' || (song.releaseDate && song.releaseDate <= today))) return null;
+  const file = titleFromFile(rec.name);
+  // a cover you play: look it up under the artist who wrote it (Songs & releases → Covers)
+  const cover = song ? null : findCover(m.covers || [], file.title);
+  const title = song ? song.title : cover ? cover.title : file.title;
+  const band = m.band.name || '';
+  const tries = cover && cover.artist ? [cover.artist] : file.artist && !song ? [file.artist] : [band];
+  try {
+    let got = null;
+    for (const artist of tries) if (!got && artist) got = await fetchLyrics({ artist, title, duration: rec.duration || 0 });
+    if (!got && !song) got = await fetchLyrics({ artist: '', title, duration: rec.duration || 0 });
+    if (!got || (!got.lines && !got.plain.trim())) {
+      if (source === 'online') toast(`LRCLIB has no lyrics for “${title}”${tries[0] ? ` by ${tries[0]}` : ''}. Paste them below, or add them to the song in Songs & releases.`, 'error', 6000);
+      return null;
+    }
+    if (!still()) return null; // they picked another song meanwhile
+    store.update((d) => {
+      d.lyrics = got.lines ? got.lines.map((l) => ({ ...l, id: uid('lyr') })) : linesFromText(got.plain, startAt(), 2.5);
+      d.lyricsFrom = { mediaId: rec.id, source: 'lrclib', title: got.match.title, artist: got.match.artist, timed: got.timed };
+    });
+    toast(`${got.timed ? 'Timed lyrics' : 'Lyrics'} for “${got.match.title}” by ${got.match.artist} filled in from LRCLIB${got.timed ? ', already in time with the song' : '. Tap along to time them'}.`, 'info', 6000);
+    ui.refreshPanels(true);
+    return 'lrclib';
+  } catch (e) {
+    if (source === 'online') toast(`Could not reach LRCLIB: ${e.message || 'network error'}.`, 'error', 5000);
+    return null;
+  }
+}
+ui.onSongChosen = (rec) => fillLyrics(rec, { source: 'auto' });
+ui.lyricsTools = {
+  fill: (rec, opts) => fillLyrics(rec, opts),
+  /** What the Lyrics tab can offer for the song in the edit. */
+  info: (rec) => {
+    const song = rec && manager ? findSong(manager.store.get().songs, rec) : null;
+    return { song, hasLyrics: !!(song && song.lyrics.trim()), instrumental: !!(song && song.instrumental) };
+  },
+};
+
 /** Open the Photo Studio on a template (from the Manager: a song, a show, a tour). */
 function openPhoto(templateId, { songId = '', showId = '', tourId = '', releaseId = '' } = {}) {
   const c = photoContext();
