@@ -811,6 +811,13 @@ photo = createPhotoStudio({
       ui.refreshPanels(true);
       return added;
     },
+    /** Put an image from the library on a show as its poster. */
+    setShowPoster(showId, mediaId) {
+      manager.store.update((d) => {
+        const s = d.shows.find((x) => x.id === showId);
+        if (s) s.posterId = mediaId;
+      });
+    },
     context: photoContext,
   },
 });
