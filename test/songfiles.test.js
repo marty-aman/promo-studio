@@ -14,7 +14,7 @@ test('stem parts are guessed from file names', () => {
     'Lead Vox.wav': 'vocals',
     'screams-double.wav': 'vocals',
     'Synth pad.wav': 'keys',
-    'click.wav': 'other',
+    'click.wav': 'click',
     'Bassoon.wav': 'other',
   };
   for (const [name, role] of Object.entries(cases)) assert.equal(guessStemRole(name), role, name);

@@ -23,7 +23,7 @@ export const SUBMIT_SERVICES = [
 export function submitPitch(song, m, { today = '' } = {}) {
   const f = facts(song, m, today);
   const moods = moodWords(f.snd);
-  const sound = [moods.length ? list(moods.slice(0, 2)) : '', f.genres.slice(0, 2).join(' / ') || 'heavy music'].filter(Boolean).join(' ');
+  const sound = [moods.length ? list(moods.slice(0, 2)) : '', f.genres.slice(0, 2).join(' / ') || 'heavy music', f.inst ? 'instrumental' : ''].filter(Boolean).join(' ');
   const fans = f.snd.similar ? ` For fans of ${f.snd.similar.split(',').slice(0, 3).map((x) => x.trim()).join(', ')}.` : '';
   const story = f.press.story ? ` ${f.press.story.trim().split(/(?<=[.!?])\s+/)[0]}` : f.themes.length ? ` It’s about ${list(f.themes.slice(0, 2))}.` : '';
   return `“${song.title}” by ${f.name}, ${f.when}: ${sound}${f.city ? ` from ${f.city}` : ''}.${fans}${story}`.replace(/\s+/g, ' ').trim();
@@ -56,15 +56,16 @@ function facts(song, m, today) {
   const snd = soundOf(song, b);
   const name = b.name || 'The band';
   const genres = snd.genres.split(',').map((x) => x.trim()).filter(Boolean);
-  const themes = lyricThemes(song.lyrics, song.title).map((t) => t.label);
+  const inst = !!song.instrumental; // no vocals: no lyric themes or chorus hook to quote
+  const themes = inst ? [] : lyricThemes(song.lyrics, song.title).map((t) => t.label);
   const date = song.releaseDate;
   const out = date && today && date <= today;
   const when = date ? (out ? `out now` : `out ${niceDate(date, { weekday: false })}`) : 'out soon';
-  const hook = hookLines(song.lyrics, 1)[0] || '';
+  const hook = inst ? '' : hookLines(song.lyrics, 1)[0] || '';
   const shows = (m.shows || []).filter((s) => s.status === 'confirmed' && s.date && (!today || s.date >= today)).sort((x, y) => x.date.localeCompare(y.date)).slice(0, 4);
   const links = Object.entries(song.links || {}).filter(([, v]) => v).map(([k, v]) => [linkLabel(k), v]);
   const press = { ...newPress(), ...(song.press || {}) };
-  return { b, snd, name, genres, themes, date, out, when, hook, shows, links, press, city: b.city || '' };
+  return { b, snd, name, inst, genres, themes, date, out, when, hook, shows, links, press, city: b.city || '' };
 }
 
 /** "Seattle alt-metal / emocore band Arc Flash" */
@@ -76,8 +77,9 @@ function who(f) {
 function soundLine(f, song) {
   const moods = moodWords(f.snd);
   const bits = [];
-  if (moods.length) bits.push(`${a(moods[0])} ${list(moods.slice(0, 3))} track`);
-  else bits.push('a new track');
+  const track = f.inst ? 'instrumental' : 'track';
+  if (moods.length) bits.push(`${a(moods[0])} ${list(moods.slice(0, 3))} ${track}`);
+  else bits.push(f.inst ? 'a new instrumental' : 'a new track');
   if (f.snd.vocals === 'mixed') bits.push('that trades clean vocals with screams');
   else if (f.snd.vocals === 'screamed') bits.push('built on screamed vocals');
   else if (f.snd.vocals === 'rap') bits.push('with rapped verses');
@@ -93,7 +95,7 @@ function soundLine(f, song) {
  */
 export function pressRelease(song, m, { today = '' } = {}) {
   const f = facts(song, m, today);
-  const headline = f.press.headline.trim() || `${f.name} ${f.out ? 'releases' : 'announces'} new single “${song.title}”${f.out ? '' : f.date ? `, out ${monthDay(f.date)}` : ''}`;
+  const headline = f.press.headline.trim() || `${f.name} ${f.out ? 'releases' : 'announces'} new ${f.inst ? 'instrumental ' : ''}single “${song.title}”${f.out ? '' : f.date ? `, out ${monthDay(f.date)}` : ''}`;
   const lead = `${f.city ? `${f.city.toUpperCase()}, ` : ''}${today ? longDate(today) : ''}${f.city || today ? ' — ' : ''}${who(f)} ${f.out ? 'has released' : 'will release'} its new single “${song.title}”${f.date ? ` on ${monthDay(f.date)}` : ''}${f.press.label ? ` via ${f.press.label}` : ''}.`;
   const story = sentence(f.press.story || firstPara(song.notes));
   const fans = f.snd.similar ? `For fans of ${f.snd.similar.replace(/\s*,\s*/g, ', ')}.` : '';
@@ -136,7 +138,7 @@ export function pressRelease(song, m, { today = '' } = {}) {
   ].filter(Boolean).join(' ');
 
   const blurb = [
-    `“${song.title}” is the new single from ${who(f)}, ${f.when}.`,
+    `“${song.title}” is the new ${f.inst ? 'instrumental ' : ''}single from ${who(f)}, ${f.when}.`,
     f.themes.length ? `It’s about ${list(f.themes.slice(0, 2))}.` : '',
     fans,
     f.shows[0] ? `Live next at ${f.shows[0].venue || 'a show'} on ${niceDate(f.shows[0].date, { weekday: false })}.` : '',
@@ -165,7 +167,7 @@ export function spotifyPitch(song, m, { today = '' } = {}) {
   const posts = (m.posts || []).filter((p) => p.songId === song.id).length;
   const plan = [posts && `${posts} short-form video${posts === 1 ? '' : 's'}`, (song.shoot?.concept || song.shoot?.date) && 'a music video', (song.release || []).some((t) => /pre-save/i.test(t.text) && t.done) && 'a pre-save campaign'].filter(Boolean);
   const parts = [
-    `“${song.title}” is ${a(f.genres[0] || 'new')} ${f.genres.slice(0, 2).join('/') || 'new'} single from ${f.city ? `${f.city}’s ` : ''}${f.name}${moods.length ? `: ${list(moods.slice(0, 2))}` : ''}${f.snd.vocals === 'mixed' ? ', clean vocals against screams' : f.snd.vocals === 'screamed' ? ', screamed vocals' : ''}.`,
+    `“${song.title}” is ${a(f.genres[0] || 'new')} ${f.genres.slice(0, 2).join('/') || 'new'} ${f.inst ? 'instrumental ' : ''}single from ${f.city ? `${f.city}’s ` : ''}${f.name}${moods.length ? `: ${list(moods.slice(0, 2))}` : ''}${f.snd.vocals === 'mixed' ? ', clean vocals against screams' : f.snd.vocals === 'screamed' ? ', screamed vocals' : ''}.`,
     f.themes.length ? `It’s about ${list(f.themes.slice(0, 2))}.` : '',
     sentence(f.press.story || firstPara(song.notes)).slice(0, 180),
     f.snd.similar ? `For fans of ${f.snd.similar.split(',').slice(0, 3).map((x) => x.trim()).join(', ')}.` : '',
@@ -211,9 +213,9 @@ export function curatorPitch(song, m, { curator = '', playlist = '', today = '' 
   const body = [
     `Hi ${curator.trim() || 'there'},`,
     '',
-    `I’m reaching out from ${f.name}${f.city ? `, ${f.genres.length ? `${a(f.genres[0])} ${f.genres.slice(0, 2).join('/')}` : 'a'} band from ${f.city}` : ''}. ${playlist ? `We’ve been listening to ${playlist} and` : 'We’ve been listening to your playlists and'} think our new single “${song.title}” (${f.when}) would fit.`,
+    `I’m reaching out from ${f.name}${f.city ? `, ${f.genres.length ? `${a(f.genres[0])} ${f.genres.slice(0, 2).join('/')}` : 'a'} band from ${f.city}` : ''}. ${playlist ? `We’ve been listening to ${playlist} and` : 'We’ve been listening to your playlists and'} think our new ${f.inst ? 'instrumental ' : ''}single “${song.title}” (${f.when}) would fit.`,
     '',
-    [`It’s ${moods.length ? list(moods.slice(0, 2)) : 'heavy and melodic'}${f.themes.length ? `, about ${list(f.themes.slice(0, 2))}` : ''}.`, f.snd.similar ? `For fans of ${f.snd.similar.split(',').slice(0, 3).map((x) => x.trim()).join(', ')}.` : ''].filter(Boolean).join(' '),
+    [`It’s ${f.inst ? 'an instrumental, ' : ''}${moods.length ? list(moods.slice(0, 2)) : 'heavy and melodic'}${f.themes.length ? `, about ${list(f.themes.slice(0, 2))}` : ''}.`, f.snd.similar ? `For fans of ${f.snd.similar.split(',').slice(0, 3).map((x) => x.trim()).join(', ')}.` : ''].filter(Boolean).join(' '),
     '',
     `Listen: ${link}`,
     '',
