@@ -232,6 +232,12 @@ export function syncChart(song, hits, { tempo = 0, songBpm = 0, scales = null } 
 export function chartHits(data) {
   if (!data) return [];
   if (data.hits) return data.hits.map((x) => ({ time: x.time, weight: (x.lane === 'kick' || x.lane === 'snare' ? 1 : 0.6) * (x.vel ?? 1) }));
+  if (data.gems) {
+    // rhythm game gems: one onset per moment (chords count once), kicks a little less
+    const out = [];
+    for (const g of data.gems) if (!out.length || g.time - out[out.length - 1].time > 0.02) out.push({ time: g.time, weight: g.lane < 0 ? 0.8 : 1 });
+    return out;
+  }
   if (data.events) return data.events.filter((e) => e.notes && e.notes.length).map((e) => ({ time: e.time, weight: 1 }));
   if (data.notes) {
     // MIDI notes: one onset per moment (chords count once)

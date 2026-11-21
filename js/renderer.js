@@ -14,6 +14,7 @@ import {
 import { FILTER_PRESETS, PLATFORMS, isVisible, overlayClipAt } from './state.js';
 import { drawPlatformOverlay, overlaySupported } from './overlays.js';
 import { drawMidi } from './midiviz.js';
+import { drawGame } from './rhythmgame.js';
 import { drawTab } from './tab.js';
 import { drawDrums } from './drums.js';
 import { drawViz } from './viz.js';
@@ -1418,6 +1419,9 @@ export function renderFrame(ctx, W, H, project, t, env) {
   const visEnd = ecStart === Infinity ? project.duration : ecStart;
   const layers = (project.layers || []).filter((l) => l.visible !== false);
 
+  // a rhythm game layer can bring its own arena behind everything (clips, if any, play on top)
+  const arena = layers.find((l) => l.type === 'game' && l.backdrop === 'arena');
+  if (arena) drawBackdrop(ctx, W, H, { kind: 'scene', scene: 'arena', color: arena.arenaColor || '#ff2bd6', color2: arena.arenaColor2 || '#2b6bff' }, t, beat);
   if (isVisible(project, 'video')) drawVideoLane(ctx, W, H, project, t, env);
   // video layers sit directly on the picture, so the look (vignette, grain…) covers them too
   for (const l of layers) {
@@ -1466,6 +1470,7 @@ export function renderFrame(ctx, W, H, project, t, env) {
     else if (l.type === 'tab' && env.tab && l.mediaId) drawTab(ctx, W, H, l, env.tab(l.mediaId, l.track), t, songT, visEnd);
     else if (l.type === 'drums' && env.drums) drawDrums(ctx, W, H, l, env.drums(l0), t, songT, visEnd, project.beats && project.beats.period);
     else if (l.type === 'midi' && env.midi && l.mediaId) drawMidi(ctx, W, H, l, env.midi(l0), t, songT);
+    else if (l.type === 'game' && env.game && l.mediaId) drawGame(ctx, W, H, l, env.game(l0), t, songT, { beat });
     if (fadeOwn) ctx.restore();
     if (moving) ctx.restore();
   }

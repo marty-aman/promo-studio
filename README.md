@@ -349,6 +349,17 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
     length, clips and end card back.
   - The export is silent (Spotify plays the track) and named `…-spotify-canvas.mp4`. Spotify needs MP4,
     so export from Chrome or Edge. Upload it in Spotify for Artists → Music → your track → Add Canvas.
+- **From your song's files** (top of Templates and themes), made from the song in the edit and its Files tab in
+  Songs & releases, each ending on the song's end card (title, artist, cover, OUT NOW or a countdown):
+  - **Rhythm game:** up to three highways (guitar, drums, bass), from its Guitar Pro tabs, a MIDI file named
+    after the song, or its stems, best source first; 30 s from the loudest part; the song's title and artist
+    up top like the game shows them; the music video dimmed behind them, or the rock arena; every highway
+    auto-synced to the song.
+  - **Music video + lyrics:** the 15 s hook over the same moment of the music video (using where the song
+    starts in it), cinematic grade, lyrics on top.
+  - **Raw footage + lyrics:** the footage cut on the beat over the hook, lyrics on top.
+  - Each card says what it will use, or what the song still needs. Lyrics come from the edit, else the song's
+    own (instrumentals get none). Layers they don't use are hidden, not deleted.
 - **App layouts:** TikTok, Instagram Reels, YouTube Shorts, "works on all three" and full frame. A layout
   moves lyrics, text, logo, progress bar and the end card into that app's clear area; templates keep it.
 - **Sound effects (Audio tab):** one list, **Your sounds**, holds everything you have: your own clips, the
@@ -445,6 +456,13 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
   curves, cross-correlated with an FFT, so it finds where the part starts and, for a chart, its tempo (the
   file's, the song's detected BPM, and up to 3% either side). It says how sure the match is; undo puts it
   back, and the manual nudges and *Put bar at the playhead* still work.
+- **Rhythm game** (Guitar Pro tab): a Guitar Hero / Rock Band style note highway "played" in time with the
+  song: five coloured frets (four pads and a kick bar for drums), gems, sustains, flames on every hit, a
+  score with a streak multiplier, star power stretches, note streak call-outs and a rock meter. Notes come
+  from a Guitar Pro track, a MIDI track (drums read through their drum map), or a stem: a gem where each new
+  sound starts, its fret from how bright it sounds. Optional **Rock arena** behind it (a lit stage over a
+  crowd that jumps on the beat; also a background scene). Auto-sync lines it up. Original drawing, no game
+  art or logos.
 - **Visualizer:** reacts to any audio you give it: a stem (drums, bass, vocals…) or the song.
   Styles: water ripple (bends the picture on each hit), electricity, spectrum bars, circular spectrum,
   waveform, particles, glow pulse and speaker rings, plus ten that look like real things:

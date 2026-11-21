@@ -10,6 +10,7 @@ export const SCENES = [
   ['lasers', 'Lasers', 'Laser fans sweeping through haze'],
   ['starfield', 'Starfield', 'Stars streaking past, faster on the beat'],
   ['bokeh', 'Bokeh lights', 'Soft out-of-focus lights'],
+  ['arena', 'Rock arena', 'A lit stage over a crowd that jumps on the beat'],
 ];
 
 export const BACKDROP_KINDS = ['scene', 'gradient', 'color', 'blur', 'media'];
@@ -233,6 +234,86 @@ const DRAW = {
     ctx.globalCompositeOperation = 'source-over';
     vignette(ctx, W, H, 0.55);
   },
+  arena(ctx, W, H, t, beat, c1, c2) {
+    // night sky to stage glow
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#04030a');
+    bg.addColorStop(0.55, '#140b24');
+    bg.addColorStop(1, '#2a0f1f');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    // the truss with its lamps
+    const trussY = H * 0.12;
+    ctx.fillStyle = '#1c1c24';
+    ctx.fillRect(0, trussY - H * 0.012, W, H * 0.024);
+    ctx.globalCompositeOperation = 'lighter';
+    const lamps = 9;
+    for (let i = 0; i < lamps; i++) {
+      const x0 = W * ((i + 0.5) / lamps);
+      const col = i % 3 === 0 ? c1 : i % 3 === 1 ? c2 : '#ffd27a';
+      const ang = Math.sin(t * 0.7 + i * 1.3) * 0.5;
+      const len = H * 0.95;
+      const spread = W * 0.07;
+      const x1 = x0 + Math.sin(ang) * len;
+      const y1 = trussY + Math.cos(ang) * len;
+      const k = 0.35 + 0.45 * beat * (i % 2 ? 1 : 0.6);
+      const g = ctx.createLinearGradient(x0, trussY, x1, y1);
+      g.addColorStop(0, rgba(col, k));
+      g.addColorStop(1, rgba(col, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(x0 - W * 0.008, trussY);
+      ctx.lineTo(x0 + W * 0.008, trussY);
+      ctx.lineTo(x1 + spread, y1);
+      ctx.lineTo(x1 - spread, y1);
+      ctx.closePath();
+      ctx.fill();
+      const lamp = ctx.createRadialGradient(x0, trussY, 0, x0, trussY, W * 0.03);
+      lamp.addColorStop(0, rgba('#ffffff', 0.9));
+      lamp.addColorStop(0.4, rgba(col, 0.8));
+      lamp.addColorStop(1, rgba(col, 0));
+      ctx.fillStyle = lamp;
+      ctx.fillRect(x0 - W * 0.03, trussY - W * 0.03, W * 0.06, W * 0.06);
+    }
+    // stage haze
+    const haze = ctx.createRadialGradient(W / 2, H * 0.78, 0, W / 2, H * 0.78, H * 0.55);
+    haze.addColorStop(0, rgba(c1, 0.22 + 0.18 * beat));
+    haze.addColorStop(1, rgba(c1, 0));
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over';
+    // the crowd: rows of heads and shoulders, some hands up, jumping on the beat
+    const rows = 3;
+    for (let r = 0; r < rows; r++) {
+      const base = H * (0.86 + r * 0.06);
+      const size = W * (0.03 + r * 0.012);
+      const n = Math.ceil(W / (size * 1.6)) + 2;
+      ctx.fillStyle = r === rows - 1 ? '#000000' : r === 1 ? '#07050c' : '#0d0915';
+      for (let i = -1; i < n; i++) {
+        const seed = r * 101 + i * 17;
+        const x = (i + 0.5 + (rnd(seed) - 0.5) * 0.5) * size * 1.6 + (r % 2) * size * 0.8;
+        const jump = beat * size * 0.45 * (0.4 + rnd(seed + 3)) * (Math.sin(t * 2 + seed) > -0.3 ? 1 : 0.2);
+        const y = base - jump;
+        ctx.beginPath();
+        ctx.arc(x, y - size * 0.9, size * 0.42, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(x, y + size * 0.2, size * 0.8, size * 0.75, 0, Math.PI, 0);
+        ctx.fill();
+        ctx.fillRect(x - size * 0.8, y + size * 0.2, size * 1.6, H);
+        if (rnd(seed + 9) > 0.72) {
+          // a hand up, horns or a fist
+          const hx = x + (rnd(seed + 5) - 0.5) * size;
+          const sway = Math.sin(t * 3 + seed) * size * 0.15;
+          ctx.fillRect(hx - size * 0.09 + sway, y - size * 2.2, size * 0.18, size * 1.4);
+          ctx.beginPath();
+          ctx.arc(hx + sway, y - size * 2.25, size * 0.17, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    vignette(ctx, W, H, 0.45);
+  },
   stage(ctx, W, H, t, beat, c1, c2) {
     const bg = ctx.createLinearGradient(0, 0, 0, H);
     bg.addColorStop(0, '#05040a');
@@ -426,7 +507,7 @@ const DRAW = {
 };
 
 // Scenes are soft, so they're drawn on a smaller canvas and scaled up (smoke at 1/4 size is 16x cheaper).
-const SCENE_SCALE = { smoke: 0.25, stage: 0.4, concrete: 0.5, neongrid: 0.5, lasers: 0.5, starfield: 0.5, bokeh: 0.33, _gradient: 0.25 };
+const SCENE_SCALE = { smoke: 0.25, stage: 0.4, arena: 0.5, concrete: 0.5, neongrid: 0.5, lasers: 0.5, starfield: 0.5, bokeh: 0.33, _gradient: 0.25 };
 let sceneBuf = null;
 
 /**
