@@ -166,6 +166,12 @@ const ui = {
     zoom.value = this.pxPerSec;
     timeline.render();
   },
+  /** Turn looping playback on or off (a Spotify Canvas previews as a loop). */
+  setLoop(on) {
+    engine.loop = !!on;
+    loopBtn.classList.toggle('on', engine.loop);
+    loopBtn.setAttribute('aria-pressed', engine.loop ? 'true' : 'false');
+  },
   openTab(req) {
     // old ids (media, stock, sounds, layers, templates…) open the fold that now holds them
     const [id, foldId] = PAGES[req] ? [req] : panels.resolveTab(req);
@@ -652,6 +658,16 @@ manager = createManager({
       if (store.get().managerSongId !== song.id) return; // they kept the other edit
       setMode('studio');
       ui.openTab('export');
+    },
+    /** Open the Spotify Canvas templates for this song (its cover, and its music video when the edit has no clips). */
+    openCanvas(song) {
+      if (store.get().managerSongId !== song.id) this.openPromo(song);
+      if (store.get().managerSongId !== song.id) return; // they kept the other edit
+      const vid = song.files && song.files.video && media.get(song.files.video.mediaId);
+      if (!store.get().clips.length && vid) panels.actions.addClip(vid);
+      setMode('studio');
+      ui.openTab('templates');
+      requestAnimationFrame(() => document.querySelector('[data-canvas]')?.closest('section, details')?.scrollIntoView({ block: 'start' }));
     },
     /** Open the Photo Studio on a template: 'promo', 'release', 'countdown', 'show', 'tour'… */
     openPhoto: (id, opts) => openPhoto(id, opts),

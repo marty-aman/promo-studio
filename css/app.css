@@ -1296,3 +1296,11 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .mgr-card-chips .mgr-chip { align-self: auto; }
 .mgr-instr input { margin: 0; }
 .mgr-facts .link.ok { color: var(--ok); }
+
+/* Spotify Canvas templates */
+.canvas-len { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.canvas-len input { flex: 1; }
+.canvas-status, .canvas-export { margin: 8px 0; }
+.tpl-loop { color: #1db954; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.ok-text { color: var(--ok); margin: 4px 0 8px; }
+.warn-list li.bad { color: var(--danger); }

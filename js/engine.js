@@ -483,12 +483,18 @@ export function pickMimeType(prefer = 'mp4') {
   return order.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || null;
 }
 
+/** The same container without an audio codec, when the browser can record that (else the original). */
+function silentMime(mime) {
+  const bare = mime.replace(/,\s*(opus|vorbis|mp4a[\w.]*|aac)\b/i, '');
+  return bare !== mime && window.MediaRecorder && MediaRecorder.isTypeSupported(bare) ? bare : mime;
+}
+
 /**
  * Real-time export: plays the project from 0 onto a full-resolution canvas while
  * MediaRecorder captures the canvas and the mixed audio.
  */
 /** `start`/`end` (seconds on the timeline) record just that part, e.g. one section of the song. */
-export function exportVideo(engine, { format = 'mp4', fps = 30, bitrate = 10_000_000, monitor = false, onProgress, start = 0, end = null } = {}) {
+export function exportVideo(engine, { format = 'mp4', fps = 30, bitrate = 10_000_000, monitor = false, onProgress, start = 0, end = null, audio = true } = {}) {
   return new Promise((resolve, reject) => {
     const mime = pickMimeType(format);
     if (!mime) return reject(new Error('This browser cannot record video. Use a recent Chrome, Edge or Firefox.'));
@@ -505,8 +511,9 @@ export function exportVideo(engine, { format = 'mp4', fps = 30, bitrate = 10_000
     engine.master.connect(dest);
     engine.setMonitor(monitor);
     const stream = canvas.captureStream(fps);
-    dest.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
-    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bitrate, audioBitsPerSecond: 192000 });
+    // audio: false makes a silent file (a Spotify Canvas plays over the track itself)
+    if (audio) dest.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
+    const rec = new MediaRecorder(stream, { mimeType: audio ? mime : silentMime(mime), videoBitsPerSecond: bitrate, audioBitsPerSecond: 192000 });
     const chunks = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     let cancelled = false;

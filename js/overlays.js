@@ -1,5 +1,5 @@
 // Phantom phone UI for the preview: where TikTok, Instagram Reels and YouTube Shorts put their
-// buttons, captions and nav bars on a 9:16 video. Approximate generic layouts drawn as
+// buttons, captions and nav bars on a 9:16 video, and what Spotify's Now Playing view covers on a Canvas. Approximate generic layouts drawn as
 // see-through ghosts (no brand logos). Preview only, never exported.
 
 export const PLATFORM_OVERLAYS = [
@@ -7,6 +7,7 @@ export const PLATFORM_OVERLAYS = [
   ['tiktok', 'TikTok'],
   ['reels', 'Instagram Reels'],
   ['shorts', 'YouTube Shorts'],
+  ['spotify', 'Spotify Canvas'],
 ];
 
 // 24x24 stroke icons (Lucide-style paths)
@@ -234,7 +235,42 @@ function shorts(k) {
   k.navBar(0.945, [['home', 'Home'], ['shorts', 'Shorts'], ['plusBox', ''], ['subs', 'Subscriptions'], ['user', 'You']]);
 }
 
+/** Spotify's Now Playing view over a Canvas: header, then title, artist, progress and controls over the lower third. */
+function spotify(k, ctx, W, H, alpha) {
+  // the app darkens the top and bottom so its text stays readable
+  const fade = (y0, y1, a0, a1) => {
+    const g = ctx.createLinearGradient(0, H * y0, 0, H * y1);
+    g.addColorStop(0, `rgba(0,0,0,${a0 * alpha})`);
+    g.addColorStop(1, `rgba(0,0,0,${a1 * alpha})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, H * y0, W, H * (y1 - y0));
+  };
+  fade(0, 0.14, 0.55, 0);
+  fade(0.6, 1, 0, 0.75);
+  k.icon('back', 0.07, 0.06, 0.07);
+  k.text('PLAYING FROM ARTIST', 0.5, 0.05, 0.026, { align: 'center', bold: false });
+  k.text('Your band', 0.5, 0.072, 0.032, { align: 'center' });
+  k.icon('more', 0.93, 0.06, 0.07);
+  k.text('Song title', 0.06, 0.765, 0.055);
+  k.text('Artist name', 0.06, 0.795, 0.036, { bold: false });
+  k.icon('plus', 0.92, 0.775, 0.075);
+  k.circle(0.92, 0.775, 0.045);
+  k.bar(0.06, 0.835, 0.88, 0.01);
+  k.circle(0.32, 0.835, 0.016, true);
+  k.count(0.09, 0.855, 0.06);
+  k.count(0.91, 0.855, 0.06);
+  k.icon('remix', 0.1, 0.905, 0.065);
+  k.icon('back', 0.3, 0.905, 0.075);
+  k.circle(0.5, 0.905, 0.085, true);
+  k.icon('play', 0.5, 0.905, 0.07);
+  k.icon('share', 0.7, 0.905, 0.075);
+  k.icon('live', 0.9, 0.905, 0.06);
+  k.icon('subs', 0.08, 0.965, 0.05);
+  k.icon('send', 0.92, 0.965, 0.05);
+}
+
 const CLEAR = {
+  spotify: [0.06, 0.12, 0.94, 0.7],
   tiktok: [0.04, 0.11, 0.83, 0.79],
   reels: [0.04, 0.1, 0.85, 0.79],
   shorts: [0.04, 0.1, 0.84, 0.77],
@@ -242,14 +278,14 @@ const CLEAR = {
 
 /** Draw the phantom UI for `platform` over a W x H frame. Only meaningful for 9:16. */
 export function drawPlatformOverlay(ctx, W, H, platform, { opacity = 0.6, clear = true } = {}) {
-  const draw = { tiktok, reels, shorts }[platform];
+  const draw = { tiktok, reels, shorts, spotify }[platform];
   if (!draw) return;
   ctx.save();
   ctx.shadowColor = 'rgba(0,0,0,0.45)';
   ctx.shadowBlur = W * 0.008;
-  draw(kit(ctx, W, H, opacity));
+  draw(kit(ctx, W, H, opacity), ctx, W, H, opacity);
   ctx.restore();
   if (clear) clearArea(ctx, W, H, CLEAR[platform], opacity);
 }
 
-export const overlaySupported = (aspect) => aspect === '9:16';
+export const overlaySupported = (aspect) => aspect === '9:16' || aspect === 'canvas';

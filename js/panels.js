@@ -46,6 +46,10 @@ import { exportVideo, pickMimeType } from './engine.js';
 import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS, MASK_SHAPES, GRADE_PRESETS, renderFrame } from './renderer.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate, tabIntoLayout, lyricsIntoLayout, tabSources, templateNeeds } from './templates.js';
+import { CANVAS_TEMPLATES, CANVAS_MIN, CANVAS_MAX, canvasTemplate, applyCanvas, undoCanvas, canvasIssues, clampCanvasLength, isCanvas } from './canvas.js';
+
+/** The Spotify Canvas loop length picked in the Templates tab (not saved). */
+const canvasUI = { length: null };
 import { LYRIC_DISPLAYS, DISPLAY_DEFAULTS } from './lyricviz.js';
 import { BUILTIN_SFX, synthSfx, searchSfx, SFX_CATEGORIES, SFX_LICENSES } from './sfx.js';
 import { shareFile, canShareFiles, youtube } from './share.js';
@@ -694,9 +698,11 @@ export function createPanels({ store, engine, ui }) {
       );
     });
 
+    const canvasSect = canvasSection(p, sources);
     return h(
       'div',
       {},
+      isCanvas(p) ? canvasSect : null,
       themeSection(p, previewT),
       section(
         'Layout for the app you post to',
@@ -710,6 +716,90 @@ export function createPanels({ store, engine, ui }) {
         p.clips.length ? null : h('p', { class: 'muted tiny' }, 'Add a few clips first to see the previews properly.'),
         h('div', { class: 'tpl-grid' }, cards),
       ),
+      isCanvas(p) ? null : canvasSect,
+    );
+  }
+
+  // ---------------------------------------------------------------- SPOTIFY CANVAS
+  /** Loop templates for a Spotify Canvas, the 3–8 s video behind a track in Now Playing. */
+  function canvasSection(p) {
+    const srcLen = (id) => media.get(id)?.duration ?? Infinity;
+    const len = clampCanvasLength(canvasUI.length ?? p.canvas?.length ?? CANVAS_MAX);
+    const lenIn = h('input', { type: 'range', min: CANVAS_MIN, max: CANVAS_MAX, step: 0.5, value: len, 'aria-label': 'Loop length in seconds', 'data-k': 'canvas-len' });
+    const lenOut = h('strong', {}, `${len.toFixed(1)} s`);
+    lenIn.addEventListener('input', () => (lenOut.textContent = `${(+lenIn.value).toFixed(1)} s`));
+    lenIn.addEventListener('change', () => {
+      canvasUI.length = +lenIn.value;
+      // re-apply the current Canvas template at the new length
+      if (isCanvas(store.get()) && store.get().canvas?.template) use(store.get().canvas.template, false);
+      else ui.refreshPanels(true);
+    });
+    const use = (id, announce = true) => {
+      let res = null;
+      store.update((d) => (res = applyCanvas(d, id, { length: canvasUI.length ?? len, srcLen })));
+      if (!res || !res.ok) return toast(res ? res.message : 'Could not make the Canvas.', 'error', 5000);
+      ui.setLoop && ui.setLoop(true);
+      engine.seek && engine.seek(0);
+      if (announce) toast(`“${canvasTemplate(id).name}” Canvas: a ${res.length.toFixed(1)} s loop. ${res.message || 'Undo (Ctrl+Z) to go back.'}`, 'info', 5000);
+      else if (res.message) toast(res.message, 'info', 5000);
+      ui.refreshPanels(true);
+    };
+    const loopLabel = { seamless: 'Seamless loop', hardcut: 'Hard cut', rebound: 'Rebound' };
+    const cards = CANVAS_TEMPLATES.map((tpl) => {
+      const c = h('canvas', { width: 108, height: 192, class: 'tpl-thumb', 'aria-hidden': 'true' });
+      requestAnimationFrame(() => {
+        const draft = structuredClone(store.get());
+        const r = applyCanvas(draft, tpl.id, { length: len, srcLen });
+        draft.look.overlay = 'off';
+        for (const x of draft.clips) if (x.from) x.id = x.from; // draw with the clips' video elements already loaded
+        try {
+          if (r.ok) renderFrame(c.getContext('2d'), c.width, c.height, draft, Math.min(1.5, draft.duration / 3), engine.env(false));
+        } catch (e) {
+          console.warn('canvas preview failed', e);
+        }
+      });
+      const on = isCanvas(p) && p.canvas?.template === tpl.id;
+      return h(
+        'div',
+        { class: `tpl-card${on ? ' on' : ''}`, 'data-canvas': tpl.id },
+        c,
+        h(
+          'div',
+          { class: 'tpl-info' },
+          h('strong', {}, tpl.name),
+          h('span', { class: 'tpl-loop tiny' }, loopLabel[tpl.loop]),
+          h('span', { class: 'muted tiny' }, tpl.blurb),
+          button(on ? 'Applied · re-apply' : 'Make this Canvas', () => use(tpl.id), { variant: `sm${on ? '' : ' primary'}` }),
+        ),
+      );
+    });
+    const issues = isCanvas(p) ? canvasIssues(p, { exportHeight: ASPECTS[p.aspect].h }) : [];
+    const hasSource = p.clips.length || p.endCard.coverMediaId || (p.canvas && p.canvas.backup);
+    return section(
+      'Spotify Canvas',
+      h('p', { class: 'muted small' }, 'A Canvas is the 3–8 second vertical loop that plays behind your track in Spotify instead of the cover art. Each template turns your first clips (or the cover art) into a loop that runs back into its start, in Spotify’s size (608×1080), with no text, lyrics or end card. Upload it in Spotify for Artists → Music → your track → Add Canvas.'),
+      hasSource ? null : h('p', { class: 'warn-list' }, 'Add a clip, or pick the song’s cover art on the End card tab, first.'),
+      h('label', { class: 'canvas-len' }, h('span', { class: 'small' }, 'Loop length'), lenIn, lenOut),
+      isCanvas(p)
+        ? h(
+            'div',
+            { class: 'canvas-status' },
+            issues.length ? h('ul', { class: 'warn-list' }, issues.map((i) => h('li', { class: i.level }, i.text))) : h('p', { class: 'ok-text small' }, '✓ Fits Spotify’s Canvas rules: 9:16, 1080 px tall, 3–8 seconds, no text or flashing.'),
+            h(
+              'div',
+              { class: 'row' },
+              button('Export the Canvas', () => ui.openTab('export'), { iconName: 'download', variant: 'sm primary' }),
+              p.canvas && p.canvas.backup ? button('Back to my edit', () => {
+                store.update((d) => undoCanvas(d));
+                ui.setLoop && ui.setLoop(false);
+                toast('Your edit is back (format, length, clips and end card).');
+                ui.refreshPanels(true);
+              }, { variant: 'sm ghost', title: 'Undo the Canvas: puts the format, length, clips and end card back' }) : null,
+            ),
+          )
+        : null,
+      h('div', { class: 'tpl-grid' }, cards),
+      h('p', { class: 'muted tiny' }, 'Spotify’s tips: no singing or rapping on screen (it won’t sync), no fast cuts or intense flashing, and keep the important part away from the edges and the bottom third, where the title and controls sit. The preview shows Spotify’s Now Playing view; turn it off under the preview.'),
     );
   }
 
@@ -1973,6 +2063,17 @@ export function createPanels({ store, engine, ui }) {
     );
   }
 
+  /** On the Export tab for a Spotify Canvas: how it measures up and where to upload it. */
+  function canvasExportNote(p) {
+    const list = canvasIssues(p, { exportHeight: ASPECTS[p.aspect].h });
+    return h(
+      'div',
+      { class: 'canvas-export' },
+      h('p', { class: 'small' }, h('strong', {}, 'Spotify Canvas. '), 'Exports silent, as MP4 where this browser can (Spotify takes MP4 or JPG). Upload it in Spotify for Artists → Music → your track → Add Canvas.'),
+      list.length ? h('ul', { class: 'warn-list' }, list.map((i) => h('li', { class: i.level }, i.text))) : h('p', { class: 'ok-text small' }, '✓ Fits Spotify’s Canvas rules.'),
+    );
+  }
+
   // ---------------------------------------------------------------- EXPORT
   const exportState = { running: false, progress: 0, result: null, error: '' };
   function buildExport(b) {
@@ -1985,9 +2086,10 @@ export function createPanels({ store, engine, ui }) {
     monitor.addEventListener('change', () => ((settings.monitorExport = monitor.checked), saveSettings(settings)));
     const { w, hgt } = { w: ASPECTS[p.aspect].w, hgt: ASPECTS[p.aspect].h };
 
+    const cv = isCanvas(p);
     const issues = [];
     if (!p.clips.length) issues.push('No video clips yet. The video will only show text on the background color.');
-    if (!p.song) issues.push('No song chosen.');
+    if (!p.song && !cv) issues.push('No song chosen.');
     if (p.endCard.enabled && !p.endCard.coverMediaId) issues.push('End card has no cover art.');
     const contentLen = layoutClips(p.clips).reduce((m, l) => Math.max(m, l.end), 0);
     if (p.clips.length && contentLen < p.duration - (p.endCard.enabled && p.endCard.background !== 'video' ? p.endCard.duration : 0) - 0.05) issues.push(`Clips end at ${formatTime(contentLen)}; after that the background shows until ${formatTime(p.duration)}.`);
@@ -2006,6 +2108,7 @@ export function createPanels({ store, engine, ui }) {
           bitrate: Number(quality.value),
           fps: Number(fps.value),
           monitor: monitor.checked,
+          audio: !cv, // a Canvas is silent: Spotify plays the track under it
           onProgress: (f) => {
             exportState.progress = f;
             const bar = document.querySelector('.export-progress > div');
@@ -2015,7 +2118,7 @@ export function createPanels({ store, engine, ui }) {
           },
         });
         const ext = res.mime.includes('mp4') ? 'mp4' : 'webm';
-        exportState.result = { ...res, name: `${slug(p.name)}-${p.aspect.replace(':', 'x')}.${ext}`, url: URL.createObjectURL(res.blob) };
+        exportState.result = { ...res, name: `${slug(p.name)}-${cv ? 'spotify-canvas' : p.aspect.replace(':', 'x')}.${ext}`, url: URL.createObjectURL(res.blob) };
         toast('Export finished');
       } catch (e) {
         if (e.message !== 'cancelled') exportState.error = e.message || 'Export failed';
@@ -2037,6 +2140,7 @@ export function createPanels({ store, engine, ui }) {
         'Export video',
         h('p', { class: 'small' }, `${w}×${hgt} · ${formatTime(p.duration)} long. The video plays through once while it records, so exporting takes about ${Math.ceil(p.duration)} seconds. Keep this tab in front.`),
         issues.length ? h('ul', { class: 'warn-list' }, issues.map((i) => h('li', {}, i))) : null,
+        cv ? canvasExportNote(p) : null,
         field('Format', fmt),
         h('div', { class: 'grid2' }, field('Quality', quality), field('Frame rate', fps)),
         h('label', { class: 'toggle' }, monitor, h('span', {}, 'Play sound while exporting')),
@@ -2050,7 +2154,7 @@ export function createPanels({ store, engine, ui }) {
               { class: 'result' },
               h('video', { src: exportState.result.url, controls: true, playsInline: true }),
               h('a', { class: 'btn primary wide', href: exportState.result.url, download: exportState.result.name }, icon('download', 16), h('span', {}, `Download ${exportState.result.name} (${(exportState.result.blob.size / 1e6).toFixed(1)} MB)`)),
-              exportState.result.mime.includes('webm') ? h('p', { class: 'muted tiny' }, 'WebM uploads fine to YouTube. Instagram prefers MP4, which Chrome and Edge can export.') : null,
+              exportState.result.mime.includes('webm') ? h('p', { class: cv ? 'warn-list' : 'muted tiny' }, cv ? 'This browser saved WebM, but Spotify only takes MP4 for a Canvas. Export it again in Chrome or Edge, which save MP4.' : 'WebM uploads fine to YouTube. Instagram prefers MP4, which Chrome and Edge can export.') : null,
             )
           : null,
       ),

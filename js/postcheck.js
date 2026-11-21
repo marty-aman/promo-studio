@@ -22,7 +22,7 @@ export function postCheck(p) {
   const clips = shown(p, 'video') ? p.clips || [] : [];
 
   // format
-  if (p.aspect !== '9:16') add('aspect', 'bad', 'Not vertical', 'Reels, TikTok and Shorts favour original 9:16 video. Other shapes get bars or are cropped.', { kind: 'aspect' });
+  if (p.aspect !== '9:16' && p.aspect !== 'canvas') add('aspect', 'bad', 'Not vertical', 'Reels, TikTok and Shorts favour original 9:16 video. Other shapes get bars or are cropped.', { kind: 'aspect' });
 
   // the basics
   if (!p.song) add('song', 'bad', 'No song', 'A music promo needs your track so people can find and use the sound.', { kind: 'tab', tab: 'audio' });
