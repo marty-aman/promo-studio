@@ -263,6 +263,34 @@ export function buildLayersPanel(b, ctx, opts = {}) {
   }
 
   // ------------------------------------------------------------ per-type settings
+  /**
+   * The current song's files from `all`, by `ids` (in that order), with the one already picked kept at the
+   * end. When the edit isn't linked to one of your songs, everything in `all` is offered as before.
+   */
+  function forSong(all, ids, picked) {
+    const sc = ui.songContext ? ui.songContext() : null;
+    if (!sc || !sc.song) return { list: all, song: null };
+    const list = ids.map((id) => all.find((m) => m.id === id)).filter(Boolean);
+    const keep = picked && !list.some((m) => m.id === picked) ? all.find((m) => m.id === picked) : null;
+    return { list, song: sc.song, keep, stems: sc.stems };
+  }
+  /** Says the list holds the current song's files (or that it has none yet). */
+  function songNote(fs, what) {
+    if (!fs.song) return null;
+    return h('p', { class: 'muted tiny' }, fs.list.length ? `${what} of “${fs.song.title}” (its Files tab in Songs & releases).` : `“${fs.song.title}” has no ${what.toLowerCase()} yet: add them on its Files tab in Songs & releases, or upload them here.`);
+  }
+  /** Upload stems here: into the library, and onto the current song's Files tab. */
+  async function uploadStems() {
+    const files = await pickFiles('audio/*', true);
+    if (!files.length) return;
+    const before = new Set(media.all().map((m) => m.id));
+    await importFiles(files);
+    const added = media.all().filter((m) => !before.has(m.id) && m.kind === 'audio');
+    const n = ui.addStemsToSong ? ui.addStemsToSong(added) : 0;
+    if (n) toast(`${n} stem${n === 1 ? '' : 's'} added to the song’s Files tab too.`);
+    ui.refreshPanels(true);
+  }
+
   function settingsFor(L) {
     const set = (fn) => (d, v) => {
       const x = d.layers.find((y) => y.id === L.id);
@@ -398,7 +426,8 @@ export function buildLayersPanel(b, ctx, opts = {}) {
 
     // ---- guitar tab layer
     if (L.type === 'tab') {
-      const tabs = media.all().filter((m) => m.kind === 'tab' && m.tracks && m.tracks.length);
+      const tabFs = forSong(media.all().filter((m) => m.kind === 'tab' && m.tracks && m.tracks.length), ui.songContext && ui.songContext() ? ui.songContext().tabs : [], L.mediaId);
+      const tabs = [...tabFs.list, ...(tabFs.keep ? [tabFs.keep] : [])];
       const upload = button('Upload Guitar Pro tab', async () => importFiles(await pickFiles(TAB_ACCEPT, false), { tabLayer: L.id }), { iconName: 'upload', variant: tabs.length ? 'ghost sm' : 'primary' });
       const studio = button('Edit in Tab Studio', () => ui.openTab('tabstudio'), { iconName: 'guitar', variant: 'ghost sm', title: 'Edit notes, or make a tab from your stems' });
       const rec = media.get(L.mediaId);
@@ -406,13 +435,13 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         const x = findLayer(store.get(), L.id);
         return x ? tabTimeline(media.get(x.mediaId), x.track) : null;
       };
-      const fileSel = h('select', {}, h('option', { value: '' }, '— choose a tab file —'), tabs.map((m) => h('option', { value: m.id, selected: m.id === L.mediaId }, m.name)));
+      const fileSel = h('select', {}, h('option', { value: '' }, '— choose a tab file —'), tabs.map((m) => h('option', { value: m.id, selected: m.id === L.mediaId }, tabFs.keep === m ? `${m.name} (not this song’s)` : m.name)));
       fileSel.addEventListener('change', () => store.update(set((x) => {
         x.mediaId = fileSel.value || null;
         const r = media.get(fileSel.value);
         x.track = r ? r.tracks[0].index : 0;
       })));
-      if (!rec) return h('div', {}, common, field('Tab file', fileSel), h('div', { class: 'row' }, upload, studio), h('p', { class: 'muted small' }, 'Guitar Pro (.gp, .gp5, .gp4, .gp3, .gpx) or MusicXML. No file? Tab Studio can make one from your stems.'));
+      if (!rec) return h('div', {}, common, field('Tab file', fileSel), songNote(tabFs, 'Guitar Pro tabs'), h('div', { class: 'row' }, upload, studio), h('p', { class: 'muted small' }, 'Guitar Pro (.gp, .gp5, .gp4, .gp3, .gpx) or MusicXML. No file? Tab Studio can make one from your stems.'));
       const T = set;
       const g = (k, def) => get((x) => x[k] ?? def);
       const style = L.style || 'tab';
@@ -464,6 +493,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         {},
         common,
         field('Tab file', fileSel),
+        songNote(tabFs, 'Guitar Pro tabs'),
         h('div', { class: 'row' }, upload, studio),
         b.select('Track', () => String(findLayer(store.get(), L.id)?.track ?? 0), T((o, v) => (o.track = parseInt(v, 10))), rec.tracks.map((tr) => [String(tr.index), `${tr.name} · ${tr.strings} strings (${tr.tuning.slice().reverse().join(' ')})`])),
         h('div', { class: 'lbl' }, 'Style'),
@@ -491,8 +521,14 @@ export function buildLayersPanel(b, ctx, opts = {}) {
 
     // ---- drum chart layer
     if (L.type === 'drums') {
-      const gpFiles = media.all().filter((m) => m.kind === 'tab' && m.drumTracks && m.drumTracks.length);
-      const stems = media.all().filter((m) => m.kind === 'audio' || m.kind === 'video');
+      const sc0 = ui.songContext ? ui.songContext() : null;
+      const gpFs = forSong(media.all().filter((m) => m.kind === 'tab' && m.drumTracks && m.drumTracks.length), sc0 ? sc0.tabs : [], L.mediaId);
+      const gpFiles = [...gpFs.list, ...(gpFs.keep ? [gpFs.keep] : [])];
+      // the song's stems, drums and percussion first
+      const stemIds = sc0 ? [...sc0.stems.filter((x) => x.role === 'drums' || x.role === 'perc'), ...sc0.stems.filter((x) => x.role !== 'drums' && x.role !== 'perc')].map((x) => x.mediaId) : [];
+      const stemFs = forSong(media.all().filter((m) => (m.kind === 'audio' || m.kind === 'video') && (m.id === L.mediaId || !(p.song && m.id === p.song.mediaId))), stemIds, L.mediaId);
+      const stems = [...stemFs.list, ...(stemFs.keep ? [stemFs.keep] : [])];
+      const stemLabel = (m) => (stemFs.keep === m ? `${m.name} (not this song’s)` : (sc0 && sc0.stems.find((x) => x.mediaId === m.id)?.label) || m.name);
       const midiFiles = media.all().filter((m) => m.kind === 'midi');
       const g = (k, def) => get((x) => x[k] ?? def);
       const rec = media.get(L.mediaId);
@@ -503,7 +539,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         const data = drumHitsFromStem(rec, L.sensitivity, () => ui.refreshPanels(true));
         status = h('p', { class: 'muted tiny' }, data === undefined ? 'Listening to the stem for kick, snare and hi-hat hits…' : data ? `${data.hits.length} hits found: ${data.lanes.map((l) => `${data.hits.filter((x) => x.lane === l).length} ${l}`).join(', ')}.` : 'Could not read this file.');
       }
-      const fileSel = h('select', {}, h('option', { value: '' }, isStem ? '— choose a drum stem —' : isMidi ? '— choose a MIDI file —' : '— choose a Guitar Pro file —'), (isStem ? stems : isMidi ? midiFiles : gpFiles).map((m) => h('option', { value: m.id, selected: m.id === L.mediaId }, m.name)));
+      const fileSel = h('select', {}, h('option', { value: '' }, isStem ? '— choose a drum stem —' : isMidi ? '— choose a MIDI file —' : '— choose a Guitar Pro file —'), (isStem ? stems : isMidi ? midiFiles : gpFiles).map((m) => h('option', { value: m.id, selected: m.id === L.mediaId }, isStem ? stemLabel(m) : gpFs.keep === m ? `${m.name} (not this song’s)` : m.name)));
       fileSel.addEventListener('change', () => store.update(set((x) => {
         x.mediaId = fileSel.value || null;
         const r = media.get(fileSel.value);
@@ -537,8 +573,9 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         common,
         b.segmented('Notes come from', g('source', 'gp'), set((x, v) => ((x.source = v), (x.mediaId = null), (x.offset = v !== 'audio' ? +timelineToSong(0, store.get().song).toFixed(3) : 0))), [['gp', 'Guitar Pro drum track'], ['midi', 'MIDI file'], ['audio', 'Drum stem (audio)']]),
         field(isStem ? 'Drum stem' : isMidi ? 'MIDI file' : 'Guitar Pro file', fileSel),
+        isMidi ? null : songNote(isStem ? stemFs : gpFs, isStem ? 'Stems' : 'Guitar Pro tabs'),
         isStem
-          ? button('Upload a drum stem', async () => importFiles(await pickFiles('audio/*', true)), { iconName: 'upload', variant: 'ghost sm' })
+          ? button('Upload a drum stem', uploadStems, { iconName: 'upload', variant: 'ghost sm' })
           : isMidi ? button('Upload a MIDI file', async () => importFiles(await pickFiles(MIDI_ACCEPT, false), { drumLayer: L.id }), { iconName: 'upload', variant: 'ghost sm' })
             : button('Upload Guitar Pro file', async () => importFiles(await pickFiles(TAB_ACCEPT, false), { drumLayer: L.id }), { iconName: 'upload', variant: 'ghost sm' }),
         midiBits(),
@@ -652,8 +689,12 @@ export function buildLayersPanel(b, ctx, opts = {}) {
 
     // ---- visualizer layer
     const g = (k, def) => get((x) => x[k] ?? def);
-    const sources = media.all().filter((m) => m.kind === 'audio' || m.kind === 'video');
-    const srcSel = h('select', {}, h('option', { value: 'song' }, 'The song'), sources.filter((m) => !(p.song && m.id === p.song.mediaId)).map((m) => h('option', { value: m.id, selected: m.id === L.source }, m.name)));
+    // the song itself, then only the current song's stems (grouped by part)
+    const scV = ui.songContext ? ui.songContext() : null;
+    const vizFs = forSong(media.all().filter((m) => (m.kind === 'audio' || m.kind === 'video') && (m.id === L.source || !(p.song && m.id === p.song.mediaId))), scV ? scV.stems.map((x) => x.mediaId) : [], L.source && L.source !== 'song' ? L.source : null);
+    const sources = [...vizFs.list, ...(vizFs.keep ? [vizFs.keep] : [])];
+    const vizLabel = (m) => (vizFs.keep === m ? `${m.name} (not this song’s)` : (scV && scV.stems.find((x) => x.mediaId === m.id)?.label) || m.name);
+    const srcSel = h('select', { 'aria-label': 'Reacts to' }, h('option', { value: 'song' }, 'The song'), sources.map((m) => h('option', { value: m.id, selected: m.id === L.source }, vizLabel(m))));
     srcSel.value = L.source || 'song';
     srcSel.addEventListener('change', () => store.update(set((x) => (x.source = srcSel.value))));
     const recV = media.get(L.source === 'song' ? p.song && p.song.mediaId : L.source);
@@ -669,7 +710,8 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       'div',
       {},
       common,
-      field('Reacts to', srcSel, 'Pick a stem (drums, bass, vocals…) or the whole song. Upload stems in the Audio tab.'),
+      field('Reacts to', srcSel, vizFs.song ? null : 'Pick a stem (drums, bass, vocals…) or the whole song. Upload stems in the Audio tab.'),
+      songNote(vizFs, 'Stems'),
       L.source && L.source !== 'song' && media.get(L.source)
         ? section(
             'Sync with the song',
@@ -677,7 +719,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
             b.number('Stem starts at (song seconds)', g('offset', 0), set((x, v) => ((x.offset = v), (x.userSync = true))), { step: 0.01 }),
           )
         : null,
-      button('Upload stems', async () => importFiles(await pickFiles('audio/*', true)), { iconName: 'upload', variant: 'ghost sm' }),
+      button('Upload stems', uploadStems, { iconName: 'upload', variant: 'ghost sm', title: 'Into the media library, and onto the song’s Files tab in Songs & releases' }),
       h('p', { class: 'muted tiny' }, !recV ? (isPoly(L.style) ? 'Audio is optional for this style: it only adds a glow on loud moments.' : 'No audio chosen yet.') : feat === undefined ? 'Analysing the audio…' : feat ? `Ready: ${feat.duration.toFixed(1)}s analysed.` : 'Could not read this audio file.'),
       section('Style', styleGrid),
       isPoly(L.style)

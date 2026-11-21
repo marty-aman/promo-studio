@@ -229,6 +229,13 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
 - Cover art with blurred-cover, color or dimmed-video background, title, artist, CTA pill,
   streaming platform badges, small text. Entrances: rise, zoom, spin, drop & bounce, card flip,
   vinyl slides out, glitch.
+- **Your songs and their files only.** The Audio tab's song menu lists your songs from Songs & releases
+  that have a song file, by title; picking one also links the edit to that song. Then the Visualizer's
+  *Reacts to* (the song, then that song's stems by part), a drum chart's stem (drums and percussion first)
+  and the Guitar Pro pickers list only that song's files from its Files tab. *Upload stems* there adds them
+  to the song's Files tab too. Anything already picked stays in its menu, marked when it isn't the song's;
+  an edit that isn't linked to one of your songs keeps the full lists. Any other audio file can still be
+  the song with *Use as song* in the media library.
 - The **Cover art** menu lists only the covers of your songs, EPs and albums in Songs & releases (an EP's
   or album's cover names the songs on it), the song in the edit first, not every picture in the library.
   A cover set another way (Spotify's *Get info*, *Cover art* on a library picture) stays in the menu,

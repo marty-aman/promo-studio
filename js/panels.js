@@ -1832,14 +1832,27 @@ export function createPanels({ store, engine, ui }) {
   // ---------------------------------------------------------------- AUDIO
   function buildAudio(b) {
     const p = store.get();
-    const audioMedia = media.all().filter((m) => m.kind === 'audio' || m.kind === 'video');
-    const songSel = h('select', {}, h('option', { value: '' }, '— choose your song —'), audioMedia.map((m) => h('option', { value: m.id, selected: p.song && p.song.mediaId === m.id }, m.name)));
+    // only your songs (Songs & releases) are offered as the song; stems and other audio stay in the library
+    const sc = ui.songContext ? ui.songContext() : null;
+    const yours = sc ? sc.songs : [];
+    const curRec = p.song && media.get(p.song.mediaId);
+    const curIsSong = curRec && yours.some((s) => s.mediaId === curRec.id);
+    const songSel = h(
+      'select',
+      { 'aria-label': 'Song', 'data-k': 'song-pick' },
+      h('option', { value: '' }, yours.length ? '— choose your song —' : '— no songs with a song file yet —'),
+      yours.map((s) => h('option', { value: `song:${s.id}`, selected: !!(curRec && curRec.id === s.mediaId && (!p.managerSongId || p.managerSongId === s.id)) }, s.title)),
+      curRec && !curIsSong ? h('option', { value: `file:${curRec.id}`, selected: true }, `${curRec.name} (not one of your songs)`) : null,
+    );
     songSel.addEventListener('change', () => {
-      const rec = media.get(songSel.value);
-      if (rec) actions.useSong(rec);
-      else store.update((d) => (d.song = null));
+      const v = songSel.value;
+      if (v.startsWith('song:')) ui.chooseSong(v.slice(5));
+      else if (!v) store.update((d) => (d.song = null));
       ui.refreshPanels(true);
     });
+    const songHint = yours.length
+      ? 'Your songs from Songs & releases. To use another audio file, press “Use as song” on it in the media library.'
+      : 'Give a song its song file on its Overview in Songs & releases (or press “Use as song” on a file in the media library).';
     const rec = p.song && media.get(p.song.mediaId);
 
     let songBlock = null;
@@ -1956,7 +1969,7 @@ export function createPanels({ store, engine, ui }) {
     return h(
       'div',
       {},
-      section('Song', field('Track', songSel), audioMedia.length ? null : h('p', { class: 'muted small' }, 'Upload your song (MP3, WAV, M4A) here or anywhere on the page.'), audioMedia.length ? null : button('Upload song', async () => importFiles(await pickFiles('audio/*', false)), { iconName: 'upload', variant: 'primary' }), songBlock),
+      section('Song', field('Track', songSel, songHint), yours.length || curRec ? null : button('Upload a song file', async () => importFiles(await pickFiles('audio/*', false)), { iconName: 'upload', variant: 'primary' }), songBlock),
       section('Extra audio', h('p', { class: 'muted small' }, 'Voice-over, a riser or sound effects. Each gets its own track; it starts at the playhead.'), tracks, button('Add audio file', addAudio, { iconName: 'plus' })),
       section('Video clip sound', h('p', { class: 'muted small' }, 'Clips are muted by default so your song is clean. Select a clip on the timeline to turn its own sound up.')),
     );
