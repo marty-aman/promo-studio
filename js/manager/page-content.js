@@ -162,12 +162,12 @@ export function buildContent(ctx) {
     const main = h(
       'tr',
       { class: p.status === 'posted' ? 'posted' : '' },
-      h('td', {}, f.text(`cd-${p.id}`, '', p.date, P(p.id, (x, v) => (x.date = v)), { type: 'date' })),
-      h('td', { class: 'muted small' }, songTitle(p.songId) || '—'),
-      h('td', {}, f.select(`cf-${p.id}`, '', p.format || 'other', FORMATS, P(p.id, (x, v) => (x.format = v)))),
-      h('td', {}, f.text(`ct-${p.id}`, '', p.title, P(p.id, (x, v) => (x.title = v)))),
-      h('td', {}, f.select(`cp-${p.id}`, '', PLATFORMS.includes(p.platform) ? p.platform : 'Other', PLATFORMS.map((x) => [x, x]), P(p.id, (x, v) => (x.platform = v)))),
-      h('td', {}, f.select(`cs-${p.id}`, '', p.status, POST_STATUSES, P(p.id, (x, v) => (x.status = v)))),
+      h('td', {}, f.text(`cd-${p.id}`, '', p.date, P(p.id, (x, v) => (x.date = v)), { type: 'date', aria: `Date: ${p.title || 'post'}` })),
+      h('td', { class: 'muted small' }, songTitle(p.songId) || (p.songTitle ? `${p.songTitle} (deleted)` : '—')),
+      h('td', {}, f.select(`cf-${p.id}`, '', p.format || 'other', FORMATS, P(p.id, (x, v) => (x.format = v)), { aria: `Format: ${p.title || 'post'}` })),
+      h('td', {}, f.text(`ct-${p.id}`, '', p.title, P(p.id, (x, v) => (x.title = v)), { aria: 'Post title' })),
+      h('td', {}, f.select(`cp-${p.id}`, '', PLATFORMS.includes(p.platform) ? p.platform : 'Other', PLATFORMS.map((x) => [x, x]), P(p.id, (x, v) => (x.platform = v)), { aria: `Platform: ${p.title || 'post'}` })),
+      h('td', {}, f.select(`cs-${p.id}`, '', p.status, POST_STATUSES, P(p.id, (x, v) => (x.status = v)), { aria: `Status: ${p.title || 'post'}` })),
       h('td', {}, f.text(`cu-${p.id}`, '', p.url, P(p.id, (x, v) => {
         x.url = v.trim();
         const pl = parseLink(x.url).platform;

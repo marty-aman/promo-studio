@@ -53,7 +53,7 @@ export function bandsTab(ctx) {
       b.playsAt.length ? h('p', { class: 'muted tiny' }, `Plays: ${b.playsAt.join(', ')}`) : null,
       b.active ? h('p', { class: 'muted tiny' }, `Active: ${b.active}`) : null,
       h('div', { class: 'row' }, checkBadge(b)),
-      h('div', { class: 'mgr-two' }, f.select(`bs-${b.id}`, '', b.status, BAND_STATUSES, B(b.id, (x, v) => (x.status = v))), showSel || h('span')),
+      h('div', { class: 'mgr-two' }, f.select(`bs-${b.id}`, '', b.status, BAND_STATUSES, B(b.id, (x, v) => (x.status = v)), { aria: `Status for ${b.name}` }), showSel || h('span')),
       f.text(`bn-${b.id}`, '', b.myNotes, B(b.id, (x, v) => (x.myNotes = v)), { placeholder: 'Our notes: who to message, their draw…' }),
       b.seed
         ? null
@@ -97,12 +97,12 @@ export function contactsTab(ctx) {
                 'tr',
                 {},
                 col(c, 'name', 'Name'),
-                h('td', {}, f.select(`crole-${c.id}`, '', c.role, CONTACT_ROLES, C(c.id, (x, v) => (x.role = v)))),
+                h('td', {}, f.select(`crole-${c.id}`, '', c.role, CONTACT_ROLES, C(c.id, (x, v) => (x.role = v)), { aria: `Role: ${c.name || 'contact'}` })),
                 col(c, 'org', 'Venue, blog, studio…'),
                 col(c, 'email', 'email', 'email'),
                 col(c, 'phone', 'phone', 'tel'),
                 col(c, 'social', 'link', 'url'),
-                col(c, 'notes', ''),
+                col(c, 'notes', 'Notes'),
                 h('td', {}, iconButton('trash', `Delete ${c.name || 'contact'}`, () => ctx.update((d) => (d.contacts = d.contacts.filter((x) => x.id !== c.id))), 'ghost')),
               ),
             ),

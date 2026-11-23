@@ -53,16 +53,21 @@ export function managerICS(m, { from = '', days = 400, stamp = new Date(), ws = 
   const views = ws ? Object.fromEntries(ws.artists.map((a) => [a.id, viewOf(ws, a.id)])) : null;
   const dt = `${stamp.toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Band Manager//Band manager//EN', `X-WR-CALNAME:${icsEsc(ws ? 'All artists · manager' : `${m.band.name || 'Band'} · manager`)}`, 'CALSCALE:GREGORIAN'];
-  items.forEach((it, i) => {
+  items.forEach((it) => {
     const src = views ? views[it.artistId] : m;
     const show = it.kind === 'show' && src.shows.find((s) => s.id === it.ref.id);
     const song = it.kind === 'shoot' && src.songs.find((s) => s.id === it.ref.id);
     const time = show ? show.setTime || show.doors : song ? song.shoot.callTime : '';
-    lines.push('BEGIN:VEVENT', `UID:${it.kind}-${it.ref.id}-${icsDay(it.date)}-${i}${it.artistId ? `-${it.artistId}` : ''}@promo-studio`, `DTSTAMP:${dt}`);
+    // the UID comes from what the item is (never its place in the list), so a calendar app that
+    // imports the file again updates the same events instead of adding copies
+    lines.push('BEGIN:VEVENT', `UID:${it.kind}-${it.ref.id}${it.key ? `-${it.key}` : ''}-${icsDay(it.date)}${it.artistId ? `-${it.artistId}` : ''}@promo-studio`, `DTSTAMP:${dt}`);
     if (time && /^\d{2}:\d{2}$/.test(time)) {
       const [hh, mm] = time.split(':').map(Number);
-      const endH = Math.min(23, hh + (show ? 1 : 8));
-      lines.push(`DTSTART:${icsLocal(it.date, time)}`, `DTEND:${icsLocal(it.date, `${String(endH).padStart(2, '0')}:${String(mm).padStart(2, '0')}`)}`);
+      // an hour for a set, 8 for a shoot, running past midnight onto the next day when it has to
+      const end = hh * 60 + mm + (show ? 60 : 480);
+      const endDay = addDays(it.date, Math.floor(end / 1440));
+      const endT = `${String(Math.floor((end % 1440) / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
+      lines.push(`DTSTART:${icsLocal(it.date, time)}`, `DTEND:${icsLocal(endDay, endT)}`);
     } else lines.push(`DTSTART;VALUE=DATE:${icsDay(it.date)}`, `DTEND;VALUE=DATE:${icsDay(addDays(it.date, 1))}`);
     const title = `${views ? `${it.artist}: ` : ''}${{ show: `Show: ${it.title}`, release: it.title, shoot: it.title, post: `Post: ${it.title}`, task: `To do: ${it.title}` }[it.kind]}`;
     lines.push(fold(`SUMMARY:${icsEsc(title)}`), fold(`DESCRIPTION:${icsEsc(it.sub)}`));
@@ -122,13 +127,18 @@ export const MONEY_CATS = [['show', 'Shows'], ['merch', 'Merch'], ['streaming', 
 export const newEntry = (kind = 'expense', date = isoDate(new Date())) => ({ id: mid('money'), date, kind, amount: '', category: kind === 'income' ? 'show' : 'other', songId: '', showId: '', note: '' });
 
 const amt = (v) => (v === '' || v == null || Number.isNaN(+v) ? 0 : +v);
+/** A show whose settlement is real money: played, or its day has come and it wasn't cancelled. */
+export const showSettled = (s, today) => s.status === 'played' || (s.status !== 'cancelled' && !!s.date && s.date <= today);
+
 /**
  * Every money line: the ledger plus show settlements (pay and merch in, costs out), so the totals
- * include shows without typing them twice.
+ * include shows without typing them twice. Shows still to come (or cancelled) don't count yet;
+ * see expectedShowMoney for what upcoming shows should bring in.
  */
-export function moneyLines(m) {
+export function moneyLines(m, today = isoDate(new Date())) {
   const out = m.money.map((e) => ({ ...e, amount: amt(e.amount), from: 'ledger' }));
   for (const s of m.shows) {
+    if (!showSettled(s, today)) continue;
     const st = s.settlement || {};
     const base = { date: s.date, showId: s.id, songId: '', from: 'show', note: s.venue || 'Show' };
     if (amt(st.pay)) out.push({ ...base, id: `${s.id}-pay`, kind: 'income', category: 'show', amount: amt(st.pay) });
@@ -136,6 +146,54 @@ export function moneyLines(m) {
     if (amt(st.costs)) out.push({ ...base, id: `${s.id}-costs`, kind: 'expense', category: 'travel', amount: amt(st.costs) });
   }
   return out.filter((e) => e.amount > 0).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+/** Pay already typed in for upcoming (not cancelled) shows, e.g. guarantees: { total, shows }. */
+export function expectedShowMoney(m, today = isoDate(new Date())) {
+  const shows = m.shows.filter((s) => !showSettled(s, today) && s.status !== 'cancelled' && amt((s.settlement || {}).pay) > 0);
+  return { total: shows.reduce((a, s) => a + amt(s.settlement.pay), 0), shows };
+}
+
+const cents = (v) => Math.round(v * 100) / 100;
+/**
+ * Split a show's net between band members: `fund` % is kept back for the band, the rest goes by
+ * each member's share (`shares[memberId]`, default 1; 0 leaves someone out).
+ * Returns { fund, members: [{ id, name, share, amount }] }. A loss isn't split.
+ */
+export function memberSplit(net, members = [], { fund = '', shares = {} } = {}) {
+  const list = (members || []).filter((x) => x && x.name);
+  const pct = Math.min(100, Math.max(0, amt(fund)));
+  if (!(net > 0) || !list.length) return { fund: 0, members: list.map((x) => ({ id: x.id, name: x.name, share: 0, amount: 0 })) };
+  const kept = cents((net * pct) / 100);
+  const w = list.map((x) => (shares && shares[x.id] !== undefined && shares[x.id] !== '' ? Math.max(0, amt(shares[x.id])) : 1));
+  const total = w.reduce((a, b) => a + b, 0);
+  const left = net - kept;
+  return { fund: total ? kept : cents(net), members: list.map((x, i) => ({ id: x.id, name: x.name, share: w[i], amount: total ? cents((left * w[i]) / total) : 0 })) };
+}
+
+/** One line for the band chat: "Split: $45 each (4 members) · band fund $60". '' when there's nothing to split. */
+export function splitText(sp) {
+  const paid = sp.members.filter((x) => x.share > 0);
+  if (!paid.length) return '';
+  const fmt = (v) => `$${v.toFixed(2).replace(/\.00$/, '')}`;
+  const even = paid.every((x) => x.amount === paid[0].amount);
+  const who = even ? `${fmt(paid[0].amount)} each (${paid.length} member${paid.length === 1 ? '' : 's'})` : paid.map((x) => `${x.name} ${fmt(x.amount)}`).join(', ');
+  return `Split: ${who}${sp.fund ? ` · band fund ${fmt(sp.fund)}` : ''}`;
+}
+
+/** Per member, what the band's shows paid them in [from, to] (settled shows only): { fund, members: [{ id, name, amount }] }. */
+export function memberTotals(m, { from = '', to = '9999', today = isoDate(new Date()) } = {}) {
+  const members = (m.band.members || []).filter((x) => x && x.name);
+  const by = new Map(members.map((x) => [x.id, { id: x.id, name: x.name, amount: 0 }]));
+  let fund = 0;
+  for (const s of m.shows) {
+    if (!showSettled(s, today) || (s.date || '') < from || (s.date || '0') > to) continue;
+    const st = s.settlement || {};
+    const sp = memberSplit(amt(st.pay) + amt(st.merch) - amt(st.costs), members, st);
+    fund += sp.fund;
+    for (const x of sp.members) if (by.has(x.id)) by.get(x.id).amount += x.amount;
+  }
+  return { fund: cents(fund), members: [...by.values()].map((x) => ({ ...x, amount: cents(x.amount) })) };
 }
 
 /** Totals: { income, expense, net, byCat: [[cat, income, expense]], byMonth: [[YYYY-MM, income, expense]] } for the lines in [from, to]. */

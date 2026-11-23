@@ -59,8 +59,8 @@ export function showPlanTab(ctx) {
       {},
       h('td', { class: 'n mono' }, times.get(sl.id) ? `${times.get(sl.id).start}–${times.get(sl.id).end}` : ''),
       h('td', {}, f.text(`pl-sn-${sl.id}`, '', sl.name, P((p, v) => (p.slots.find((x) => x.id === sl.id).name = v)), { placeholder: 'Band', list: 'mgr-plan-bands' })),
-      h('td', {}, f.text(`pl-sm-${sl.id}`, '', sl.minutes, P((p, v) => (p.slots.find((x) => x.id === sl.id).minutes = Math.max(0, +v || 0))), { type: 'number' })),
-      h('td', {}, i < plan.slots.length - 1 ? f.text(`pl-sc-${sl.id}`, '', sl.changeover, P((p, v) => (p.slots.find((x) => x.id === sl.id).changeover = Math.max(0, +v || 0))), { type: 'number' }) : h('span', { class: 'muted tiny' }, 'last')),
+      h('td', {}, f.text(`pl-sm-${sl.id}`, '', sl.minutes, P((p, v) => (p.slots.find((x) => x.id === sl.id).minutes = Math.max(0, +v || 0))), { type: 'number', aria: `Minutes: ${sl.name || 'slot'}` })),
+      h('td', {}, i < plan.slots.length - 1 ? f.text(`pl-sc-${sl.id}`, '', sl.changeover, P((p, v) => (p.slots.find((x) => x.id === sl.id).changeover = Math.max(0, +v || 0))), { type: 'number', aria: `Changeover after ${sl.name || 'slot'}` }) : h('span', { class: 'muted tiny' }, 'last')),
       h(
         'td',
         { class: 'row' },

@@ -497,8 +497,9 @@ new ResizeObserver(() => {
 window.addEventListener('keydown', (e) => {
   if (mode === 'photo') return photo && photo.onKey(e);
   if (mode === 'manager') {
+    // text fields keep the browser's own undo; a ticked checkbox or a picked option undoes in the Manager
     const t = (e.target.tagName || '').toUpperCase();
-    if (/INPUT|TEXTAREA|SELECT/.test(t)) return;
+    if (t === 'TEXTAREA' || e.target.isContentEditable || (t === 'INPUT' && !/^(checkbox|radio|button|range|submit|reset|color|file)$/.test(e.target.type))) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
       if (e.shiftKey) manager.redo();

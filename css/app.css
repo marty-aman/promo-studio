@@ -1384,3 +1384,53 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .relink-list { margin: 0; padding-left: 18px; max-height: 220px; overflow-y: auto; display: grid; gap: 2px; }
 .relink-ok { margin: 0; color: var(--ok); font-weight: 600; }
 .relink-drop { padding: 14px 12px; }
+
+/* ---- Manager: backup note, save failure, undo bar, money split, backup nudge */
+.mgr-backup-note.warn { color: #fb923c; }
+.mgr-saved.bad { color: var(--danger); font-weight: 700; }
+.mgr-save-err, .mgr-undo { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 60; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; max-width: min(640px, calc(100vw - 24px)); padding: 10px 14px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border-strong); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); }
+.mgr-save-err { border-color: var(--danger); display: grid; gap: 6px; justify-items: start; }
+.mgr-save-err[hidden], .mgr-undo[hidden] { display: none; }
+.mgr-undo { bottom: 72px; }
+.mgr-nudge { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 16px; border-radius: 10px; border: 1px solid rgba(251, 146, 60, 0.5); background: rgba(251, 146, 60, 0.06); }
+.mgr-nudge > span { flex: 1; min-width: 200px; }
+.mgr-split { margin-top: 6px; }
+.mgr-split .mgr-facts li { align-items: center; }
+.mgr-split .mgr-facts li input { max-width: 80px; }
+
+/* ---- Manager: phone layout. The side nav becomes a scrolling strip on top, everything stacks. */
+@media (max-width: 760px) {
+  body.mode-manager .topbar { overflow-x: auto; min-width: 0; }
+  .manager { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .mgr-side { flex-direction: column; border-right: 0; border-bottom: 1px solid var(--border); padding: 6px 8px; overflow: visible; }
+  .mgr-side > div:first-child { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .mgr-nav { display: flex; gap: 2px; overflow-x: auto; min-width: 0; flex: 1; scrollbar-width: thin; }
+  .mgr-nav-btn { flex: none; padding: 7px 9px; font-size: 12px; gap: 6px; }
+  .mgr-tools { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding-top: 6px; }
+  .mgr-tools .btn { flex: none; }
+  .mgr-tools .mgr-saved { flex: none; align-self: center; white-space: nowrap; }
+  .mgr-artist { flex: none; }
+  .mgr-artist-name { display: none; }
+  .mgr-page { padding: 14px 12px 60px; }
+  .mgr-head { gap: 10px; }
+  .mgr-head .row { flex-wrap: wrap; }
+  .mgr-title { min-width: 0; }
+  .mgr-two, .mgr-three, .mgr-cols, .mgr-mini .mgr-two { grid-template-columns: minmax(0, 1fr); }
+  .mgr-cards { grid-template-columns: minmax(0, 1fr); }
+  .mgr-cards.tr-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mgr-sect { padding: 12px; overflow-x: auto; }
+  .mgr-task { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .mgr-task > .mgr-when { grid-column: 2 / -1; order: -1; }
+  .mgr-task > .mgr-chip { display: none; }
+  .mgr-row { flex-wrap: wrap; min-width: 0; }
+  .mgr-row > * { min-width: 0; max-width: 100%; overflow-wrap: anywhere; white-space: normal; text-align: left; }
+  .mgr-list > li, .mgr-tasks > li { min-width: 0; }
+  .mgr-show { grid-template-columns: 44px minmax(0, 1fr) auto; }
+  .mgr-show > :nth-child(n + 4) { display: none; }
+  .mgr-show.has-poster > :nth-child(n + 4) { display: none; }
+  .mgr-tabs { scrollbar-width: thin; }
+  .mgr-photos-layout, .mgr-ph.edit { grid-template-columns: minmax(0, 1fr); }
+  .mgr-venue-head { grid-template-columns: 16px minmax(0, 1fr) auto; }
+  .mgr-venue-head > :nth-child(n + 4) { display: none; }
+  .tr-stop-head, .tr-money, .tr-pick { grid-template-columns: minmax(0, 1fr); }
+}

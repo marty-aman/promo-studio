@@ -310,8 +310,8 @@ test('money: ledger plus show settlements, totals by category and month, release
   s.shoot.budget = '$400';
   m.songs.push(s);
   m.money.push({ ...newEntry('expense', '2026-11-02'), amount: '250', category: 'video', songId: s.id }, { ...newEntry('income', '2026-11-20'), amount: '42.5', category: 'streaming' });
-  m.shows.push({ ...newShow('2026-11-28'), venue: 'Funhouse', settlement: { gross: '', pay: 150, merch: '90', costs: '40' } });
-  const lines = moneyLines(m);
+  m.shows.push({ ...newShow('2026-11-28'), venue: 'Funhouse', status: 'played', settlement: { gross: '', pay: 150, merch: '90', costs: '40' } });
+  const lines = moneyLines(m, '2026-12-01');
   assert.equal(lines.length, 5);
   const sum = moneySummary(lines, { from: '2026-01-01', to: '2026-12-31' });
   assert.equal(sum.income, 282.5);

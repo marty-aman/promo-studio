@@ -45,4 +45,4 @@ export function addCover(m, title, length = '', { artist = '' } = {}) {
 }
 
 /** What a setlist can be timed from: your songs, then your covers (marked `cover`). */
-export const setlistSongs = (m) => [...(m.songs || []), ...(m.covers || []).map((c) => ({ id: c.id, title: c.title, length: c.length, audioId: null, cover: true, artist: c.artist }))];
+export const setlistSongs = (m) => [...(m.songs || []), ...(m.covers || []).map((c) => ({ id: c.id, title: c.title, length: c.length, audioId: null, cover: true, artist: c.artist, key: c.key || '' }))];

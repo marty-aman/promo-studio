@@ -66,10 +66,10 @@ export function buildShootTab(ctx, song, S) {
                 h(
                   'tr',
                   {},
-                  cols.map(([c]) => h('td', {}, f.text(`${key}-${c}-${it.id}`, '', it[c], Sh((x, v) => {
+                  cols.map(([c, l]) => h('td', {}, f.text(`${key}-${c}-${it.id}`, '', it[c], Sh((x, v) => {
                     const y = x[key].find((z) => z.id === it.id);
                     if (y) y[c] = v;
-                  })))),
+                  }), { aria: l }))),
                   h('td', {}, iconButton('trash', `Remove ${label}`, () => ctx.update(Sh((x) => (x[key] = x[key].filter((z) => z.id !== it.id)))), 'ghost')),
                 ),
               ),
@@ -93,7 +93,7 @@ export function buildShootTab(ctx, song, S) {
         f.text(`shot-${t.id}`, '', t.text, Sh((x, v) => {
           const y = x.shots.find((z) => z.id === t.id);
           if (y) y.text = v;
-        })),
+        }), { aria: `Shot: ${t.text}` }),
         iconButton('trash', 'Remove shot', () => ctx.update(Sh((x) => (x.shots = x.shots.filter((z) => z.id !== t.id)))), 'ghost'),
       ),
     ),

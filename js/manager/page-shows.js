@@ -1,15 +1,16 @@
 // Shows: upcoming and past shows with every detail for the day (times, lineup, deal, setlist),
 // a settlement after the show, and a copy-paste summary for the band chat.
 import { h, icon, button, iconButton, toast } from '../dom.js';
-import { SHOW_STATUSES, newShow, niceDate, daysBetween, addDays, mid } from './model.js';
+import { SHOW_STATUSES, newShow, niceDate, daysBetween, addDays, mid, setShowStatus, showFollowUp } from './model.js';
 import { showTodo, todoDue } from './planner.js';
 import { exportPDF } from './pdf.js';
-import { showSheetHTML } from './docs.js';
+import { showSheetHTML, stageSetlistHTML } from './docs.js';
 import { setlistTimes, songSeconds, fmtTime } from './setlist.js';
 import { setlistSongs, addCover } from './covers.js';
 import { coverPicker } from './page-cover.js';
 import { songsUI } from './page-songs.js';
 import { parseTime } from './releases.js';
+import { memberSplit, splitText } from './extras.js';
 
 const BILLING = [['headline', 'Headliner'], ['support', 'Support'], ['opener', 'Opener'], ['festival', 'Festival'], ['other', 'Other']];
 const label = (list, k) => (list.find(([v]) => v === k) || [k, k])[1];
@@ -20,7 +21,7 @@ const money = (v) => (v === '' || v == null || Number.isNaN(+v) ? 0 : +v);
 export const showNet = (s) => money(s.settlement.pay) + money(s.settlement.merch) - money(s.settlement.costs);
 
 /** A text summary of a show for the band group chat. */
-export function showSummary(show, songs = []) {
+export function showSummary(show, songs = [], band = null) {
   const lines = [`${niceDate(show.date)} · ${show.venue || 'Venue TBD'}${show.city ? `, ${show.city}` : ''}`];
   const times = [show.loadIn && `Load-in ${show.loadIn}`, show.doors && `Doors ${show.doors}`, show.setTime && `We play ${show.setTime}`].filter(Boolean);
   if (times.length) lines.push(times.join(' · '));
@@ -30,6 +31,12 @@ export function showSummary(show, songs = []) {
   const set = String(show.setlist || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
   if (set.length) lines.push(`Setlist: ${set.join(' / ')}`);
   if (show.notes) lines.push(show.notes);
+  const st = show.settlement || {};
+  if (band && [st.pay, st.merch, st.costs].some((v) => v !== '' && v != null)) {
+    const net = showNet(show);
+    const split = splitText(memberSplit(net, band.members, st));
+    lines.push(`Net: ${net < 0 ? '−' : ''}$${Math.abs(net).toFixed(2).replace(/\.00$/, '')}${split ? ` · ${split}` : ''}`);
+  }
   return lines.join('\n');
 }
 
@@ -145,6 +152,29 @@ function setlistBox(ctx, show, S, dur) {
   );
 }
 
+/** Under the net: who gets what. Members come from the press kit; a band fund % is kept back first. */
+function splitBox(ctx, show, S, net) {
+  const m = ctx.store.get();
+  const members = (m.band.members || []).filter((x) => x && x.name);
+  const st = show.settlement;
+  if (!members.length) return h('p', { class: 'muted tiny' }, 'Add the band members in Press kit → Members to split the money between them here.');
+  const sp = memberSplit(net, members, st);
+  const f = ctx.form;
+  const uneven = Object.keys(st.shares || {}).length > 0;
+  return h(
+    'div',
+    { class: 'mgr-split' },
+    h('div', { class: 'mgr-two' }, f.text(`sfund-${show.id}`, 'Band fund (% kept back)', st.fund, S((s, v) => (s.settlement.fund = v)), { type: 'number', placeholder: '0' }), h('label', { class: 'mf' }, h('span', { class: 'mf-l' }, 'Split'), (() => {
+      const sel = h('select', { 'data-k': `ssplit-${show.id}` }, h('option', { value: 'even', selected: !uneven }, 'Even'), h('option', { value: 'shares', selected: uneven }, 'By share'));
+      sel.addEventListener('change', () => ctx.update(S((s) => (s.settlement.shares = sel.value === 'shares' ? Object.fromEntries(members.map((x) => [x.id, 1])) : {}))));
+      return sel;
+    })())),
+    net > 0
+      ? h('ul', { class: 'mgr-facts' }, sp.members.map((x) => h('li', {}, h('span', {}, x.name), uneven ? f.text(`sshare-${show.id}-${x.id}`, '', (st.shares || {})[x.id] ?? 1, S((s, v) => ((s.settlement.shares ||= {})[x.id] = v)), { type: 'number', aria: `Share for ${x.name}` }) : null, h('strong', {}, `$${x.amount.toFixed(2)}`))), sp.fund ? h('li', {}, h('span', {}, 'Band fund'), h('strong', {}, `$${sp.fund.toFixed(2)}`)) : null)
+      : h('p', { class: 'muted tiny' }, 'Nothing to split until the net is above $0.'),
+  );
+}
+
 function showPage(ctx, show) {
   const dur = (id) => ctx.studio.mediaInfo(id)?.duration || 0;
   const f = ctx.form;
@@ -161,7 +191,7 @@ function showPage(ctx, show) {
   };
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(showSummary(show, m.songs));
+      await navigator.clipboard.writeText(showSummary(show, m.songs, m.band));
       toast('Show details copied. Paste them in the band chat.');
     } catch {
       toast('Could not copy. Select the summary below and copy it.', 'error');
@@ -176,7 +206,7 @@ function showPage(ctx, show) {
         { class: 'mgr-task lu' },
         h('span', { class: 'mgr-when' }, String(i + 1)),
         f.text(`lu-name-${b.id}`, '', b.name, S((s, v) => (s.lineup.find((x) => x.id === b.id).name = v)), { placeholder: 'Band name', list: 'mgr-bandnames' }),
-        f.text(`lu-time-${b.id}`, '', b.time, S((s, v) => (s.lineup.find((x) => x.id === b.id).time = v)), { type: 'time' }),
+        f.text(`lu-time-${b.id}`, '', b.time, S((s, v) => (s.lineup.find((x) => x.id === b.id).time = v)), { type: 'time', aria: `Set time: ${b.name || 'band'}` }),
         iconButton('arrowUp', 'Move up', () => ctx.update(S((s) => {
           const k = s.lineup.findIndex((x) => x.id === b.id);
           if (k > 0) [s.lineup[k - 1], s.lineup[k]] = [s.lineup[k], s.lineup[k - 1]];
@@ -206,7 +236,7 @@ function showPage(ctx, show) {
             { class: `mgr-task todo${t.done ? ' done' : ''}${!t.done && due && due < today ? ' late' : ''}` },
             f.check(`todo-${t.id}`, t.done, T(t.id, (x, v) => (x.done = v)), `Done: ${t.text}`),
             h('span', { class: 'mgr-when' }, due ? niceDate(due, { weekday: false }) : t.offset === 0 ? 'Show day' : `${Math.abs(t.offset)} d ${t.offset < 0 ? 'before' : 'after'}`),
-            f.text(`todot-${t.id}`, '', t.text, T(t.id, (x, v) => (x.text = v))),
+            f.text(`todot-${t.id}`, '', t.text, T(t.id, (x, v) => (x.text = v)), { aria: `To-do: ${t.text}` }),
             iconButton('trash', `Delete “${t.text}”`, () => ctx.update(S((s) => (s.todo = s.todo.filter((x) => x.id !== t.id)))), 'ghost'),
           );
         }))
@@ -232,7 +262,8 @@ function showPage(ctx, show) {
         'section',
         { class: 'mgr-sect' },
         h('h2', {}, 'The show'),
-        h('div', { class: 'mgr-two' }, f.text(`sd-${show.id}`, 'Date', show.date, S((s, v) => (s.date = v)), { type: 'date' }), f.select(`ss-${show.id}`, 'Status', show.status, SHOW_STATUSES, S((s, v) => (s.status = v)))),
+        h('div', { class: 'mgr-two' }, f.text(`sd-${show.id}`, 'Date', show.date, S((s, v) => (s.date = v)), { type: 'date' }), f.select(`ss-${show.id}`, 'Status', show.status, SHOW_STATUSES, S((s, v) => setShowStatus(s, v, ctx.today())))),
+        showFollowUp(show) ? h('p', { class: 'muted small' }, `Pitched ${niceDate(show.pitchedOn, { weekday: false })}. Follow up with the venue on ${niceDate(showFollowUp(show), { weekday: false })} if you haven’t heard back. `, button('I followed up', () => ctx.update(S((s) => (s.followedUp = true))), { variant: 'sm ghost' })) : null,
         h('div', { class: 'mgr-two' }, f.text(`sv-${show.id}`, 'Venue', show.venue, S((s, v, d) => {
           s.venue = v;
           const known = (d.venues || []).find((x) => x.name === v);
@@ -256,17 +287,19 @@ function showPage(ctx, show) {
         lineup,
         h('div', { class: 'row' }, button('Add a band', () => ctx.update(S((s) => s.lineup.push({ id: mid('lu'), name: '', time: '' }))), { iconName: 'plus', variant: 'sm ghost' }), show.lineup.some((b) => b.name === m.band.name) ? null : button(`Add ${m.band.name}`, () => ctx.update(S((s) => s.lineup.push({ id: mid('lu'), name: m.band.name, time: s.setTime || '' }))), { variant: 'sm ghost' })),
         h('h2', {}, 'Setlist'),
-        f.text(`sset-${show.id}`, '', show.setlist, S((s, v) => (s.setlist = v)), { rows: 7, placeholder: 'One song per line. A line can carry its own time: “Jam 2:30”' }),
+        f.text(`sset-${show.id}`, '', show.setlist, S((s, v) => (s.setlist = v)), { rows: 7, aria: 'Setlist', placeholder: 'One song per line. A line can carry its own time: “Jam 2:30”' }),
         setlistSongs(m).length ? h('div', { class: 'chips' }, setlistSongs(m).map((sg) => {
           const sec = songSeconds(sg, dur);
           return button(sec ? `${sg.title} · ${fmtTime(sec)}` : sg.title, () => ctx.update(S((s) => (s.setlist = `${s.setlist ? `${s.setlist.trimEnd()}\n` : ''}${sg.title}`))), { variant: sg.cover ? 'chip cover' : 'chip', title: sg.cover ? `Cover${sg.artist ? ` of ${sg.artist}` : ''}` : '' });
         })) : null,
         setlistBox(ctx, show, S, dur),
+        String(show.setlist || '').trim() ? h('div', { class: 'row' }, button('Print setlist', () => (exportPDF(stageSetlistHTML(show, m.band, setlistTimes(show.setlist, setlistSongs(m), dur, { gap: +show.setGap || 0 })), `Setlist ${show.venue || ''} ${show.date || ''}`.trim()), toast('Big type on one page, for the stage floor.')), { iconName: 'print', variant: 'sm', title: 'The setlist in big type on one page, to tape to the stage' })) : null,
         h('h2', {}, 'After the show'),
         h('div', { class: 'mgr-three' }, f.text(`spay-${show.id}`, 'We were paid', show.settlement.pay, S((s, v) => (s.settlement.pay = v)), { type: 'number', placeholder: '$' }), f.text(`smer-${show.id}`, 'Merch sales', show.settlement.merch, S((s, v) => (s.settlement.merch = v)), { type: 'number', placeholder: '$' }), f.text(`scost-${show.id}`, 'Costs', show.settlement.costs, S((s, v) => (s.settlement.costs = v)), { type: 'number', placeholder: 'gas, food…' })),
         show.settlement.pay !== '' || show.settlement.merch !== '' || show.settlement.costs !== '' ? h('p', { class: `mgr-net ${net >= 0 ? 'ok' : 'bad'}` }, `Net: ${net < 0 ? '−' : ''}$${Math.abs(net).toFixed(2)}`) : null,
+        splitBox(ctx, show, S, net),
         h('h3', { class: 'mgr-h3' }, 'Summary for the band chat'),
-        h('pre', { class: 'mgr-pre' }, showSummary(show, m.songs)),
+        h('pre', { class: 'mgr-pre' }, showSummary(show, m.songs, m.band)),
       )),
     ),
   );
