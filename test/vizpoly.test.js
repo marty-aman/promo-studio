@@ -63,6 +63,7 @@ test('each artist can have a profile photo, shown in the press kit', () => {
   ws = mergeView(ws, v);
   assert.equal(artistList(ws)[0].photoId, 'img1');
   const html = epkHTML({ ...newManager(), band: { name: 'Arc Flash', links: {} } }, { avatar: 'data:image/jpeg;base64,AAAA' });
-  assert.ok(html.includes('<img class="avatar" src="data:image/jpeg;base64,AAAA" alt="Arc Flash">'));
+  // the avatar is a frame holding the photo, framed by band.photoPos (centred at 1x by default)
+  assert.ok(html.includes('<div class="avatar"><img src="data:image/jpeg;base64,AAAA" alt="Arc Flash" style="object-fit:cover;object-position:50% 50%;transform-origin:50% 50%"></div>'));
   assert.ok(!epkHTML({ ...newManager(), band: { name: 'X', links: {} } }, { avatar: 'javascript:alert(1)' }).includes('class="avatar"'), 'only safe images');
 });

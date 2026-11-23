@@ -59,6 +59,31 @@ export function removeArtist(ws, id) {
   return { ...ws, artists, current: ws.current === id ? artists[0].id : ws.current };
 }
 
+// ---- the profile photo's framing: band.photoPos = { x, y, zoom }
+export const PHOTO_POS = { x: 50, y: 50, zoom: 1 };
+const clampN = (v, lo, hi, d) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+/** A checked framing: x and y are the photo's focal point in % (0–100), zoom 1–3. Anything missing is the centre at 1×. */
+export const photoPos = (p) => (p && typeof p === 'object' ? { x: clampN(p.x, 0, 100, 50), y: clampN(p.y, 0, 100, 50), zoom: clampN(p.zoom, 1, 3, 1) } : { ...PHOTO_POS });
+/**
+ * Inline style for a profile photo <img> that fills its frame (object-fit: cover; the frame clips it):
+ * which part shows, and how far it's zoomed in around that point.
+ */
+export function photoStyle(p) {
+  const { x, y, zoom } = photoPos(p);
+  const at = `${+x.toFixed(2)}% ${+y.toFixed(2)}%`;
+  return { objectFit: 'cover', objectPosition: at, transformOrigin: at, transform: zoom === 1 ? '' : `scale(${+zoom.toFixed(3)})` };
+}
+/** The same as CSS text, for the downloaded press kit. */
+export const photoStyleCss = (p) => {
+  const s = photoStyle(p);
+  return `object-fit:cover;object-position:${s.objectPosition};transform-origin:${s.transformOrigin}${s.transform ? `;transform:${s.transform}` : ''}`;
+};
+/** Move the focal point by a drag of (dx, dy) px in a frame of (w, h) px: dragging right shows more of the left. */
+export function nudgePhoto(p, dx, dy, w = 100, h = 100) {
+  const q = photoPos(p);
+  return photoPos({ ...q, x: q.x - (dx / Math.max(1, w)) * (100 / q.zoom), y: q.y - (dy / Math.max(1, h)) * (100 / q.zoom) });
+}
+
 /**
  * Undo deleting an artist: `before` is the workspace just before the delete, `now` the workspace
  * since. The artist goes back in its old place and becomes the open one; the other artists keep their
@@ -71,7 +96,7 @@ export function restoreArtist(before, now, id) {
   return { ...now, artists, current: id };
 }
 
-export const artistList = (ws) => ws.artists.map((a) => ({ id: a.id, name: a.band.name || 'Untitled artist', city: a.band.city || '', theme: a.band.theme || '', logoId: a.band.logoId || null, photoId: a.band.photoId || null }));
+export const artistList = (ws) => ws.artists.map((a) => ({ id: a.id, name: a.band.name || 'Untitled artist', city: a.band.city || '', theme: a.band.theme || '', logoId: a.band.logoId || null, photoId: a.band.photoId || null, photoPos: photoPos(a.band.photoPos) }));
 
 /** The next two weeks for every artist, each item tagged with its artist. */
 export function combinedAgenda(ws, from, days = 14) {

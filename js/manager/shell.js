@@ -4,7 +4,7 @@ import { h, icon, button, toast, download, pickFiles, onDateCommit } from '../do
 import { createStore } from '../state.js';
 import { openDriveSetup } from '../gdrive.js';
 import { todayISO } from './model.js';
-import { loadWorkspace, saveWorkspace, viewOf, mergeView, addArtist, removeArtist, restoreArtist, artistList, workspaceBackup, parseWorkspaceBackup, backupMediaNames } from './artists.js';
+import { loadWorkspace, saveWorkspace, viewOf, mergeView, addArtist, removeArtist, restoreArtist, artistList, photoStyle, workspaceBackup, parseWorkspaceBackup, backupMediaNames } from './artists.js';
 import { relinkButton } from '../relink.js';
 import { referencedIds } from '../mediamatch.js';
 import { buildHome } from './page-home.js';
@@ -211,7 +211,7 @@ export function createManager({ root, studio }) {
   /** The artist's profile photo, or its first letter when it has none. */
   const avatar = (a, cls = '') => {
     const ph = a.photoId && studio.mediaInfo ? studio.mediaInfo(a.photoId) : null;
-    return ph ? h('span', { class: `mgr-artist-dot photo ${cls}`, 'aria-hidden': 'true' }, h('img', { src: ph.url, alt: '' })) : h('span', { class: `mgr-artist-dot ${cls}`, 'aria-hidden': 'true' }, (a.name[0] || '?').toUpperCase());
+    return ph ? h('span', { class: `mgr-artist-dot photo ${cls}`, 'aria-hidden': 'true' }, h('img', { src: ph.url, alt: '', style: photoStyle(a.photoPos) })) : h('span', { class: `mgr-artist-dot ${cls}`, 'aria-hidden': 'true' }, (a.name[0] || '?').toUpperCase());
   };
   root.replaceChildren(h('div', { class: 'mgr-side' }, h('div', {}, switcher, nav), tools), main, saveError, undoBar);
   renderBackupNote();

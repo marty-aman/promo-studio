@@ -3,7 +3,7 @@ import { h, icon, button } from '../dom.js';
 import { agenda, overdueTasks, nextUp, releaseProgress, daysBetween, niceDate, newSong, newShow, addDays } from './model.js';
 import { showTodo } from './planner.js';
 import { findings } from './content.js';
-import { combinedAgenda, combinedNext, viewOf } from './artists.js';
+import { combinedAgenda, combinedNext, viewOf, photoStyle } from './artists.js';
 
 const KIND = { show: ['ticket', 'Show'], release: ['disc', 'Release'], shoot: ['film', 'Shoot'], post: ['share', 'Post'], task: ['check', 'Task'] };
 
@@ -13,7 +13,7 @@ const inDays = (n) => (n === 0 ? 'today' : n === 1 ? 'tomorrow' : n < 0 ? `${-n}
 /** The artist's profile photo on Home (click it to change it in the press kit). */
 function homeAvatar(ctx, band) {
   const ph = band.photoId && ctx.studio.mediaInfo(band.photoId);
-  return h('button', { type: 'button', class: `mgr-artist-dot big${ph ? ' photo' : ''}`, title: ph ? 'Change the profile photo' : 'Add a profile photo', 'aria-label': ph ? 'Change the profile photo' : 'Add a profile photo', onclick: () => ctx.go('epk') }, ph ? h('img', { src: ph.url, alt: '' }) : (band.name || '?')[0].toUpperCase());
+  return h('button', { type: 'button', class: `mgr-artist-dot big${ph ? ' photo' : ''}`, title: ph ? 'Change the profile photo' : 'Add a profile photo', 'aria-label': ph ? 'Change the profile photo' : 'Add a profile photo', onclick: () => ctx.go('epk') }, ph ? h('img', { src: ph.url, alt: '', style: photoStyle(band.photoPos) }) : (band.name || '?')[0].toUpperCase());
 }
 
 export function scopeChips(ctx) {

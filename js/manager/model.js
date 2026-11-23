@@ -167,6 +167,8 @@ export function normalizeManager(raw) {
   m.stats = normalizeStats(raw.stats);
   m.releases = normalizeReleases(raw.releases);
   for (const s of m.songs) if (s.releaseId && !m.releases.some((r) => r.id === s.releaseId)) (s.releaseId = ''), (s.track = 0);
+  // the profile photo's framing (artists.js photoPos checks the numbers); absent means centred at 1x
+  if (m.band.photoPos !== undefined && (!m.band.photoPos || typeof m.band.photoPos !== 'object' || Array.isArray(m.band.photoPos))) delete m.band.photoPos;
   m.band.epkPhotos = Array.isArray(m.band.epkPhotos) ? m.band.epkPhotos.filter((x) => typeof x === 'string').slice(0, 4) : [];
   m.playlists = list(raw.playlists);
   m.playlistsOff = Array.isArray(raw.playlistsOff) ? raw.playlistsOff.filter((x) => typeof x === 'string') : [];
