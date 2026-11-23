@@ -141,6 +141,22 @@ Ask the band which dates work, with no accounts and no server. This app runs on 
 
 Limits, also said in the app: no live sync (replies come back by hand), the code is not secret and does not prove who sent it, anyone with the file can answer, and you only see what people send. Only names are stored, never emails or phone numbers; a poll's names and answers are never put in the press kit, the .ics or any PDF. Polls live in the Manager workspace (backup, restore, undo and artist switch cover them). Code: `js/manager/availability.js` (logic), `page-availability.js` (screen), `css/mgr-avail.css`.
 
+### Link page
+
+**Press kit → Link page** makes a link-in-bio page: one HTML file with your profile photo, latest
+release (cover and store links), the next confirmed shows with ticket links, merch, socials, a short bio
+and your own buttons (add, reorder, remove). It uses the band's theme colours, dark or light. The file
+has no scripts, loads nothing from the internet, blocks everything else with a Content-Security-Policy,
+and keeps photos small (usually well under 200 KB). Only public fields go on it: no fans, contacts,
+members or notes, and the booking email only if you tick it. Links must be `https://`, `http://` or `mailto:`.
+
+The app can't host the page or know its address. Upload the file to a free static host (GitHub Pages,
+Netlify Drop, Cloudflare Pages…), paste the address it gives you into **Page address**, and upload again
+after changes. The QR code (written in `js/manager/qr.js` from the QR spec: byte mode, versions 1–10,
+level M, no library) then points at that address, or at your Spotify link until you have one. It's on
+the page, in **Download QR (SVG)** and on a one-page flyer (**Print flyer**, then Save as PDF). The
+settings live in `band.linkInBio`, so backups, undo and artist switching cover them.
+
 ## How it's laid out
 
 The rail on the left has one **Start** tab for ideas, then a tab for each kind of thing you build:

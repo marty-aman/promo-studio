@@ -11,6 +11,7 @@ import { newStats, normalizeStats } from './stats.js';
 import { normalizeReleases } from './releases.js';
 import { normalizeCovers } from './covers.js';
 import { releaseTaskDone, showTaskDone } from './todoauto.js';
+import { normalizeLinkInBio } from './linkbio-norm.js';
 
 export const MANAGER_KEY = 'pvm.manager.v1';
 export const MANAGER_VERSION = 1;
@@ -210,6 +211,7 @@ export function normalizeManager(raw) {
   // the profile photo's framing (artists.js photoPos checks the numbers); absent means centred at 1x
   if (m.band.photoPos !== undefined && (!m.band.photoPos || typeof m.band.photoPos !== 'object' || Array.isArray(m.band.photoPos))) delete m.band.photoPos;
   m.band.epkPhotos = Array.isArray(m.band.epkPhotos) ? m.band.epkPhotos.filter((x) => typeof x === 'string').slice(0, 4) : [];
+  if (m.band.linkInBio !== undefined) m.band.linkInBio = normalizeLinkInBio(m.band.linkInBio); // the Link page (linkbio.js); absent until first used
   m.playlists = list(raw.playlists);
   m.playlistsOff = Array.isArray(raw.playlistsOff) ? raw.playlistsOff.filter((x) => typeof x === 'string') : [];
   m.shows = m.shows.map((s) => normalizeShow(s, newShow()));
