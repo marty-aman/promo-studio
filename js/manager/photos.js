@@ -198,6 +198,18 @@ export function paginate(list, page = 1, size = 48) {
   return { items: list.slice(start, start + size), page: p, pages, from: total ? start + 1 : 0, to: Math.min(total, start + size), total };
 }
 
+/**
+ * Pinned items on top, then one page of the rest: { pinned, ...paginate(rest) }. `pinned` is a list
+ * of ids kept in its own order (missing ids and repeats are skipped), so what you picked never
+ * hides on another page.
+ */
+export function pinnedPage(list, pinned, page = 1, size = 48, idOf = (x) => x.id) {
+  const byId = new Map(list.map((x) => [idOf(x), x]));
+  const top = [...new Set(pinned || [])].map((id) => byId.get(id)).filter(Boolean);
+  const on = new Set(top.map(idOf));
+  return { pinned: top, ...paginate(list.filter((x) => !on.has(idOf(x))), page, size) };
+}
+
 // ---------------------------------------------------------------- tags for many photos
 /**
  * Add and remove tags on many photos at once (by photo id). Tags are cleaned like the tag field

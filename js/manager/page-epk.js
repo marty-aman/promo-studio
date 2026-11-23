@@ -4,11 +4,12 @@ import { h, button, iconButton, toast, download, pickFiles } from '../dom.js';
 import { mid } from './model.js';
 import { exportPDF } from './pdf.js';
 import { EPK_LINKS, epkHTML, shortBio } from './extras.js';
-import { epkCredits, addPhotos } from './photos.js';
+import { epkCredits, addPhotos, pinnedPage, loadPageSize, savePageSize } from './photos.js';
+import { pager } from './page-photos.js';
 import { THEMES } from '../themes.js';
 import { photoStyle, photoPos, nudgePhoto } from './artists.js';
 
-export const epkUI = { photos: [], reposition: false };
+export const epkUI = { photos: [], reposition: false, page: 1, size: 0 };
 
 const setPos = (ctx, pos) => ctx.update((d) => (d.band.photoPos = photoPos(pos)), 'photoPos');
 
@@ -76,9 +77,16 @@ export function buildEPK(ctx) {
   const B = (fn) => (d, v) => fn(d.band, v);
   const images = ctx.studio.imageFiles();
   // the artist's Photos come first, then any other image in the media library
-  const ranked = [...(m.photos || []).map((p) => images.find((x) => x.id === p.mediaId)).filter(Boolean), ...images.filter((x) => !(m.photos || []).some((p) => p.mediaId === x.id))];
+  const byId = new Map(images.map((x) => [x.id, x]));
+  const onPage = new Set((m.photos || []).map((p) => p.mediaId));
+  const ranked = [...(m.photos || []).map((p) => byId.get(p.mediaId)).filter(Boolean), ...images.filter((x) => !onPage.has(x.id))];
   const ui = epkUI;
-  ui.photos = (b.epkPhotos || []).filter((id) => images.some((x) => x.id === id));
+  ui.photos = (b.epkPhotos || []).filter((id) => byId.has(id));
+  if (!ui.size) ui.size = loadPageSize();
+  // only one page of photos is drawn; the picked ones and the profile photo stay on top
+  const pg = pinnedPage(ranked, [...ui.photos, b.photoId].filter(Boolean), ui.page, ui.size);
+  ui.page = pg.page;
+  const pageCtl = () => pager(pg, { size: ui.size, onPage: (n) => ((ui.page = n), ctx.refresh(), requestAnimationFrame(() => document.querySelector('[data-k="epk-photos"]')?.scrollIntoView({ block: 'start' }))), onSize: (n) => (savePageSize(n), (ui.size = n), (ui.page = 1), ctx.refresh()) });
 
   const listEditor = (key, cols, blank, label) =>
     h(
@@ -127,6 +135,14 @@ export function buildEPK(ctx) {
     }
   };
   const togglePhoto = (id) => ctx.update(B((band) => (band.epkPhotos = (band.epkPhotos || []).includes(id) ? band.epkPhotos.filter((x) => x !== id) : [...(band.epkPhotos || []), id].slice(-4))));
+  // the library's thumbnail, fetched only when scrolled near and decoded off the main thread.
+  // shortcut: for images media.js uses the file's own URL as its thumb; a real small thumbnail
+  // would need a downscaled copy made in media.js (shared with the Photos page) if pages still feel slow
+
+  const tile = (im) => {
+    const on = ui.photos.includes(im.id);
+    return h('button', { type: 'button', class: `mgr-photo${on ? ' on' : ''}`, 'aria-pressed': on ? 'true' : 'false', 'data-id': im.id, onclick: () => togglePhoto(im.id) }, im.thumb ? h('img', { loading: 'lazy', decoding: 'async', src: im.thumb, alt: '' }) : null, h('span', {}, im.name), im.id === b.photoId ? h('em', { class: 'mgr-photo-tag' }, 'Profile photo') : null);
+  };
 
   return h(
     'div',
@@ -211,11 +227,17 @@ export function buildEPK(ctx) {
         ),
         h(
           'section',
-          { class: 'mgr-sect' },
+          { class: 'mgr-sect', 'data-k': 'epk-photos' },
           h('h2', {}, 'Press photos'),
           h('p', { class: 'muted small' }, 'Pick up to four. Manage, caption and credit them on the ', h('button', { type: 'button', class: 'link', onclick: () => ctx.go('photos') }, 'Photos'), ' page.'),
           ranked.length
-            ? h('div', { class: 'mgr-photos' }, ranked.map((im) => h('button', { type: 'button', class: `mgr-photo${ui.photos.includes(im.id) ? ' on' : ''}`, 'aria-pressed': ui.photos.includes(im.id) ? 'true' : 'false', onclick: () => togglePhoto(im.id) }, im.thumb ? h('img', { src: im.thumb, alt: '' }) : null, h('span', {}, im.name))))
+            ? [
+                pg.pinned.length ? h('div', { class: 'mgr-photos mgr-photos-pinned', 'data-k': 'epk-pinned', role: 'group', 'aria-label': 'Picked photos and the profile photo' }, pg.pinned.map(tile)) : null,
+                pg.pinned.length && pg.total ? h('p', { class: 'muted tiny' }, 'All your other photos:') : null,
+                pageCtl(),
+                pg.items.length ? h('div', { class: 'mgr-photos', 'data-k': 'epk-page' }, pg.items.map(tile)) : null,
+                pg.pages > 1 ? pageCtl() : null,
+              ]
             : h('p', { class: 'muted small' }, 'No photos yet. Add them on the Photos page.'),
           h('p', { class: 'muted tiny' }, 'Picked photos are embedded in the downloaded file (resized to 1400 px). The preview leaves them out.'),
         ),
