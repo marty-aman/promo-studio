@@ -8,6 +8,7 @@ import { applyTemplate } from './templates.js';
 import { applyTake } from './suggest.js';
 import { defaultGameLayer } from './rhythmgame.js';
 import { isBassTrack } from './tab.js';
+import { autoCover } from './manager/releases.js';
 
 export const SONG_TEMPLATES = [
   {
@@ -99,7 +100,7 @@ function setSong(d, audio, len) {
 function endCardFor(d, ctx, today) {
   const s = ctx.song;
   Object.assign(d.endCard, { enabled: true, duration: Math.max(3, Math.min(d.endCard.duration || 4, 4)), title: s.title, artist: ctx.band || d.endCard.artist });
-  if (ctx.cover) d.endCard.coverMediaId = ctx.cover;
+  autoCover(d.endCard, ctx.cover);
   const upcoming = s.releaseDate && today && s.releaseDate > today;
   d.endCard.releaseDate = s.releaseDate || '';
   d.endCard.cta = upcoming ? '{countdown}' : 'OUT NOW';
