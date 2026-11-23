@@ -355,6 +355,10 @@ export function buildCarouselPage({ store, engine, ui, settings }) {
           h('div', { class: 'row' },
             button('Download all slides (.zip)', dlZip, { iconName: 'download', variant: 'primary' }),
             button('This slide (PNG)', dlOne, { iconName: 'image', variant: 'ghost' }),
+            ui.editInPhoto ? button('Edit in Photo Studio', async () => {
+              await waitAssets();
+              await ui.editInPhoto(await pngs(), base);
+            }, { iconName: 'layout', variant: 'ghost', title: 'Open these slides as a carousel in the Photo Studio, to add text, shapes and looks' }) : null,
             button('Share to Instagram…', share, { iconName: 'share', variant: 'ghost', disabled: !canShareFiles(probe) })),
           !canShareFiles(probe) ? h('p', { class: 'muted tiny' }, 'Sharing straight to the app works from a phone browser. On a computer, download and upload them.') : null,
           h('details', { class: 'tiny muted' }, h('summary', {}, 'Why carousels are built this way'),

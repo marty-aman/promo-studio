@@ -2,18 +2,20 @@
 // templates, your photos, stock photos, text and shapes, and saved designs. Middle: the canvas,
 // where you click to select, drag to move, pull the handles to resize and the top knob to rotate.
 // Right: the selected layer's settings (adjustments, mask, shadow…) and the layer stack.
-import { h, icon, button, iconButton, toast, download, pickFiles, keyBox } from '../dom.js';
+import { h, icon, button, iconButton, toast, download, pickFiles, keyBox, tablistKeys } from '../dom.js';
 import { createStore, loadSettings, saveSettings, FONTS } from '../state.js';
 import { PROVIDERS, searchStockPhotos, downloadStock } from '../stock.js';
 import { driveButton } from '../gdrive.js';
 import { relinkButton } from '../relink.js';
 import { zipStore } from '../batch.js';
-import { SIZES, sizeById, BLENDS, MASKS, SHAPES, LOOKS, defaultAdjust, newDoc, newLayer, normalizeDoc, hitTest, moveLayer, duplicateLayer, resizeBox, loadDesigns, saveDesigns, docMedia, slidesForImage, pullBackLayers } from './model.js';
+import { SIZES, sizeById, BLENDS, MASKS, SHAPES, LOOKS, defaultAdjust, newDoc, newLayer, normalizeDoc, hitTest, moveLayer, duplicateLayer, resizeBox, loadDesigns, saveDesigns, docMedia, slidesForImage, pullBackLayers, resizeDoc, clampDim, exportScales, dpiOf, alignLayer, safeInsets, isUntouched, carouselFromImages } from './model.js';
 import { drawDoc, renderDoc, renderSlides, canvasBlob, layoutText } from './render.js';
 import { TEMPLATES, templateById, countdownSet, carouselSlides } from './templates.js';
 import { dist, mid, pinchScale, scrollDelta, keyboardInset, dropAfter, previewSize, isDoubleTap, cropShift } from './gesture.js';
 import { PAGE_SIZES, loadPageSize, savePageSize, paginate, folderPath, folderTree } from '../manager/photos.js';
 
+// [where, label, icon] for the align buttons (left, centre and right; top, middle and bottom)
+const ALIGNS = [['left', 'left', 'alignLeft'], ['center', 'centre', 'alignCenter'], ['right', 'right', 'alignRight'], ['top', 'top', 'alignTop'], ['middle', 'middle', 'alignMiddle'], ['bottom', 'bottom', 'alignBottom']];
 const IMAGE_ACCEPT = 'image/*,.jpg,.jpeg,.png,.webp,.gif';
 const slug = (s) => String(s || 'design').replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'design';
 const TABS = [['templates', 'Templates', 'layout'], ['photos', 'Photos', 'image'], ['stock', 'Stock', 'search'], ['text', 'Text', 'type'], ['shapes', 'Shapes', 'layers'], ['designs', 'Designs', 'file']];
@@ -40,12 +42,14 @@ export function createPhotoStudio({ root, studio }) {
     return d;
   };
   const store = createStore(saved.docs.find((d) => d.id === saved.current) || firstDoc());
-  const ui = { tab: 'templates', sel: null, zoom: 0, stock: { provider: loadSettings().stockProvider || 'pexels', q: '', results: [], busy: false, error: '' }, tpl: { songId: '', showId: '', tourId: '', photoId: '', slides: 0 }, clickMode: 'add', busy: '', folder: 'all', page: 1, size: 0 };
+  const ui = { tab: 'templates', sel: null, zoom: 0, stock: { provider: loadSettings().stockProvider || 'pexels', q: '', results: [], busy: false, error: '' }, tpl: { songId: '', showId: '', tourId: '', photoId: '', slides: 0 }, clickMode: 'add', busy: '', folder: 'all', page: 1, size: 0, safe: localStorage.getItem('pvm.photo.safe.v1') !== '0', exportScale: 1, designQ: '', customBar: false };
   const mattes = new Map(); // mediaId → canvas | 'pending' | Error
 
   // ---- persistence: the current design lives in the store; the rest in `saved`
   let saveTimer = null;
   let savePending = false;
+  // the same small status the Video Studio and the Manager show
+  const saveEl = h('span', { class: 'ph-save muted tiny', role: 'status' }, 'Saved in this browser');
   const writeNow = () => {
     clearTimeout(saveTimer);
     savePending = false;
@@ -53,16 +57,26 @@ export function createPhotoStudio({ root, studio }) {
     saved.docs = saved.docs.map((x) => (x.id === d.id ? d : x));
     if (!saved.docs.some((x) => x.id === d.id)) saved.docs.push(d);
     saved.current = d.id;
-    if (!saveDesigns(saved)) toast('Could not save designs (browser storage full?)', 'error');
+    if (saveDesigns(saved)) saveEl.textContent = 'Saved in this browser';
+    else {
+      saveEl.textContent = 'Could not save';
+      saveEl.classList.add('warn');
+      toast('Could not save designs (browser storage full?)', 'error');
+    }
+    if (saveEl.textContent === 'Saved in this browser') saveEl.classList.remove('warn');
   };
   const persist = () => {
     savePending = true;
+    saveEl.textContent = 'Saving…';
     clearTimeout(saveTimer);
     saveTimer = setTimeout(writeNow, 300);
   };
   const openDoc = (doc, { isNew = false } = {}) => {
     const cur = store.get();
-    saved.docs = saved.docs.map((x) => (x.id === cur.id ? cur : x));
+    const was = saved.docs.find((x) => x.id === cur.id);
+    saved.docs = saved.docs.map((x) => (x.id === cur.id ? { ...cur, updatedAt: x.updatedAt } : x));
+    // the empty "My first design" a first visit makes is not kept once you move on from it untouched
+    if (doc.id !== cur.id && !savePending && isUntouched({ ...cur, updatedAt: was ? was.updatedAt : '' })) saved.docs = saved.docs.filter((x) => x.id !== cur.id);
     if (isNew) saved.docs.push(doc);
     saved.current = doc.id;
     ui.sel = null;
@@ -196,6 +210,9 @@ export function createPhotoStudio({ root, studio }) {
 
   let scale = 1;
   let raf = 0;
+  // each layer's picture from the last frame, so a slider on one layer redraws only that layer (see drawDoc's cache)
+  const layerCache = new Map();
+  let epoch = 0; // bumped when fonts or files arrive: cached pictures made before are stale
   const draw = () => {
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(drawNow);
@@ -213,11 +230,12 @@ export function createPhotoStudio({ root, studio }) {
     const ch = Math.round(doc.h * scale);
     stageBox.style.width = `${cw}px`;
     stageBox.style.height = `${ch}px`;
-    canvas.width = Math.round(cw * dpr);
-    canvas.height = Math.round(ch * dpr);
+    // setting a canvas's size throws its pixels away and reallocates them: only do it when the size changed
+    if (canvas.width !== Math.round(cw * dpr)) canvas.width = Math.round(cw * dpr);
+    if (canvas.height !== Math.round(ch * dpr)) canvas.height = Math.round(ch * dpr);
     canvas.style.width = `${cw}px`;
     canvas.style.height = `${ch}px`;
-    drawDoc(canvas.getContext('2d'), doc, { scale: scale * dpr, getImage: getPreview, getMatte, preview: true });
+    drawDoc(canvas.getContext('2d'), doc, { scale: scale * dpr, getImage: getPreview, getMatte, preview: true, cache: layerCache, epoch });
     drawOverlay();
   }
   function drawOverlay() {
@@ -227,6 +245,15 @@ export function createPhotoStudio({ root, studio }) {
     if (doc.slides > 1) {
       for (let i = 1; i < doc.slides; i++) parts.push(h('div', { class: 'ph-seam', style: { left: `${(doc.w / doc.slides) * i * scale}px` } }));
       for (let i = 0; i < doc.slides; i++) parts.push(h('span', { class: 'ph-slide-n', style: { left: `${(doc.w / doc.slides) * i * scale + 6}px` } }, `Slide ${i + 1}`));
+    }
+    const safe = ui.safe ? safeInsets(doc) : null;
+    if (safe) {
+      // preview only: it is drawn on the page, never into the exported image
+      const sw = doc.w / (doc.slides > 1 ? doc.slides : 1);
+      for (let i = 0; i < Math.max(1, doc.slides); i++) {
+        parts.push(h('div', { class: 'ph-safe top', title: 'The top bar of a story covers this part', style: { left: `${sw * i * scale}px`, width: `${sw * scale}px`, height: `${safe.top * scale}px` } }, h('span', {}, 'Top bar')));
+        parts.push(h('div', { class: 'ph-safe bottom', title: 'The reply bar and stickers cover this part', style: { left: `${sw * i * scale}px`, width: `${sw * scale}px`, height: `${safe.bottom * scale}px` } }, h('span', {}, 'Reply bar')));
+      }
     }
     if (snapGuide.x != null) parts.push(h('div', { class: 'ph-guide v', style: { left: `${snapGuide.x * scale}px` } }));
     if (snapGuide.y != null) parts.push(h('div', { class: 'ph-guide h', style: { top: `${snapGuide.y * scale}px` } }));
@@ -241,6 +268,13 @@ export function createPhotoStudio({ root, studio }) {
     overlay.replaceChildren(...parts);
     renderQuick();
   }
+  // a closed padlock when the layer is locked, an open one when it isn't; announced as a pressed button
+  const lockButton = (locked, title, onClick) => {
+    const b = iconButton(locked ? 'lock' : 'unlock', title, onClick, `ghost${locked ? ' on' : ''}`);
+    b.setAttribute('aria-pressed', locked ? 'true' : 'false');
+    b.title = locked ? 'Locked: click to unlock' : 'Unlocked: click to lock'; // the name stays "Lock …"; the pressed state says which
+    return b;
+  };
   // Buttons for what the keyboard does (Delete, Ctrl+D, Esc, double-click), shown over the canvas on a phone or tablet.
   let quickKey = '';
   function renderQuick() {
@@ -263,7 +297,7 @@ export function createPhotoStudio({ root, studio }) {
       iconButton('copy', 'Duplicate', dup, 'ghost'),
       iconButton('arrowUp', 'Bring forward', () => update((d) => moveLayer(d, L.id, 1)), 'ghost'),
       iconButton('arrowDown', 'Send backward', () => update((d) => moveLayer(d, L.id, -1)), 'ghost'),
-      iconButton(L.locked ? 'key' : 'hand', L.locked ? 'Unlock' : 'Lock', () => update(L_((x) => (x.locked = !x.locked))), `ghost${L.locked ? ' on' : ''}`),
+      lockButton(L.locked, 'Lock', () => update(L_((x) => (x.locked = !x.locked)))),
       iconButton('trash', 'Delete this layer', removeSel, 'ghost danger'),
       iconButton('x', 'Deselect', () => ((ui.sel = null), renderRight(), drawOverlay()), 'ghost'),
     ].filter(Boolean));
@@ -538,9 +572,13 @@ export function createPhotoStudio({ root, studio }) {
 
   // ---------------------------------------------------------------- left panel
   function renderLeft() {
-    const tabs = h('div', { class: 'ph-tabs', role: 'tablist' }, TABS.map(([k, l, ic]) => h('button', { type: 'button', role: 'tab', 'aria-selected': ui.tab === k ? 'true' : 'false', class: `ph-tab${ui.tab === k ? ' on' : ''}`, onclick: () => ((ui.tab = k), renderLeft()) }, icon(ic, 16), h('span', {}, l))));
+    // the arrow keys move between the tabs, so keep the keyboard on the tab strip through the rebuild
+    const onTab = !!(document.activeElement && left.contains(document.activeElement) && document.activeElement.getAttribute('role') === 'tab');
+    const tabs = h('div', { class: 'ph-tabs', role: 'tablist', 'aria-label': 'Add to the design' }, TABS.map(([k, l, ic]) => h('button', { type: 'button', role: 'tab', id: `ph-tab-${k}`, 'aria-selected': ui.tab === k ? 'true' : 'false', 'aria-controls': 'ph-tabpanel', class: `ph-tab${ui.tab === k ? ' on' : ''}`, onclick: () => ((ui.tab = k), renderLeft()) }, icon(ic, 16), h('span', {}, l))));
     const body = { templates: templatesPanel, photos: photosPanel, stock: stockPanel, text: textPanel, shapes: shapesPanel, designs: designsPanel }[ui.tab]();
-    left.replaceChildren(tabs, h('div', { class: 'ph-left-body', role: 'tabpanel' }, body));
+    left.replaceChildren(tabs, h('div', { class: 'ph-left-body', role: 'tabpanel', id: 'ph-tabpanel', 'aria-labelledby': `ph-tab-${ui.tab}` }, body));
+    tablistKeys(tabs);
+    if (onTab) tabs.querySelector('[aria-selected="true"]').focus({ preventScroll: true });
   }
 
   /**
@@ -622,9 +660,14 @@ export function createPhotoStudio({ root, studio }) {
       'div',
       { class: 'ph-tpl' },
       h('p', { class: 'muted small' }, `Made from ${c.band.name || 'your band'}’s theme, logo and details. Pick what goes in, then a template.`),
-      h('div', { class: 'ph-tpl-photo' }, photo ? h('img', { src: photo.thumb || photo.url, alt: '' }) : h('span', { class: 'muted tiny' }, 'No photo'), h('span', { class: 'muted tiny' }, photo ? `Photo: ${photo.name}` : 'Pick a photo below')),
+      h('div', { class: 'ph-tpl-photo' }, photo ? h('img', { src: photo.thumb || photo.url, alt: '' }) : h('span', { class: 'muted tiny' }, 'No photo'), h('span', { class: 'muted tiny' }, photo ? `Photo: ${photo.name}` : imgs.length ? 'Pick a photo below' : 'Add a photo to start')),
+      // a first visit has no photos: the way to get some is right here, not folded away in another tab
+      imgs.length ? null : h('div', { class: 'ph-firstrun' },
+        h('p', { class: 'small' }, 'Most templates are built around a photo. Add one:'),
+        h('div', { class: 'row' }, button(ui.busy === 'upload' ? 'Uploading…' : 'Upload photos', () => uploadPhotos(), { iconName: 'upload', variant: 'sm primary', disabled: ui.busy === 'upload' }), driveButton(IMAGE_ACCEPT, true, (fs) => uploadPhotos(fs)), button('Search stock', () => ((ui.tab = 'stock'), renderLeft()), { iconName: 'search', variant: 'sm' })),
+        h('p', { class: 'muted tiny' }, 'Or pick a template anyway and add the photo later.')),
       t.photoIds.length > 1 ? h('p', { class: 'muted tiny' }, `${t.photoIds.length} photos picked: the carousel lays them all side by side, photo in photo frames the 2nd over the 1st.`) : null,
-      h(
+      !imgs.length ? null : h(
         'details',
         { class: 'ph-pick', open: ui.pickOpen || null, ontoggle: (e) => (ui.pickOpen = e.target.open) },
         h('summary', {}, t.photoIds.length > 1 ? 'Change the photos' : 'Change the photo, or pick several'),
@@ -635,6 +678,7 @@ export function createPhotoStudio({ root, studio }) {
         }, { order: t.photoIds }),
         t.photoIds.length > 1 ? button('Keep only the first', () => ((t.photoIds = t.photoIds.slice(0, 1)), renderLeft()), { variant: 'sm ghost' }) : null,
       ),
+      studio.openCarouselPage ? h('p', { class: 'muted tiny' }, 'Prefer slides built from your song, clips and cover? ', h('button', { type: 'button', class: 'linklike', onclick: () => studio.openCarouselPage() }, 'Make a carousel in the Video Studio'), ' and bring it back here to fine-tune.') : null,
       c.songs.length ? sel('songId', 'Song', [['', 'No song'], ...c.songs.map((s) => [s.id, s.title])]) : null,
       c.shows.length ? sel('showId', 'Show (for the poster)', c.shows.map((s) => [s.id, `${s.date || 'No date'} · ${s.venue || 'Venue TBD'}`])) : null,
       sel('tourId', 'Dates from', [['', 'Upcoming shows'], ...c.tours.map((x) => [x.id, `Tour: ${x.name}`])]),
@@ -788,126 +832,223 @@ export function createPhotoStudio({ root, studio }) {
     );
   }
 
+  // A small picture of each saved design, made when the Designs tab opens and remembered until the design changes.
+  const thumbs = new Map(); // design id → { sig, url }
+  const sigOf = (d) => {
+    const j = `${JSON.stringify(d.layers)}|${d.bg}|${d.w}|${d.h}|${d.slides}|${epoch}`;
+    let x = 5381;
+    for (let i = 0; i < j.length; i++) x = ((x << 5) + x + j.charCodeAt(i)) | 0;
+    return `${j.length}:${x}`;
+  };
+  const designThumb = (d) => {
+    const sig = sigOf(d);
+    const hit = thumbs.get(d.id);
+    if (hit && hit.sig === sig) return hit.url;
+    const c = renderDoc(d, { scale: 120 / Math.max(d.w, d.h), getImage: getPreview, getMatte });
+    const url = c.toDataURL('image/jpeg', 0.7);
+    thumbs.set(d.id, { sig, url });
+    return url;
+  };
+
   function designsPanel() {
     const cur = store.get();
     const all = [...saved.docs.map((d) => (d.id === cur.id ? cur : d))].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-    const sizeSel = h('select', { 'aria-label': 'Size for a new design' }, SIZES.map(([id, l, w, hh]) => h('option', { value: id }, `${l} · ${w}×${hh}`)));
+    const sizeSel = h('select', { 'aria-label': 'Size for a new design', 'data-k': 'ph-new-size' }, SIZES.map(([id, l, w, hh]) => h('option', { value: id }, `${l} · ${w}×${hh}`)), h('option', { value: 'custom' }, 'Custom size…'));
     const slidesSel = h('select', { 'aria-label': 'Slides' }, h('option', { value: '0' }, 'One image'), [2, 3, 4, 5, 6, 8, 10].map((k) => h('option', { value: String(k) }, `Carousel: ${k} slides`)));
-    const blank = () => openDoc(newDoc({ size: sizeSel.value, slides: +slidesSel.value, name: `${sizeById(sizeSel.value)[1].split(' (')[0]} design` }), { isNew: true });
+    // width and height of ONE slide, shown only for a custom size
+    const wIn = h('input', { type: 'number', min: 100, max: 8000, value: 1500, 'aria-label': 'Width in pixels', 'data-k': 'ph-new-w' });
+    const hIn = h('input', { type: 'number', min: 100, max: 8000, value: 1500, 'aria-label': 'Height in pixels', 'data-k': 'ph-new-h' });
+    const dims = h('div', { class: 'ph-two ph-custom', hidden: true }, h('label', { class: 'mf' }, h('span', { class: 'mf-l' }, 'Width (px)'), wIn), h('label', { class: 'mf' }, h('span', { class: 'mf-l' }, 'Height (px)'), hIn));
+    sizeSel.addEventListener('change', () => (dims.hidden = sizeSel.value !== 'custom'));
+    const blank = () => {
+      const k = +slidesSel.value;
+      if (sizeSel.value === 'custom') {
+        const pw = clampDim(wIn.value, k);
+        const ph = clampDim(hIn.value);
+        return openDoc(newDoc({ size: 'custom', slides: k, name: 'Custom design', w: pw * (k > 1 ? k : 1), h: ph }), { isNew: true });
+      }
+      openDoc(newDoc({ size: sizeSel.value, slides: k, name: `${sizeById(sizeSel.value)[1].split(' (')[0]} design` }), { isNew: true });
+    };
+    const list = h('ul', { class: 'ph-designs' });
+    const rows = () => {
+      const q = all.length > 4 ? ui.designQ.trim().toLowerCase() : '';
+      const shown = q ? all.filter((d) => d.name.toLowerCase().includes(q)) : all;
+      const todo = [];
+      const lis = shown.map((d) => {
+        const img = h('img', { class: 'ph-design-thumb', alt: '', width: 44, height: 44 });
+        const hit = thumbs.get(d.id);
+        if (hit && hit.sig === sigOf(d)) img.src = hit.url;
+        else todo.push([d, img]);
+        return h(
+          'li',
+          { class: d.id === cur.id ? 'on' : '' },
+          h('button', { type: 'button', class: 'ph-design-open', onclick: () => d.id !== cur.id && openDoc(normalizeDoc(d)) }, img, h('span', { class: 'ph-design-text' }, h('strong', {}, d.name), h('span', { class: 'muted tiny' }, `${d.slides > 1 ? `${d.slides} slides · ` : ''}${d.w}×${d.h} · ${d.layers.length} layers`))),
+          iconButton('copy', `Copy ${d.name}`, () => openDoc(normalizeDoc({ ...structuredClone(d), id: '', name: `${d.name} copy` }), { isNew: true }), 'ghost'),
+          iconButton('trash', `Delete ${d.name}`, () => {
+            if (!confirm(`Delete “${d.name}”? Its photos stay in the media library.`)) return;
+            saved.docs = saved.docs.filter((x) => x.id !== d.id);
+            thumbs.delete(d.id);
+            if (d.id === cur.id) openDoc(saved.docs[0] || newDoc(), { isNew: !saved.docs.length });
+            saveDesigns(saved);
+            renderLeft();
+          }, 'ghost'),
+        );
+      });
+      if (!lis.length) lis.push(h('li', { class: 'muted small' }, q ? `No design called “${ui.designQ.trim()}”.` : 'No designs yet.'));
+      list.replaceChildren(...lis);
+      // draw the pictures one at a time so a long list doesn't freeze the panel
+      const next = () => {
+        const job = todo.shift();
+        if (!job || !list.isConnected) return;
+        try {
+          job[1].src = designThumb(job[0]);
+        } catch {
+          /* a design that can't be drawn just has no picture */
+        }
+        setTimeout(next, 0);
+      };
+      setTimeout(next, 0);
+    };
+    const find = h('input', { type: 'search', placeholder: 'Find a design', value: ui.designQ, 'aria-label': 'Find a design', 'data-k': 'ph-design-q' });
+    find.addEventListener('input', () => ((ui.designQ = find.value), rows()));
+    rows();
     return h(
       'div',
       {},
       h('h3', { class: 'ph-h3' }, 'New blank design'),
       sizeSel,
+      dims,
       slidesSel,
       button('Create', blank, { iconName: 'plus', variant: 'sm primary' }),
       h('h3', { class: 'ph-h3' }, `Your designs · ${all.length}`),
-      h(
-        'ul',
-        { class: 'ph-designs' },
-        all.map((d) =>
-          h(
-            'li',
-            { class: d.id === cur.id ? 'on' : '' },
-            h('button', { type: 'button', class: 'ph-design-open', onclick: () => d.id !== cur.id && openDoc(normalizeDoc(d)) }, h('strong', {}, d.name), h('span', { class: 'muted tiny' }, `${d.slides > 1 ? `${d.slides} slides · ` : ''}${d.w}×${d.h} · ${d.layers.length} layers`)),
-            iconButton('copy', `Copy ${d.name}`, () => openDoc(normalizeDoc({ ...structuredClone(d), id: '', name: `${d.name} copy` }), { isNew: true }), 'ghost'),
-            iconButton('trash', `Delete ${d.name}`, () => {
-              if (!confirm(`Delete “${d.name}”? Its photos stay in the media library.`)) return;
-              saved.docs = saved.docs.filter((x) => x.id !== d.id);
-              if (d.id === cur.id) openDoc(saved.docs[0] || newDoc(), { isNew: !saved.docs.length });
-              saveDesigns(saved);
-              renderLeft();
-            }, 'ghost'),
-          ),
-        ),
-      ),
+      all.length > 4 ? find : null,
+      list,
     );
   }
 
   // ---------------------------------------------------------------- top bar
-  function renderBar() {
+  // The bar is rebuilt only when something it shows changes (not on every slider tick: each rebuild makes new controls).
+  let barKey = '';
+  function renderBar(force = false) {
     const doc = store.get();
+    const insets = safeInsets(doc);
+    const key = [doc.name, doc.size, doc.w, doc.h, doc.slides, (posterShow(doc) || {}).id || '', insets ? ui.safe : 'x', ui.exportScale, ui.customBar, missing().length, coarse.matches].join('|');
+    if (!force && key === barKey) return;
+    barKey = key;
     const name = h('input', { type: 'text', class: 'ph-name', value: doc.name, 'aria-label': 'Design name', 'data-k': 'ph-name' });
     name.addEventListener('change', () => update((d) => (d.name = name.value.trim() || 'Untitled design')));
-    const size = h('select', { 'aria-label': 'Canvas size', 'data-k': 'ph-size' }, SIZES.map(([id, l, w, hh]) => h('option', { value: id, selected: doc.size === id }, `${l}`)), h('option', { value: 'custom', selected: !SIZES.some((s) => s[0] === doc.size) }, `Custom ${doc.w}×${doc.h}`));
+    const isCustom = !SIZES.some((s) => s[0] === doc.size);
+    const size = h('select', { 'aria-label': 'Canvas size', 'data-k': 'ph-size' }, SIZES.map(([id, l, w, hh]) => h('option', { value: id, selected: doc.size === id && !ui.customBar }, `${l}`)), h('option', { value: 'custom', selected: isCustom || ui.customBar }, isCustom ? `Custom ${doc.w / (doc.slides > 1 ? doc.slides : 1)}×${doc.h}` : 'Custom size…'));
     size.addEventListener('change', () => {
-      if (size.value === 'custom') return;
+      if (size.value === 'custom') return ((ui.customBar = true), renderBar(true));
+      ui.customBar = false;
       const [, , w, hh] = sizeById(size.value);
-      update((d) => {
-        const k = d.slides > 1 ? d.slides : 1;
-        const sx = (w * k) / d.w;
-        const sy = hh / d.h;
-        for (const L of d.layers) Object.assign(L, { x: Math.round(L.x * sx), y: Math.round(L.y * sy), w: Math.round(L.w * sx), h: Math.round(L.h * sy) });
-        Object.assign(d, { size: size.value, w: w * k, h: hh });
-      });
+      update((d) => resizeDoc(d, size.value, w, hh));
+      renderBar(true);
     });
-    const slidesSel = h('select', { 'aria-label': 'Carousel slides', 'data-k': 'ph-slides' }, h('option', { value: '0', selected: doc.slides < 2 }, 'One image'), [2, 3, 4, 5, 6, 7, 8, 9, 10].map((k) => h('option', { value: String(k), selected: doc.slides === k }, `Carousel · ${k} slides`)));
+    // typed width and height of one slide (the number boxes show for a custom size, or after choosing "Custom size…")
+    const k = doc.slides > 1 ? doc.slides : 1;
+    const wIn = h('input', { type: 'number', min: 100, max: 8000, value: Math.round(doc.w / k), class: 'ph-dim', 'aria-label': 'Width in pixels', 'data-k': 'ph-w-px' });
+    const hIn = h('input', { type: 'number', min: 100, max: 8000, value: doc.h, class: 'ph-dim', 'aria-label': 'Height in pixels', 'data-k': 'ph-h-px' });
+    const applyDims = () => {
+      const pw = clampDim(wIn.value, k);
+      const ph = clampDim(hIn.value);
+      ui.customBar = false;
+      update((d) => resizeDoc(d, 'custom', pw, ph));
+      renderBar(true);
+    };
+    for (const el of [wIn, hIn]) el.addEventListener('change', applyDims);
+    const dims = isCustom || ui.customBar ? [wIn, h('span', { class: 'muted tiny' }, '×'), hIn, h('span', { class: 'muted tiny' }, 'px')] : [];
+    const slidesSel = h('select', { 'aria-label': 'Carousel slides', 'data-k': 'ph-slides' }, h('option', { value: '0', selected: doc.slides < 2 }, 'One image'), [2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => h('option', { value: String(n), selected: doc.slides === n }, `Carousel · ${n} slides`)));
     slidesSel.addEventListener('change', () => update((d) => {
       const old = d.slides > 1 ? d.slides : 1;
-      const k = +slidesSel.value > 1 ? +slidesSel.value : 1;
-      d.w = Math.round((d.w / old) * k);
-      d.slides = k > 1 ? k : 0;
-      const moved = pullBackLayers(d, k);
+      const n = +slidesSel.value > 1 ? +slidesSel.value : 1;
+      d.w = Math.round((d.w / old) * n);
+      d.slides = n > 1 ? n : 0;
+      const moved = pullBackLayers(d, n);
       if (moved) setTimeout(() => toast(`${moved} layer${moved === 1 ? ' was' : 's were'} past the new edge and moved onto the last slide.`, 'info', 5000));
     }));
-    bar.replaceChildren(
+    // the guide for the parts of a story that Instagram's own buttons cover (9:16 designs only)
+    const safeBtn = insets ? button('Safe area', () => ((ui.safe = !ui.safe), localStorage.setItem('pvm.photo.safe.v1', ui.safe ? '1' : '0'), renderBar(true), drawOverlay()), { iconName: 'eye', variant: `sm ghost${ui.safe ? ' on' : ''}`, title: 'Show or hide the parts of a story the top bar and the reply bar cover. Only on this screen, never in the image.' }) : null;
+    if (safeBtn) safeBtn.setAttribute('aria-pressed', ui.safe ? 'true' : 'false');
+    bar.replaceChildren(...[
       name,
       size,
+      ...dims,
       slidesSel,
+      safeBtn,
       iconButton('undo', 'Undo (Ctrl+Z)', () => store.undo(), 'ghost'),
       iconButton('redo', 'Redo (Ctrl+Shift+Z)', () => store.redo(), 'ghost'),
       iconButton('zoomOut', 'Zoom out', () => ((ui.zoom = (ui.zoom || scale) / 1.25), draw()), 'ghost'),
       button('Fit', () => ((ui.zoom = 0), draw()), { variant: 'sm ghost', title: 'Fit the design in the window' }),
       iconButton('zoomIn', 'Zoom in', () => ((ui.zoom = (ui.zoom || scale) * 1.25), draw()), 'ghost'),
+      saveEl,
       h('div', { class: 'spacer' }),
       ...exportControls(doc, 'ph-bar-export'),
-    );
+    ].filter(Boolean)); // native replaceChildren would print a null as the word "null"
     // the same actions in the Export sheet (the bar hides them on a phone or tablet)
     exportSheet.replaceChildren(h('h3', { class: 'ph-h3' }, 'Save or download'), h('div', { class: 'ph-export-btns' }, ...exportControls(doc, 'ph-export-btn').filter((x) => !x.classList.contains('muted'))), h('p', { class: 'muted small' }, `${doc.w}×${doc.h}${doc.slides > 1 ? ` · ${doc.slides} slides, each its own image` : ''}. On a phone the download goes to your Downloads or Files; “Save to media” keeps it in the app.`));
   }
-  const exportControls = (doc, cls) => [
-    relinkButton('photo', { variant: `sm ${cls}` }),
-    h('span', { class: `muted tiny ${cls}` }, `${doc.w}×${doc.h}${doc.slides > 1 ? ` · ${doc.slides} slides of ${Math.round(doc.w / doc.slides)}×${doc.h}` : ''}`),
-    posterShow(doc) ? button('Use as the show’s poster', usePoster, { iconName: 'check', variant: `sm ${cls}`, title: `Save it to the media library and put it on the show at ${posterShow(doc).venue || 'this venue'}` }) : null,
-    button('Save to media', saveToLibrary, { iconName: 'image', variant: `sm ${cls}`, title: 'Add the finished image(s) to the media library, the Photos page and the Video Studio' }),
-    doc.slides > 1 ? button('Separate files', () => exportImages('image/png', true), { variant: `sm ghost ${cls}`, title: 'Download each slide as its own PNG instead of one .zip (handy on a phone)' }) : null,
-    button('JPG', () => exportImages('image/jpeg'), { iconName: 'download', variant: `sm ${cls}` }),
-    button(doc.slides > 1 ? `PNG · ${doc.slides} slides` : 'PNG', () => exportImages('image/png'), { iconName: 'download', variant: `sm primary ${cls}` }),
-  ].filter(Boolean);
+  // how many times bigger than the design the downloads are: 1× (the design's size), 2× or 3× for print, as far as the browser can draw
+  const scaleChoices = (doc) => exportScales(doc, coarse.matches ? { maxArea: 16e6 } : {});
+  const exportControls = (doc, cls) => {
+    const choices = scaleChoices(doc);
+    if (!choices.includes(ui.exportScale)) ui.exportScale = 1;
+    const sc = ui.exportScale;
+    const k = doc.slides > 1 ? doc.slides : 1;
+    const dpi = dpiOf(doc, sc);
+    const scaleSel = choices.length > 1
+      ? h('label', { class: `ph-scale ${cls}` }, h('span', { class: 'muted tiny' }, 'Download size'), h('select', { 'aria-label': 'Download size', 'data-k': 'ph-export-scale', onchange: (e) => ((ui.exportScale = +e.target.value), renderBar(true)) }, choices.map((n) => h('option', { value: String(n), selected: n === sc }, `${n}× · ${Math.round((doc.w / k) * n)}×${Math.round(doc.h * n)}`))))
+      : null;
+    return [
+      relinkButton('photo', { variant: `sm ${cls}` }),
+      h('span', { class: `muted tiny ${cls}` }, `${Math.round(doc.w * sc)}×${Math.round(doc.h * sc)}${doc.slides > 1 ? ` · ${doc.slides} slides of ${Math.round((doc.w / k) * sc)}×${Math.round(doc.h * sc)}` : ''}${dpi ? ` · ${dpi} dpi` : ''}`),
+      scaleSel,
+      posterShow(doc) ? button('Use as the show’s poster', usePoster, { iconName: 'check', variant: `sm ${cls}`, title: `Save it to the media library and put it on the show at ${posterShow(doc).venue || 'this venue'}` }) : null,
+      button('Save to media', saveToLibrary, { iconName: 'image', variant: `sm ${cls}`, title: 'Add the finished image(s) to the media library, the Photos page and the Video Studio' }),
+      doc.slides > 1 ? button('Separate files', () => exportImages('image/png', true), { variant: `sm ghost ${cls}`, title: 'Download each slide as its own PNG instead of one .zip (handy on a phone)' }) : null,
+      button('JPG', () => exportImages('image/jpeg'), { iconName: 'download', variant: `sm ${cls}` }),
+      button(doc.slides > 1 ? `PNG · ${doc.slides} slides` : 'PNG', () => exportImages('image/png'), { iconName: 'download', variant: `sm primary ${cls}` }),
+    ].filter(Boolean);
+  };
 
   // ---------------------------------------------------------------- export
   const missing = () => docMedia(store.get()).filter((id) => !getImage(id));
-  async function images(type) {
+  /** The finished image(s). `scale` 2 or 3 draws them bigger for print; the library copy and the poster stay 1×. */
+  async function images(type, scale = 1) {
     const doc = store.get();
     ensureMattes();
     if ([...mattes.values()].includes('pending')) {
       toast('Finding the person first…', 'info', 20000);
       for (let i = 0; i < 400 && [...mattes.values()].includes('pending'); i++) await new Promise((r) => setTimeout(r, 100));
     }
-    const opt = { getImage, getMatte };
+    const opt = { getImage, getMatte, scale };
     const canv = doc.slides > 1 ? renderSlides(doc, opt) : [renderDoc(doc, opt)];
     const ext = type === 'image/jpeg' ? 'jpg' : 'png';
-    const blobs = await Promise.all(canv.map((c) => canvasBlob(c, type, 0.92)));
-    return blobs.map((b, i) => ({ blob: b, name: `${slug(doc.name)}${canv.length > 1 ? `-${i + 1}` : ''}.${ext}` }));
+    const blobs = [];
+    for (const c of canv) blobs.push(await canvasBlob(c, type, 0.92)); // one at a time: three huge canvases at once can run a browser out of memory
+    const tag = scale > 1 ? `-${scale}x` : '';
+    return blobs.map((b, i) => ({ blob: b, name: `${slug(doc.name)}${tag}${canv.length > 1 ? `-${i + 1}` : ''}.${ext}` }));
   }
   async function exportImages(type, separateFiles = false) {
     const gone = missing();
     const warn = () => gone.length && toast(`${gone.length === 1 ? 'A photo in this design is' : `${gone.length} photos in this design are`} not in the media library (${gone.map((id) => (studio.fileName && studio.fileName(id)) || 'name unknown').join(', ')}) and left out. Use Replace missing files to put ${gone.length === 1 ? 'it' : 'them'} back.`, 'error', 9000);
     warn();
-    const out = await images(type);
+    const sc = ui.exportScale;
+    const out = await images(type, sc);
     warn(); // the matte wait may have replaced the toast
     const doc = store.get();
     if (out.length > 1 && !separateFiles) {
       // one .zip beats a burst of downloads that Chrome may ask to allow (and drop when refused)
-      const files = await Promise.all(out.map(async (f, i) => ({ name: `${slug(doc.name)}-${String(i + 1).padStart(2, '0')}.${f.name.split('.').pop()}`, bytes: new Uint8Array(await f.blob.arrayBuffer()) })));
-      download(new Blob([zipStore(files)], { type: 'application/zip' }), `${slug(doc.name)}.zip`);
+      const files = await Promise.all(out.map(async (f, i) => ({ name: `${slug(doc.name)}${sc > 1 ? `-${sc}x` : ''}-${String(i + 1).padStart(2, '0')}.${f.name.split('.').pop()}`, bytes: new Uint8Array(await f.blob.arrayBuffer()) })));
+      download(new Blob([zipStore(files)], { type: 'application/zip' }), `${slug(doc.name)}${sc > 1 ? `-${sc}x` : ''}.zip`);
     } else {
       for (const [i, f] of out.entries()) {
         if (i) await new Promise((r) => setTimeout(r, 350)); // browsers drop downloads fired together
         download(f.blob, f.name);
       }
     }
-    if (!gone.length) toast(out.length > 1 ? (separateFiles ? `Downloading ${out.length} slides.` : `Downloading ${slug(doc.name)}.zip with ${out.length} slides. Post them in order and they line up.`) : `Downloading ${out[0].name}`);
+    if (!gone.length) toast(out.length > 1 ? (separateFiles ? `Downloading ${out.length} slides.` : `Downloading ${slug(doc.name)}${sc > 1 ? `-${sc}x` : ''}.zip with ${out.length} slides. Post them in order and they line up.`) : `Downloading ${out[0].name}`);
     lastExport.files = out;
   }
   /** The show a poster design was made for (when it still exists). */
@@ -1104,14 +1245,11 @@ export function createPhotoStudio({ root, studio }) {
           { class: 'row' },
           button('Flip ↔', () => update(L_((x) => (x.flipX = !x.flipX))), { variant: 'sm ghost' }),
           button('Flip ↕', () => update(L_((x) => (x.flipY = !x.flipY))), { variant: 'sm ghost' }),
-          button('Centre', () => update(L_((x, _v, d) => {
-            const sw = d.slides > 1 ? d.w / d.slides : d.w;
-            const slide = Math.floor((x.x + x.w / 2) / sw);
-            x.x = Math.round(slide * sw + (sw - x.w) / 2);
-            x.y = Math.round((d.h - x.h) / 2);
-          })), { variant: 'sm ghost', title: 'Centre it on its slide' }),
+          button('Centre', () => update(L_((x, _v, d) => (alignLayer(d, x, 'center'), alignLayer(d, x, 'middle')))), { variant: 'sm ghost', title: 'Centre it on its slide' }),
           L.type !== 'text' ? button('Fill the canvas', () => update(L_((x, _v, d) => Object.assign(x, { x: 0, y: 0, w: d.w, h: d.h, rot: 0 }))), { variant: 'sm ghost' }) : null,
         ),
+        // line it up with the edges of its own slide
+        h('div', { class: 'ph-align', role: 'group', 'aria-label': 'Align on the slide' }, ALIGNS.map(([where, label, ic]) => iconButton(ic, `Align ${label}`, () => update(L_((x, _v, d) => alignLayer(d, x, where))), 'ghost'))),
         h('div', { class: 'ph-two' }, check('ph-sh', 'Shadow', L.shadow.on, (x, v) => (x.shadow.on = v)), L.shadow.on ? field('ph-shc', 'Shadow colour', L.shadow.color, (x, v) => (x.shadow.color = v), { type: 'color' }) : h('span')),
         L.shadow.on ? slider('ph-shb', 'Shadow blur', L.shadow.blur, 0, 120, 1, (x, v) => (x.shadow.blur = v), (v) => `${v}px`) : null,
         L.shadow.on ? slider('ph-shy', 'Shadow drop', L.shadow.y, -60, 60, 1, (x, v) => (x.shadow.y = v), (v) => `${v}px`) : null,
@@ -1150,10 +1288,10 @@ export function createPhotoStudio({ root, studio }) {
             if (x) x.visible = !x.visible;
           }), 'ghost'),
           h('button', { type: 'button', class: 'ph-layer-name', onclick: () => ((ui.sel = L.id), renderRight(), drawOverlay()) }, icon({ image: 'image', text: 'type', shape: 'layers', gradient: 'palette' }[L.type], 14), h('span', {}, L.name), L.mask.type !== 'none' ? h('span', { class: 'mgr-chip' }, L.mask.type === 'clip' ? 'clipped' : 'mask') : null),
-          iconButton(L.locked ? 'key' : 'hand', L.locked ? `Unlock ${L.name}` : `Lock ${L.name}`, () => update((d) => {
+          lockButton(L.locked, `Lock ${L.name}`, () => update((d) => {
             const x = d.layers.find((y) => y.id === L.id);
             if (x) x.locked = !x.locked;
-          }), `ghost${L.locked ? ' on' : ''}`),
+          })),
         );
         li.addEventListener('dragstart', (e) => ((dragId = L.id), e.dataTransfer.setData('text/plain', L.id)));
         li.addEventListener('dragover', (e) => e.preventDefault());
@@ -1240,7 +1378,7 @@ export function createPhotoStudio({ root, studio }) {
     }
     renderBar();
   });
-  document.fonts && document.fonts.addEventListener && document.fonts.addEventListener('loadingdone', () => draw());
+  document.fonts && document.fonts.addEventListener && document.fonts.addEventListener('loadingdone', () => (epoch++, draw()));
 
   const lastExport = { files: [] };
   return {
@@ -1267,7 +1405,13 @@ export function createPhotoStudio({ root, studio }) {
       const doc = tp.build({ ...c, ...extra, photo: ph ? { id: ph.id, w: ph.width, h: ph.height } : null, cover: cov ? { id: cov.id, w: cov.width, h: cov.height } : null });
       openDoc(doc, { isNew: true });
     },
-    mediaChanged: () => (renderLeft(), renderRight(), draw()),
+    /** Open slides made elsewhere (the Video Studio's Carousel page) as one carousel design, a photo on each slide. */
+    openCarousel(items, name = 'Carousel', total = items.length) {
+      const { doc } = carouselFromImages(items, { name });
+      openDoc(doc, { isNew: true });
+      toast(total > items.length ? `Opened the first ${items.length} of ${total} slides: the Photo Studio carousel holds up to 10.` : `Opened ${items.length} slide${items.length === 1 ? '' : 's'} as a carousel design. Add text, shapes and looks on top.`, 'info', 5000);
+    },
+    mediaChanged: () => (epoch++, renderLeft(), renderRight(), draw()),
     lastExport,
     get selected() {
       return ui.sel;

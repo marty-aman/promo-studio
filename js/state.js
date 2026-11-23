@@ -368,7 +368,14 @@ function db() {
     dbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, 1);
       req.onupgradeneeded = () => req.result.createObjectStore('media', { keyPath: 'id' });
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        // let another tab (or a page kept in the browser's back/forward cache) delete or upgrade the database
+        req.result.onversionchange = () => {
+          req.result.close();
+          dbPromise = null;
+        };
+        resolve(req.result);
+      };
       req.onerror = () => reject(req.error);
     });
   }
