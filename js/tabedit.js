@@ -41,7 +41,9 @@ const NAMES = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b'];
 export const texPitch = (m) => `${NAMES[((m % 12) + 12) % 12]}${Math.floor(m / 12) - 1}`;
 
 /** Length of a beat in quarter notes. */
-export const beatQuarters = (b) => (4 / b.dur) * (b.dot ? 1.5 : 1);
+export const beatQuarters = (b) => (4 / b.dur) * (b.dot ? 1.5 : 1) * (b.tu === 3 ? 2 / 3 : 1);
+/** AlphaTex beat effects for length: dotted, triplet. */
+const lenFx = (b) => (b.dot || b.tu === 3 ? `{${[b.dot ? 'd' : '', b.tu === 3 ? 'tu 3' : ''].filter(Boolean).join(' ')}}` : '');
 /** How many quarter notes a bar holds. */
 export const barQuarters = (ts) => (ts[0] * 4) / ts[1];
 export const barFill = (bar) => bar.beats.reduce((s, b) => s + beatQuarters(b), 0);
@@ -92,6 +94,7 @@ export function fromScore(score) {
       const v = bar.voices[0];
       const beats = (v ? v.beats : []).filter((b) => !b.isEmpty || b.isRest).map((b) => {
         const beat = { dur: durOf(b.duration), dot: (b.dots || 0) > 0, rest: b.isRest || !b.notes.length, notes: [] };
+        if (b.tupletNumerator === 3 && b.tupletDenominator === 2) beat.tu = 3; // triplets (drafts from stems)
         if (!beat.rest) {
           beat.notes = b.notes.map((n) => {
             if (drums) {
@@ -123,7 +126,7 @@ export function fromScore(score) {
 const texString = (s) => `"${String(s || '').replace(/["\\]/g, '')}"`;
 
 function texFretted(beat) {
-  if (beat.rest || !beat.notes.length) return `r.${beat.dur}${beat.dot ? '{d}' : ''}`;
+  if (beat.rest || !beat.notes.length) return `r.${beat.dur}${lenFx(beat)}`;
   const notes = beat.notes
     .slice()
     .sort((a, b) => a.s - b.s)
@@ -138,7 +141,7 @@ function texFretted(beat) {
       return `${n.tech.x ? 'x' : Math.max(0, Math.round(n.f))}.${n.s}${fx.length ? `{${fx.join(' ')}}` : ''}`;
     });
   const body = notes.length === 1 ? notes[0] : `(${notes.join(' ')})`;
-  return `${body}.${beat.dur}${beat.dot ? '{d}' : ''}`;
+  return `${body}.${beat.dur}${lenFx(beat)}`;
 }
 
 /** Drum beats use ":dur" prefixes and bare GM numbers; a dotted beat becomes the beat plus a rest. */

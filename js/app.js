@@ -14,7 +14,7 @@ import { h, icon, iconButton, button, toast, setFold, Binder, download, tablistK
 import { modeUrl } from './modeurl.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { buildInspirationPage } from './page-inspiration.js';
-import { buildTabStudio, openInTabStudio } from './page-tabstudio.js';
+import { buildTabStudio, openInTabStudio, presetStemTab } from './page-tabstudio.js';
 import { buildDrumConvertPage } from './page-drumconvert.js';
 import { buildCarouselPage } from './page-carousel.js';
 import { createPostCheck } from './panel-postcheck.js';
@@ -29,7 +29,7 @@ import { coverOf, songCovers, autoCover } from './manager/releases.js';
 import { requestDetect } from './manager/page-sections.js';
 import { addPhotos as addArtistPhotos } from './manager/photos.js';
 import { makeLayer, makeOverlayClip } from './panel-layers.js';
-import { studioSongFiles, studioSongContext, addStems } from './manager/files.js';
+import { studioSongFiles, studioSongContext, addStems, addTabs } from './manager/files.js';
 import { applyTheme, themeById } from './themes.js';
 import { loadSettings } from './state.js';
 import { findSong, titleFromFile, fetchLyrics } from './lyricsfetch.js';
@@ -926,6 +926,13 @@ manager = createManager({
         if (how === 'clip' || how === 'overlay') ui.openTab('video');
       }
     },
+    /** Song Files > "Make a tab from this stem": open Tab Studio with the stem and part picked. */
+    stemToTab(id, role) {
+      const rec = media.get(id);
+      if (!rec) return toast('That file is no longer in the media library.', 'error');
+      presetStemTab(rec, role);
+      setMode('tabstudio');
+    },
     artistsChanged: () => (syncArtistSel(), syncNowOn()),
     /** The Manager's page, artist or song changed: update the header badge. */
     contextChanged: () => syncNowOn(),
@@ -1222,6 +1229,20 @@ async function fillLyrics(rec, { source = 'auto', force = false } = {}) {
     return null;
   }
 }
+/** The edit's song in Songs & releases (its "Key / tuning" text picks the draft's tuning). */
+ui.linkedSong = () => (manager ? manager.store.get().songs.find((x) => x.id === store.get().managerSongId) || null : null);
+/** A tab saved from a stem: list it on the song's Files tab, marked "Draft from stem". */
+ui.draftTabSaved = (rec) => {
+  const song = ui.linkedSong();
+  if (!song) return;
+  manager.store.update((d) => {
+    const s = d.songs.find((x) => x.id === song.id);
+    if (!s) return;
+    addTabs(s, [rec]);
+    const t = s.files.tabs.find((x) => x.mediaId === rec.id);
+    if (t) t.draft = true;
+  });
+};
 ui.onSongChosen = (rec) => fillLyrics(rec, { source: 'auto' });
 /** Cover art of this artist's songs, EPs and albums (Songs & releases), the edit's song first, for the End card picker. */
 /** The edit's song in Songs & releases, your songs with a song file, and the current song's stems and tabs. */

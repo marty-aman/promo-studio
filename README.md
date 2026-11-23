@@ -529,6 +529,21 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
     tab and drum layers at it (that adds to the Video Studio edit; switch back with the **Video Studio** button and
   press Ctrl+Z there to undo it).
 - **Tab from stems** (in Tab Studio): upload an isolated stem and pick the part.
+  - **Basic Pitch** is the default method (Spotify's open-source note finder, Apache-2.0, vendored in
+    `vendor/basic-pitch/` with TensorFlow.js and its 0.9 MB model, about 2 MB in all). It runs on this device in a
+    Web Worker, so nothing is downloaded or uploaded and a 4-minute stem does not freeze the page. The Transcribe
+    button shows progress and a **Cancel** button. Notes are cleaned up (very short or quiet notes, overtones,
+    duplicates and out-of-range pitches dropped; guitar E2–E6, bass E1–G4, lower in drop tunings), put on the
+    song's beat grid (**Note grid**: 1/16, 1/8, 1/8 triplets or Off) and given strings and frets by a simple
+    chooser (low frets, little hand movement, chords on neighbouring strings). The tuning starts from the song's
+    Key / tuning text ("drop D", "drop C", "7-string"); the Tuning picker overrides it. **Quick pitch tracker** is
+    the older method. Distorted, fast or layered guitar comes out noisy and needs correcting. Not tested on real
+    distorted stems.
+  - On a song's **Files** tab, every guitar, bass, keys or other stem has **Make a tab from this stem**, which
+    opens Tab Studio with that stem, part and tuning picked. Saving the tab adds it to the song's tabs marked
+    **Draft from stem** (file name ends `-draft-from-stem.gp`). **Use as MIDI notes** (Tab Studio) saves the
+    tab's notes as a `.mid` in your media and adds a MIDI notes layer to the video; the rhythm game and the
+    other MIDI features read that file too.
   - Bass lines and lead riffs are pitch-tracked note by note and placed on strings and frets that keep
     the hand in one position.
   - Rhythm guitar becomes power-chord shapes with the chord names (E5, G, Am…).

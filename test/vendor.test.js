@@ -53,3 +53,20 @@ test('vendored Transformers.js sends no usage data, and the runtime never uses t
   assert.match(rt, /wasmPaths = \{ mjs: `\$\{VENDOR_BASE\}/); // jsDelivr is only the library's default, never reached
   assert.ok(!/jsdelivr|unpkg|cdnjs/i.test(rt));
 });
+
+// ---- Basic Pitch + TensorFlow.js (vendor/basic-pitch), used by js/ai/basicpitch.js (edits listed in its README)
+const BP = {
+  'inference.js': 'add4c17c26e165e82e962543e7c2b783b1b789b8db0ab6f559b1f3ea1825caf9',
+  'toMidi.js': '8f543a395438c2baca01ede557d466e3bb82f3f249af68ca67ad98a140513f1f',
+  'tf.fesm.min.js': 'f713b1031e09ba5613265388d7c063a366053a0ddfcb3c957ca19cfbb962cd38',
+  'model/model.json': '1ed1aaee3409ec1dc098c8b01f430c0911f6fe9412e7af8086750f9e8f302f68',
+  'model/group1-shard1of1.bin': 'b142a95737a52e1e412d5f92e73d8bb80dfe8d04941acc0702f11f4524fb377c',
+};
+
+test('vendored Basic Pitch matches its recorded SHA-256, has its licence, and loads nothing from the network', () => {
+  for (const [file, sha] of Object.entries(BP)) {
+    assert.equal(createHash('sha256').update(readFileSync(new URL(`../vendor/basic-pitch/${file}`, import.meta.url))).digest('hex'), sha, file);
+  }
+  assert.match(readFileSync(new URL('../vendor/basic-pitch/LICENSE', import.meta.url), 'utf8'), /Apache License\s+Version 2\.0/);
+  assert.ok(!/tonejs/.test(readFileSync(new URL('../vendor/basic-pitch/toMidi.js', import.meta.url), 'utf8')));
+});
