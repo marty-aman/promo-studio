@@ -20,6 +20,7 @@ import { createPostCheck } from './panel-postcheck.js';
 import { createTips } from './panel-tips.js';
 import { kfTarget, kfSignature } from './panel-kf.js';
 import { createManager } from './manager/shell.js';
+import { initMobile } from './mobile.js';
 import { photoStyle } from './manager/artists.js';
 import { createPhotoStudio } from './photo/page.js';
 import { sectionsExport } from './panel-sections.js';
@@ -107,6 +108,7 @@ const artistSel = h('select', { class: 'artist-sel', 'aria-label': 'Artist for t
 artistSel.addEventListener('change', () => applyArtist(artistSel.value));
 // what you're working on: the band and the song, in both workspaces
 const nowOn = h('button', { type: 'button', class: 'now-on', title: 'The band and song you are working on' });
+const exportBtn = button('Export', () => ui.openTab('export'), { iconName: 'download', variant: 'primary' });
 const header = h(
   'header',
   { class: 'topbar' },
@@ -118,7 +120,7 @@ const header = h(
   studioOnly(
     postSlot,
     button('New project', () => ui.newProject(), { variant: 'ghost', title: 'Start a blank edit. The current one is kept under Start → Earlier projects, and Ctrl+Z brings it back.' }),
-    button('Export', () => ui.openTab('export'), { iconName: 'download', variant: 'primary' }),
+    exportBtn,
   ),
 );
 
@@ -1505,7 +1507,9 @@ function setMode(m) {
     engine.render();
   }
   syncNowOn();
+  if (mobile) mobile.refresh();
 }
+let mobile = null;
 
 // ------------------------------------------------------------ boot
 async function boot() {
@@ -1541,6 +1545,7 @@ async function boot() {
   setMode(mode);
   document.body.classList.add('ready');
 }
+mobile = initMobile({ header, modeSwitch, nowOn, keep: [undoBtn, redoBtn, exportBtn], tabRail, pageEl, transport, tlToolbar, engine, store, ui, panels, getMode: () => mode });
 boot();
 
 // exposed for the automated browser checks in test/

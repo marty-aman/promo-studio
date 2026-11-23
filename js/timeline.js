@@ -7,6 +7,7 @@ import { kfTarget } from './panel-kf.js';
 import { allKeys, moveKey, removeKey, EASES, KEY_EPS, snapToBeat, propInfo } from './keyframes.js';
 import { markTimed } from './manager/lyrictiming.js';
 import { qualityMarks } from './panel-quality.js';
+import { pinchZoom, pinchScroll, edgeZone } from './mobilelogic.js';
 
 const HEAD_W = 112;
 
@@ -430,14 +431,25 @@ export function createTimeline({ root, store, engine, ui }) {
     let moved = false;
     const p = store.get();
     const startSong = timelineToSong(tg.start, p.song);
+    // touch has no right-click: holding a diamond opens the same easing menu
+    const lp =
+      e.pointerType === 'touch'
+        ? setTimeout(() => {
+            if (moved) return;
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            easeMenu(e.clientX, e.clientY, g);
+          }, 550)
+        : null;
     const move = (ev) => {
-      if (Math.abs(ev.clientX - x0) > 3) moved = true;
+      if (Math.abs(ev.clientX - x0) > (e.pointerType === 'touch' ? 8 : 3)) moved = true;
       if (!moved) return;
       to = clamp(g.t + (ev.clientX - x0) / s, 0, tg.dur);
       if (ui.snap && p.beats) to = snapToBeat(to, p.beats.beats, startSong, 8 / s);
       el.style.left = `${to * s}px`;
     };
     const up = () => {
+      clearTimeout(lp);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       if (!moved) return engine.seek(tg.start + g.t);
@@ -505,11 +517,76 @@ export function createTimeline({ root, store, engine, ui }) {
 
   // ------------------------------------------------------------ interaction
 
+  // ---- touch: pinch to zoom, two fingers to scroll, one finger on empty space to scroll, long-press for a menu
+  const touches = new Map();
+  let gesture = null;
+  let press = null; // long-press timer
+  const isTouchEv = (e) => e.pointerType === 'touch';
+  const clearPress = () => {
+    clearTimeout(press);
+    press = null;
+  };
+  const fingers = () => {
+    const [a, b] = [...touches.values()];
+    return { dist: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+  };
+  function startGesture() {
+    clearPress();
+    drag = null;
+    preview = null;
+    const f = fingers();
+    gesture = { pps0: ui.pxPerSec, dist0: f.dist, cy0: f.cy, st0: scroller.scrollTop, tc: x2t(f.cx) };
+    render();
+  }
+  function moveGesture() {
+    const f = fingers();
+    ui.setZoom(pinchZoom(gesture.pps0, gesture.dist0, f.dist));
+    scroller.scrollLeft = pinchScroll(gesture.tc, ui.pxPerSec, f.cx - scroller.getBoundingClientRect().left);
+    scroller.scrollTop = gesture.st0 - (f.cy - gesture.cy0);
+  }
+  const selFor = (kind, id) => (kind === 'oclip' ? { type: 'clip', id } : kind === 'layer' || kind === 'vizrange' ? { type: 'layer', id } : { type: kind, id });
+  function blockMenu(x, y, kind, id) {
+    document.querySelector('.kf-menu')?.remove();
+    ui.select(selFor(kind, id));
+    const close = () => {
+      menu.remove();
+      document.removeEventListener('pointerdown', outside, true);
+    };
+    const outside = (ev) => !menu.contains(ev.target) && close();
+    const item = (label, fn, cls = '') => h('button', { type: 'button', role: 'menuitem', class: cls, onclick: () => (close(), fn()) }, label);
+    const menu = h(
+      'div',
+      { class: 'kf-menu block-menu', role: 'menu', style: { left: `${x}px`, top: `${y}px` } },
+      item('Split at playhead', () => ui.split()),
+      item('Duplicate', () => ui.duplicate()),
+      item('Copy', () => ui.copy()),
+      item('Settings', () => ui.openSettings && ui.openSettings()),
+      item('Delete', () => ui.deleteSelection(), 'danger'),
+    );
+    document.body.append(menu);
+    const r = menu.getBoundingClientRect();
+    if (r.bottom > innerHeight) menu.style.top = `${Math.max(4, innerHeight - r.height - 4)}px`;
+    if (r.right > innerWidth) menu.style.left = `${Math.max(4, innerWidth - r.width - 4)}px`;
+    setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+  }
+  content.addEventListener('contextmenu', (e) => document.body.classList.contains('touch') && e.preventDefault());
+
   content.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
+    if (isTouchEv(e)) {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size === 2) return startGesture();
+      if (touches.size > 2 || gesture) return;
+    }
     const p = store.get();
     const blockEl = e.target.closest('.tl-block');
-    const edge = e.target.dataset.edge;
+    let edge = e.target.dataset.edge;
+    if (isTouchEv(e) && blockEl) {
+      // a 44 px target across each edge of the selected block, whatever the drawn handle size
+      const r = blockEl.getBoundingClientRect();
+      edge = blockEl.querySelector('.tl-handle') ? edgeZone(r.left, r.right, e.clientX, blockEl.classList.contains('selected')) || undefined : undefined;
+      if (edge && !blockEl.querySelector(`.tl-handle.${edge}`)) edge = undefined;
+    }
     const t0 = x2t(e.clientX);
     try {
       content.setPointerCapture(e.pointerId);
@@ -522,6 +599,12 @@ export function createTimeline({ root, store, engine, ui }) {
       return;
     }
     if (!blockEl) {
+      // a finger on empty track space scrolls (a tap still moves the playhead); the ruler and the playhead scrub
+      const onRuler = e.target.closest('[data-track]')?.dataset.track === 'ruler';
+      if (isTouchEv(e) && !onRuler && Math.abs(e.clientX - playhead.getBoundingClientRect().left) > 22) {
+        drag = { op: 'pan', x0: e.clientX, y0: e.clientY, sl: scroller.scrollLeft, st: scroller.scrollTop, t0, moved: false };
+        return;
+      }
       // ruler or empty track: scrub
       drag = { op: 'scrub' };
       engine.seek(Math.max(0, t0));
@@ -529,7 +612,18 @@ export function createTimeline({ root, store, engine, ui }) {
       return;
     }
     const { kind, id } = blockEl.dataset;
-    const base = { kind, id, x0: e.clientX, moved: false, edge };
+    const base = { kind, id, x0: e.clientX, y0: e.clientY, moved: false, edge };
+    if (isTouchEv(e)) {
+      const cx = e.clientX;
+      const cy = e.clientY;
+      clearPress();
+      press = setTimeout(() => {
+        press = null;
+        if (!drag || drag.moved || drag.id !== id) return;
+        drag = null; // the menu replaces the tap
+        blockMenu(cx, cy, kind, id);
+      }, 550);
+    }
     if (kind === 'clip') {
       const c = p.clips.find((x) => x.id === id);
       drag = { ...base, op: edge ? `trim-${edge}` : 'reorder', orig: { ...c } };
@@ -562,6 +656,10 @@ export function createTimeline({ root, store, engine, ui }) {
   });
 
   content.addEventListener('pointermove', (e) => {
+    if (isTouchEv(e) && touches.has(e.pointerId)) {
+      Object.assign(touches.get(e.pointerId), { x: e.clientX, y: e.clientY });
+      if (gesture) return touches.size >= 2 && moveGesture();
+    }
     if (!drag) return;
     const s = pps();
     const dx = e.clientX - (drag.x0 ?? e.clientX);
@@ -569,7 +667,17 @@ export function createTimeline({ root, store, engine, ui }) {
       engine.seek(Math.max(0, x2t(e.clientX)));
       return;
     }
-    if (!drag.moved && Math.abs(dx) < 3) return;
+    if (drag.op === 'pan') {
+      if (!drag.moved && Math.hypot(dx, e.clientY - drag.y0) < 8) return;
+      drag.moved = true;
+      scroller.scrollLeft = drag.sl - dx;
+      scroller.scrollTop = drag.st - (e.clientY - drag.y0);
+      return;
+    }
+    // a finger wobbles more than a mouse: it needs a bigger move before a tap turns into a drag
+    const slop = isTouchEv(e) ? 8 : 3;
+    if (!drag.moved && Math.abs(dx) < slop) return;
+    if (!drag.moved) clearPress();
     drag.moved = true;
     const dt = dx / s;
     const key = `drag:${drag.op}:${drag.id}`;
@@ -703,6 +811,11 @@ export function createTimeline({ root, store, engine, ui }) {
   });
 
   const endDrag = (e) => {
+    if (isTouchEv(e)) {
+      touches.delete(e.pointerId);
+      if (!touches.size) gesture = null;
+    }
+    clearPress();
     if (!drag) return;
     const d0 = drag;
     drag = null;
@@ -710,6 +823,13 @@ export function createTimeline({ root, store, engine, ui }) {
       content.releasePointerCapture(e.pointerId);
     } catch {
       /* not captured */
+    }
+    if (d0.op === 'pan') {
+      if (!d0.moved && e.type === 'pointerup') {
+        engine.seek(Math.max(0, d0.t0));
+        ui.select(null);
+      }
+      return;
     }
     if (d0.op === 'scrub' || d0.op === 'duration') return;
     if (!d0.moved) {

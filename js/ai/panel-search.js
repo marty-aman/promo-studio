@@ -5,6 +5,7 @@
 // thumbnail. Run state lives here, not in the panel, so a panel rebuild keeps a run's progress.
 //
 // env = { addClip(rec, { from, len }), songFiles(): [{ id, title, video, footage }], currentSongId(): string }
+import { warnDownload } from '../mobilelogic.js';
 import { h, button, toast, download } from '../dom.js';
 import { media, addMedia } from '../media.js';
 import { relinkNotice } from '../relink.js';
@@ -203,6 +204,7 @@ function paint(box, env) {
         'div',
         { class: 'ai-consent', 'data-k': 'find-consent' },
         h('strong', {}, `Download the picture model (${mb} MB)?`),
+        warnDownload(mb) ? h('p', { class: 'warn-list small', role: 'note' }, warnDownload(mb)) : null,
         h('p', { class: 'small' }, `One time only: TinyCLIP (MIT licence) is downloaded from huggingface.co and kept in this browser. No video, picture or search words are sent anywhere; your footage is looked at on this device${i.device === 'wasm' ? ' (without a graphics chip’s help, about half a second for each second of video, once)' : ''}.`),
         h('div', { class: 'row' }, button(`Download ${mb} MB and search`, () => start(env), { variant: 'primary', iconName: 'download' }), button('Not now', () => ((st.phase = 'idle'), repaint()), { variant: 'ghost' })),
       ),

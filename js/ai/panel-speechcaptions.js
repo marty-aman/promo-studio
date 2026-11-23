@@ -4,6 +4,7 @@
 // and puts the captions on the Text row where the clip sits. If captions are already there it asks: replace
 // the ones under this clip, or add alongside. The state of a run lives here, not in the panel, so the panel
 // being rebuilt (the app refreshes panels often) does not lose the progress.
+import { warnDownload } from '../mobilelogic.js';
 import { h, button, toast } from '../dom.js';
 import { decodeStem } from '../transcribe.js';
 import { loadPipeline, modelInfo, ASR_TASK, DEFAULT_ASR } from './runtime.js';
@@ -142,6 +143,7 @@ function paint(box, env) {
         'div',
         { class: 'ai-consent', 'data-k': 'cap-consent' },
         h('strong', {}, `Download the speech model (${i.sizeMB || 77} MB)?`),
+        warnDownload(i.sizeMB || 77) ? h('p', { class: 'warn-list small', role: 'note' }, warnDownload(i.sizeMB || 77)) : null,
         h('p', { class: 'small' }, `One time only: it is downloaded from huggingface.co and kept in this browser. No video, sound or text is sent anywhere; everything is worked out on this device${i.device === 'wasm' ? ' (without a graphics chip’s help a long clip can take a few minutes)' : ''}.`),
         h('div', { class: 'row' }, button(`Download ${i.sizeMB || 77} MB and caption`, () => start(env, st.language || getLanguage()), { variant: 'primary', iconName: 'download' }), button('Not now', () => ((st.phase = 'idle'), repaint(env.key)), { variant: 'ghost' })),
       ),

@@ -14,6 +14,7 @@
 //   goto(flaggedItem)                      jump to such a line
 //   confirmReplace?(): boolean             ask before replacing a timing that already exists
 // }
+import { warnDownload } from '../mobilelogic.js';
 import { h, button, toast } from '../dom.js';
 import { decodeStem } from '../transcribe.js';
 import { loadPipeline, modelInfo, ASR_TASK, DEFAULT_ASR } from './runtime.js';
@@ -152,6 +153,7 @@ function paint(box, env) {
         'div',
         { class: 'ai-consent', 'data-k': 'ai-consent' },
         h('strong', {}, `Download the speech model (${i.sizeMB || 77} MB)?`),
+        warnDownload(i.sizeMB || 77) ? h('p', { class: 'warn-list small', role: 'note' }, warnDownload(i.sizeMB || 77)) : null,
         h('p', { class: 'small' }, `One time only: it is downloaded from huggingface.co and kept in this browser. No song data, audio or lyrics is sent anywhere; everything is worked out on this device${i.device === 'wasm' ? ' (without a graphics chip’s help it can take a few minutes for a whole song)' : ''}.`),
         h('div', { class: 'row' }, button(`Download ${i.sizeMB || 77} MB and sync`, () => start(env, st.language || getLanguage()), { variant: 'primary', iconName: 'download' }), button('Not now', () => ((st.phase = 'idle'), repaint(env.key)), { variant: 'ghost' })),
       ),
