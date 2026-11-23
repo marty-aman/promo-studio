@@ -204,6 +204,13 @@ export function createStore(initial) {
       state = draft;
       emit({ type: 'update' });
     },
+    /** A bookkeeping change that isn't an undo step of its own (e.g. noting when lyrics were saved on the song). */
+    patch(mutator) {
+      const draft = structuredClone(state);
+      mutator(draft);
+      state = draft;
+      emit({ type: 'patch' });
+    },
     replace(next) {
       undo.length = 0;
       redo.length = 0;

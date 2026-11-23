@@ -8,6 +8,7 @@ import { normalizeTours } from './tours.js';
 import { newStats, normalizeStats } from './stats.js';
 import { normalizeReleases, normalizeSections } from './releases.js';
 import { normalizeCovers } from './covers.js';
+import { normalizeLyricTiming } from './lyrictiming.js';
 
 export const MANAGER_KEY = 'pvm.manager.v1';
 export const MANAGER_VERSION = 1;
@@ -99,6 +100,7 @@ export function newSong(title = 'New song') {
     status: 'writing',
     releaseDate: '',
     lyrics: '',
+    lyricTiming: null, // timed lyric lines saved from the Video Studio (see lyrictiming.js)
     notes: '',
     bpm: '',
     instrumental: false, // no vocals: no lyrics needed, and pitches and the press release say so
@@ -188,7 +190,7 @@ export function normalizeManager(raw) {
   for (const k of ['songs', 'shows', 'venues', 'bands', 'contacts', 'posts', 'money']) m[k] = list(raw[k]);
   m.songs = m.songs.map((s) => {
     const d = newSong(s.title);
-    return { ...d, ...s, instrumental: s.instrumental === true, videoStatus: VIDEO_STATUSES.some(([k]) => k === s.videoStatus) ? s.videoStatus : '', sections: normalizeSections(s.sections), coverId: typeof s.coverId === 'string' ? s.coverId : null, releaseId: typeof s.releaseId === 'string' ? s.releaseId : '', track: +s.track || 0, sound: { ...d.sound, ...(s.sound || {}), moods: Array.isArray(s.sound?.moods) ? s.sound.moods : [] }, press: { ...d.press, ...(s.press || {}), edits: { ...(s.press?.edits || {}) } }, pitches: list(s.pitches), files: normalizeFiles(s.files), links: { ...d.links, ...(s.links || {}) }, shoot: { ...d.shoot, ...(s.shoot || {}) }, release: Array.isArray(s.release) ? s.release : d.release };
+    return { ...d, ...s, lyrics: typeof s.lyrics === 'string' ? s.lyrics : '', lyricTiming: normalizeLyricTiming(s.lyricTiming), instrumental: s.instrumental === true, videoStatus: VIDEO_STATUSES.some(([k]) => k === s.videoStatus) ? s.videoStatus : '', sections: normalizeSections(s.sections), coverId: typeof s.coverId === 'string' ? s.coverId : null, releaseId: typeof s.releaseId === 'string' ? s.releaseId : '', track: +s.track || 0, sound: { ...d.sound, ...(s.sound || {}), moods: Array.isArray(s.sound?.moods) ? s.sound.moods : [] }, press: { ...d.press, ...(s.press || {}), edits: { ...(s.press?.edits || {}) } }, pitches: list(s.pitches), files: normalizeFiles(s.files), links: { ...d.links, ...(s.links || {}) }, shoot: { ...d.shoot, ...(s.shoot || {}) }, release: Array.isArray(s.release) ? s.release : d.release };
   });
   m.photos = normalizePhotos(raw.photos);
   m.photoFolders = normalizeFolders(raw.photoFolders);

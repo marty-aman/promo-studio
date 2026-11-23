@@ -31,6 +31,7 @@ import { applyTheme, themeById } from './themes.js';
 import { loadSettings } from './state.js';
 import { findSong, titleFromFile, fetchLyrics } from './lyricsfetch.js';
 import { findCover } from './manager/covers.js';
+import { songLyricsPlan, lyricsFromTiming, timingFromLyrics, autoSaveDecision, setSongTiming, keepTiming, retimeLines, timingStale, timingSourceOf, markTimed } from './manager/lyrictiming.js';
 
 const store = createStore(loadProject() || newProject());
 let manager = null; // the Manager workspace (created below)
@@ -942,7 +943,9 @@ manager = createManager({
     openPromo(song) {
       const p = store.get();
       const rec = song.audioId && media.get(song.audioId);
-      const parts = ['title', song.lyrics.trim() && 'lyrics', rec && 'song file'].filter(Boolean);
+      const plan = songLyricsPlan(song);
+      const timed = plan.kind === 'timed';
+      const parts = ['title', (song.lyrics.trim() || timed) && 'lyrics', rec && 'song file'].filter(Boolean);
       if ((p.clips.length || p.lyrics.length) && !confirm(`Use “${song.title}” in the current video edit? Its ${parts.join(', ')} replace the edit’s. Undo (Ctrl+Z) in the studio puts them back.`)) return;
       if (rec) panels.actions.useSong(rec);
       store.update((d) => {
@@ -951,9 +954,14 @@ manager = createManager({
         const band = manager.store.get().band.name;
         if (band) d.endCard.artist = band;
         d.artistId = manager.currentArtist();
-        if (song.lyrics.trim()) {
+        if (timed) {
+          d.lyrics = lyricsFromTiming(song.lyricTiming);
+          d.lyricsFrom = { mediaId: rec ? rec.id : null, source: 'timing', title: song.title, timed: true };
+          d.lyricsTimed = markTimed(null, 'song', song.lyricTiming.savedAt);
+        } else if (song.lyrics.trim()) {
           d.lyrics = linesFromText(song.lyrics, +(timelineToSong(0, d.song) + 0.5).toFixed(2), 2.5);
           d.lyricsFrom = { mediaId: rec ? rec.id : null, source: 'manager', title: song.title };
+          d.lyricsTimed = null;
         }
         d.managerSongId = song.id;
         const cover = coverOf(song, manager.store.get().releases || []);
@@ -962,8 +970,8 @@ manager = createManager({
       const b = manager.artistBand(manager.currentArtist());
       if (b && (b.theme || b.logoId)) applyArtist(manager.currentArtist(), { quiet: true });
       setMode('studio');
-      ui.openTab(song.lyrics.trim() ? 'lyrics' : 'start');
-      toast(`“${song.title}” is in the editor${song.lyrics.trim() ? '. Next: tap along to sync the lyrics.' : '.'}`, 'info', 5000);
+      ui.openTab(song.lyrics.trim() || timed ? 'lyrics' : 'start');
+      toast(`“${song.title}” is in the editor${timed ? (plan.stale ? ' with its saved timing, but the lyrics changed since they were timed: re-time or keep it on the Lyrics tab.' : ', its lyrics already in time.') : song.lyrics.trim() ? '. Next: tap along to sync the lyrics.' : '.'}`, plan.stale ? 'error' : 'info', 6000);
     },
   },
 });
@@ -1129,17 +1137,30 @@ async function fillLyrics(rec, { source = 'auto', force = false } = {}) {
     }
   }
   const m = manager.store.get();
-  const song = findSong(m.songs, rec);
+  const song = songForFile(rec);
   const still = () => store.get().song && store.get().song.mediaId === rec.id;
   const startAt = () => +(timelineToSong(0, store.get().song) + 0.5).toFixed(2);
   if (song && song.instrumental && source === 'auto') {
     if (p.lyrics.length && from) store.update((d) => ((d.lyrics = []), (d.lyricsFrom = null)));
     return 'instrumental';
   }
+  // the timing saved on the song comes first: no lookup, no 2.5 s a line
+  const plan = songLyricsPlan(song);
+  if (source !== 'online' && plan.kind === 'timed') {
+    store.update((d) => {
+      d.lyrics = lyricsFromTiming(song.lyricTiming);
+      d.lyricsFrom = { mediaId: rec.id, source: 'timing', title: song.title, timed: true };
+      d.lyricsTimed = markTimed(d.lyricsTimed, 'song', song.lyricTiming.savedAt);
+    });
+    toast(plan.stale ? `Timed lyrics for “${song.title}” filled in, but the lyrics changed since they were timed: re-time or keep the timing on the Lyrics tab.` : `Timed lyrics for “${song.title}” filled in from the song, already in time.`, plan.stale ? 'error' : 'info', 6000);
+    ui.refreshPanels(true);
+    return 'timing';
+  }
   if (source !== 'online' && song && song.lyrics.trim()) {
     store.update((d) => {
       d.lyrics = linesFromText(song.lyrics, startAt(), 2.5);
       d.lyricsFrom = { mediaId: rec.id, source: 'manager', title: song.title };
+      d.lyricsTimed = null;
     });
     toast(`Lyrics for “${song.title}” filled in from Songs & releases. Tap along to time them, or try “Find timed lyrics online”.`, 'info', 6000);
     ui.refreshPanels(true);
@@ -1171,6 +1192,7 @@ async function fillLyrics(rec, { source = 'auto', force = false } = {}) {
     store.update((d) => {
       d.lyrics = got.lines ? got.lines.map((l) => ({ ...l, id: uid('lyr') })) : linesFromText(got.plain, startAt(), 2.5);
       d.lyricsFrom = { mediaId: rec.id, source: 'lrclib', title: got.match.title, artist: got.match.artist, timed: got.timed };
+      d.lyricsTimed = got.timed ? markTimed(d.lyricsTimed, 'lrclib', '') : null;
     });
     toast(`${got.timed ? 'Timed lyrics' : 'Lyrics'} for “${got.match.title}” by ${got.match.artist} filled in from LRCLIB${got.timed ? ', already in time with the song' : '. Tap along to time them'}.`, 'info', 6000);
     ui.refreshPanels(true);
@@ -1268,10 +1290,109 @@ ui.lyricsTools = {
   fill: (rec, opts) => fillLyrics(rec, opts),
   /** What the Lyrics tab can offer for the song in the edit. */
   info: (rec) => {
-    const song = rec && manager ? findSong(manager.store.get().songs, rec) : null;
-    return { song, hasLyrics: !!(song && song.lyrics.trim()), instrumental: !!(song && song.instrumental) };
+    const song = rec && manager ? songForFile(rec) : null;
+    const link = linkedSong();
+    const timingFor = link ? { title: link.song.title, timing: link.song.lyricTiming, stale: timingStale(link.song), other: !link.open, conflict: timingConflict === link.song.id } : null;
+    return { song, hasLyrics: !!(song && (song.lyrics.trim() || song.lyricTiming)), instrumental: !!(song && song.instrumental), timingFor };
+  },
+  saveTiming: (opts) => saveTimingToSong(opts),
+  /** "Keep the timing": the song's edited words are the ones its timing belongs to. */
+  keepTiming: () => {
+    const link = linkedSong();
+    if (!link || !link.open) return;
+    manager.store.update((d) => keepTiming(d.songs.find((s) => s.id === link.song.id)));
+    ui.refreshPanels(true);
+  },
+  /** "Re-time with the new lyrics": the song's new words, each line at its old line's time; tap-sync next. */
+  retime: () => {
+    const link = linkedSong();
+    if (!link) return;
+    store.update((d) => {
+      d.lyrics = retimeLines(link.song);
+      d.lyricsFrom = { mediaId: d.song ? d.song.mediaId : null, source: 'manager', title: link.song.title };
+      d.lyricsTimed = null;
+    });
+    toast('The new lyrics are in, each line at its old line’s time. Tap-sync them to fix the times, and the new timing is saved on the song.', 'info', 6000);
+    ui.refreshPanels(true);
   },
 };
+
+// ------------------------------------------------------------ lyric timing kept on the song
+/** The song the edit is linked to (managerSongId): { song, open } where open = it's the open artist's. */
+function linkedSong() {
+  const id = store.get().managerSongId;
+  if (!id || !manager) return null;
+  const own = manager.store.get().songs.find((s) => s.id === id);
+  if (own) return { song: own, open: true };
+  const any = manager.songById(id);
+  return any ? { song: any.song, open: false } : null;
+}
+/** The Manager song for a song file: the edit's linked song when it uses that file, else by file or title. */
+function songForFile(rec) {
+  const link = linkedSong();
+  if (link && link.song.audioId === rec.id) return link.song;
+  return findSong(manager.store.get().songs, rec);
+}
+let timingConflict = ''; // the song whose saved timing differs from the edit's (only "Replace" saves over it)
+const savedHere = new Map(); // song id → savedAt of the timing this tab saved last
+/**
+ * Save the edit's lyric lines as its song's timing. Automatic saves never overwrite a different timing
+ * the song already has (made in another edit or imported): they note the conflict and the Lyrics tab
+ * offers "Replace". Returns 'saved', 'same', 'conflict' or a reason it couldn't.
+ */
+function saveTimingToSong({ auto = false, replace = false } = {}) {
+  const p = store.get();
+  const link = linkedSong();
+  if (!link) {
+    if (!auto) toast('Pick one of your songs in the Audio tab first, so the timing has a song to go on.', 'error', 5000);
+    return 'none';
+  }
+  if (!link.open) {
+    if (!auto) toast(`“${link.song.title}” belongs to another artist. Open that artist in the Manager, then save the timing.`, 'error', 6000);
+    return 'other';
+  }
+  const rec = p.song && media.get(p.song.mediaId);
+  const timing = timingFromLyrics(p.lyrics, { source: timingSourceOf(p.lyricsTimed, link.song.lyricTiming), songLength: (rec && rec.duration) || 0 });
+  if (!timing) return 'none';
+  const basedOn = (p.lyricsTimed && p.lyricsTimed.basedOn) || '';
+  let decision = replace ? 'save' : autoSaveDecision(link.song, timing, basedOn);
+  if (decision === 'conflict' && basedOn && link.song.lyricTiming && savedHere.get(link.song.id) === link.song.lyricTiming.savedAt) decision = 'save';
+  if (decision === 'conflict') {
+    if (timingConflict !== link.song.id) toast(`“${link.song.title}” already has a different timing saved, so it was kept. Press “Replace the song’s timing” on the Lyrics tab to save this one instead.`, 'info', 7000);
+    timingConflict = link.song.id;
+    ui.refreshPanels(true);
+    return 'conflict';
+  }
+  if (decision === 'same') {
+    if (!auto) toast(`The timing on “${link.song.title}” is already up to date.`);
+    return 'same';
+  }
+  let saved = null;
+  manager.store.update((d) => {
+    const s = d.songs.find((x) => x.id === link.song.id);
+    if (s) saved = setSongTiming(s, timing);
+  });
+  if (!saved) return 'none';
+  savedHere.set(link.song.id, saved.savedAt);
+  timingConflict = '';
+  // bookkeeping only: not an undo step of its own
+  store.patch((d) => (d.lyricsTimed = { ...(d.lyricsTimed || markTimed(null, saved.source)), basedOn: saved.savedAt }));
+  toast(`Timing saved on “${link.song.title}” (${saved.lines.length} lines). Every edit of it starts in time now.`, 'info', 4000);
+  ui.refreshPanels(true);
+  return 'saved';
+}
+// a timing change in the edit (tap-sync, timed lyrics, an .lrc, a shift, a drag) saves it on the song shortly after
+let timingRev = store.get().lyricsTimed ? store.get().lyricsTimed.rev : 0;
+let timingTimer = null;
+store.subscribe((p, meta) => {
+  const lt = p.lyricsTimed;
+  const rev = lt ? lt.rev : 0;
+  if (rev === timingRev) return;
+  timingRev = rev;
+  if (meta.type !== 'update' || !lt || lt.by === 'song' || !p.managerSongId) return;
+  clearTimeout(timingTimer);
+  timingTimer = setTimeout(() => saveTimingToSong({ auto: true }), 800);
+});
 
 /** Open the Photo Studio on a template (from the Manager: a song, a show, a tour). */
 function openPhoto(templateId, { songId = '', showId = '', tourId = '', releaseId = '' } = {}) {

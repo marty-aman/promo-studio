@@ -39,6 +39,7 @@ import { fetchSpotifyInfo } from './spotify.js';
 import { LINE_PRESETS, lineStyle, hasLineStyle } from './linestyle.js';
 import { THEMES, themeById, applyTheme } from './themes.js';
 import { stemRoleLabel } from './manager/files.js';
+import { markTimed, timingSummary, SOURCE_LABELS } from './manager/lyrictiming.js';
 
 const themeState = { motion: false };
 import { ensureLayerAnalyses, videoWaveform } from './media.js';
@@ -1712,17 +1713,42 @@ export function createPanels({ store, engine, ui }) {
     const said = from
       ? from.source === 'lrclib'
         ? `From LRCLIB: “${from.title}” by ${from.artist}${from.timed ? ', timed' : ''}.`
-        : `From Songs & releases: “${from.title}”.`
+        : from.source === 'timing'
+          ? `The timing saved on “${from.title}”.`
+          : `From Songs & releases: “${from.title}”.`
       : p.lyrics.length ? 'Typed or pasted by you.' : 'None yet.';
+    // the timing saved on the song (Songs & releases → the song → Lyrics)
+    const tm = info.timingFor;
+    const timingBox = tm
+      ? h(
+          'div',
+          { class: 'lyric-timing', 'data-k': 'lyric-timing' },
+          h('p', { class: 'small', 'data-k': 'timing-state' }, h('strong', {}, `On “${tm.title}”: `), tm.timing ? `${timingSummary(tm.timing)}, ${SOURCE_LABELS[tm.timing.source] || ''}.` : 'no timing saved yet.', tm.other ? ' It belongs to another artist: open that artist in the Manager to save to it.' : ''),
+          tm.stale
+            ? h('p', { class: 'warn-note small', 'data-k': 'timing-stale' }, 'Lyrics changed since they were timed. ', button('Re-time with the new lyrics', () => tools.retime(), { variant: 'sm' }), ' ', button('Keep the timing', () => tools.keepTiming(), { variant: 'sm ghost' }))
+            : null,
+          tm.conflict ? h('p', { class: 'warn-note small', 'data-k': 'timing-conflict' }, 'The song has a different timing saved, so these times weren’t saved over it.') : null,
+          p.lyrics.length && !tm.other
+            ? h(
+                'div',
+                { class: 'row wrap' },
+                tm.conflict
+                  ? button('Replace the song’s timing', () => confirm(`Replace the timing saved on “${tm.title}” with this edit’s ${p.lyrics.length} lines?`) && tools.saveTiming({ replace: true }), { iconName: 'check', variant: 'sm primary' })
+                  : button('Save timing to the song', () => tools.saveTiming(), { iconName: 'check', variant: 'sm', title: 'Keep these line times on the song, so every edit of it starts in time. Done for you after tap-sync, timed lyrics and shifts.' }),
+              )
+            : null,
+        )
+      : null;
     return section(
       'Lyrics for this song',
       rec ? h('p', { class: 'small' }, h('strong', {}, rec.name), info.song ? ` · “${info.song.title}” in Songs & releases${info.instrumental ? ' (instrumental)' : ''}` : ' · not on a song in Songs & releases') : h('p', { class: 'muted small' }, 'Pick the song in the Audio tab and its lyrics are filled in here.'),
       h('p', { class: 'muted tiny' }, `Now: ${said}`),
+      timingBox,
       rec
         ? h(
             'div',
             { class: 'row wrap' },
-            info.hasLyrics ? button(`Use the lyrics from “${info.song.title}”`, () => fill('manager'), { iconName: 'mic', variant: 'sm' }) : null,
+            info.hasLyrics ? button(`Use the ${info.song.lyricTiming ? 'timed ' : ''}lyrics from “${info.song.title}”`, () => fill('manager'), { iconName: 'mic', variant: 'sm' }) : null,
             button('Find timed lyrics online', () => fill('online'), { iconName: 'search', variant: 'sm', title: 'Look the song up on LRCLIB, a free lyrics database with line timings' }),
           )
         : null,
@@ -1745,6 +1771,7 @@ export function createPanels({ store, engine, ui }) {
         const fresh = linesFromText(lines.join('\n'), start, 2.5);
         d.lyrics = fresh.map((l, i) => (old[i] ? { ...old[i], text: l.text } : l));
         d.lyricsFrom = null; // yours now: picking another song won't replace them
+        if (fresh.length > old.length) d.lyricsTimed = null; // the new lines aren't timed yet
       });
       sync.cursor = 0;
       toast(`${lines.length} lines ready. Next: tap along to sync them.`);
@@ -1787,6 +1814,7 @@ export function createPanels({ store, engine, ui }) {
           const x = d.lyrics.find((y) => y.id === l.id);
           x[field] = Math.max(0, v);
           if (x.end <= x.start) x.end = x.start + 0.3;
+          d.lyricsTimed = markTimed(d.lyricsTimed, 'manual');
         });
       };
       startIn.addEventListener('change', commit('start', startIn));
@@ -1804,7 +1832,7 @@ export function createPanels({ store, engine, ui }) {
       list.append(row);
     });
 
-    const shiftBy = (delta) => store.update((d) => (d.lyrics = shiftLyrics(d.lyrics, delta)), 'shift');
+    const shiftBy = (delta) => store.update((d) => ((d.lyrics = shiftLyrics(d.lyrics, delta)), (d.lyricsTimed = markTimed(d.lyricsTimed, 'manual'))), 'shift');
 
     const s = (fn) => (d, v) => fn(d.lyricStyle, v);
     const presetRow = h(
@@ -1884,10 +1912,10 @@ export function createPanels({ store, engine, ui }) {
     const text = await f.text();
     const parsed = parseLRC(text);
     if (!parsed.length) {
-      store.update((d) => (d.lyrics = linesFromText(text, timelineToSong(0, d.song) + 0.5)));
+      store.update((d) => ((d.lyrics = linesFromText(text, timelineToSong(0, d.song) + 0.5)), (d.lyricsTimed = null)));
       toast('No timestamps found, so the lines were imported untimed. Tap-sync them next.');
     } else {
-      store.update((d) => (d.lyrics = parsed));
+      store.update((d) => ((d.lyrics = parsed), (d.lyricsTimed = markTimed(d.lyricsTimed, 'file', ''))));
       toast(`Imported ${parsed.length} timed lines`);
     }
     ui.refreshPanels(true);
@@ -1916,7 +1944,10 @@ export function createPanels({ store, engine, ui }) {
     sync.active = false;
     ui.syncing = false;
     engine.pause();
-    store.update((d) => d.lyrics.forEach((l) => delete l.open));
+    store.update((d) => {
+      d.lyrics.forEach((l) => delete l.open);
+      d.lyricsTimed = markTimed(d.lyricsTimed, 'tap');
+    });
     toast('Synced. Drag blocks on the timeline to fine-tune.');
     ui.refreshPanels(true);
   }
