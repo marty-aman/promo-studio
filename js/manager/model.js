@@ -170,7 +170,7 @@ export function normalizeManager(raw) {
   m.band.epkPhotos = Array.isArray(m.band.epkPhotos) ? m.band.epkPhotos.filter((x) => typeof x === 'string').slice(0, 4) : [];
   m.playlists = list(raw.playlists);
   m.playlistsOff = Array.isArray(raw.playlistsOff) ? raw.playlistsOff.filter((x) => typeof x === 'string') : [];
-  m.shows = m.shows.map((s) => ({ ...newShow(), ...s, posterId: typeof s.posterId === 'string' && s.posterId ? s.posterId : null, settlement: { ...newShow().settlement, ...(s.settlement || {}), shares: s.settlement && s.settlement.shares && typeof s.settlement.shares === 'object' ? { ...s.settlement.shares } : {} } }));
+  m.shows = m.shows.map((s) => ({ ...newShow(), ...s, posterId: typeof s.posterId === 'string' && s.posterId ? s.posterId : null, settlement: { ...newShow().settlement, ...(s.settlement || {}), shares: s.settlement && s.settlement.shares && typeof s.settlement.shares === 'object' && !Array.isArray(s.settlement.shares) ? { ...s.settlement.shares } : {} } }));
   m.covers = normalizeCovers(raw.covers);
   m.seeded = raw.seeded && typeof raw.seeded === 'object' ? raw.seeded : {};
   return m;

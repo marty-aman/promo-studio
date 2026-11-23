@@ -59,6 +59,18 @@ export function removeArtist(ws, id) {
   return { ...ws, artists, current: ws.current === id ? artists[0].id : ws.current };
 }
 
+/**
+ * Undo deleting an artist: `before` is the workspace just before the delete, `now` the workspace
+ * since. The artist goes back in its old place and becomes the open one; the other artists keep their
+ * edits since, an artist added since stays, and the shared address book is today's.
+ */
+export function restoreArtist(before, now, id) {
+  const gone = before.artists.find((x) => x.id === id);
+  if (!gone || now.artists.some((x) => x.id === id)) return now;
+  const artists = [...before.artists.map((x) => (x.id === id ? x : now.artists.find((y) => y.id === x.id))).filter(Boolean), ...now.artists.filter((y) => !before.artists.some((x) => x.id === y.id))];
+  return { ...now, artists, current: id };
+}
+
 export const artistList = (ws) => ws.artists.map((a) => ({ id: a.id, name: a.band.name || 'Untitled artist', city: a.band.city || '', theme: a.band.theme || '', logoId: a.band.logoId || null, photoId: a.band.photoId || null }));
 
 /** The next two weeks for every artist, each item tagged with its artist. */

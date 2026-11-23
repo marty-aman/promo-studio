@@ -43,6 +43,12 @@ const fold = (line) => {
 };
 
 /**
+ * A calendar item's UID: its kind, what it belongs to, its own id for tasks, and its artist. One
+ * release day and one shoot per song, one event per show and post, so no date is needed.
+ */
+export const icsUid = (it) => `${it.kind}-${it.ref.id}${it.key ? `-${it.key}` : ''}${it.artistId ? `-${it.artistId}` : ''}@promo-studio`;
+
+/**
  * Everything in the manager as an .ics calendar (Google, Apple and Outlook calendars import it):
  * shows at their set time, shoots at call time, everything else as all-day items.
  */
@@ -58,9 +64,9 @@ export function managerICS(m, { from = '', days = 400, stamp = new Date(), ws = 
     const show = it.kind === 'show' && src.shows.find((s) => s.id === it.ref.id);
     const song = it.kind === 'shoot' && src.songs.find((s) => s.id === it.ref.id);
     const time = show ? show.setTime || show.doors : song ? song.shoot.callTime : '';
-    // the UID comes from what the item is (never its place in the list), so a calendar app that
-    // imports the file again updates the same events instead of adding copies
-    lines.push('BEGIN:VEVENT', `UID:${it.kind}-${it.ref.id}${it.key ? `-${it.key}` : ''}-${icsDay(it.date)}${it.artistId ? `-${it.artistId}` : ''}@promo-studio`, `DTSTAMP:${dt}`);
+    // the UID says what the item is (never its date or its place in the list), so a calendar app
+    // that imports the file again updates the same events, moved ones included, instead of adding copies
+    lines.push('BEGIN:VEVENT', `UID:${icsUid(it)}`, `DTSTAMP:${dt}`);
     if (time && /^\d{2}:\d{2}$/.test(time)) {
       const [hh, mm] = time.split(':').map(Number);
       // an hour for a set, 8 for a shoot, running past midnight onto the next day when it has to
@@ -127,30 +133,34 @@ export const MONEY_CATS = [['show', 'Shows'], ['merch', 'Merch'], ['streaming', 
 export const newEntry = (kind = 'expense', date = isoDate(new Date())) => ({ id: mid('money'), date, kind, amount: '', category: kind === 'income' ? 'show' : 'other', songId: '', showId: '', note: '' });
 
 const amt = (v) => (v === '' || v == null || Number.isNaN(+v) ? 0 : +v);
-/** A show whose settlement is real money: played, or its day has come and it wasn't cancelled. */
-export const showSettled = (s, today) => s.status === 'played' || (s.status !== 'cancelled' && !!s.date && s.date <= today);
+/**
+ * A show whose pay and merch are real money: marked played, or confirmed and its day is over (today's
+ * show counts from tomorrow). Ideas, pitches and holds that never got played don't count.
+ */
+export const showSettled = (s, today) => s.status === 'played' || (s.status === 'confirmed' && !!s.date && s.date < today);
 
 /**
  * Every money line: the ledger plus show settlements (pay and merch in, costs out), so the totals
- * include shows without typing them twice. Shows still to come (or cancelled) don't count yet;
- * see expectedShowMoney for what upcoming shows should bring in.
+ * include shows without typing them twice. Pay and merch count once a show is settled (showSettled);
+ * costs count right away. See expectedShowMoney for what upcoming shows should bring in.
  */
 export function moneyLines(m, today = isoDate(new Date())) {
   const out = m.money.map((e) => ({ ...e, amount: amt(e.amount), from: 'ledger' }));
   for (const s of m.shows) {
-    if (!showSettled(s, today)) continue;
     const st = s.settlement || {};
     const base = { date: s.date, showId: s.id, songId: '', from: 'show', note: s.venue || 'Show' };
+    // costs are money already spent (a deposit, the van), so they count as soon as they're typed
+    if (amt(st.costs)) out.push({ ...base, id: `${s.id}-costs`, kind: 'expense', category: 'travel', amount: amt(st.costs) });
+    if (!showSettled(s, today)) continue;
     if (amt(st.pay)) out.push({ ...base, id: `${s.id}-pay`, kind: 'income', category: 'show', amount: amt(st.pay) });
     if (amt(st.merch)) out.push({ ...base, id: `${s.id}-merch`, kind: 'income', category: 'merch', amount: amt(st.merch) });
-    if (amt(st.costs)) out.push({ ...base, id: `${s.id}-costs`, kind: 'expense', category: 'travel', amount: amt(st.costs) });
   }
   return out.filter((e) => e.amount > 0).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
 
-/** Pay already typed in for upcoming (not cancelled) shows, e.g. guarantees: { total, shows }. */
+/** Pay already typed in for shows still to come (today or later, or no date yet; not cancelled), e.g. guarantees: { total, shows }. */
 export function expectedShowMoney(m, today = isoDate(new Date())) {
-  const shows = m.shows.filter((s) => !showSettled(s, today) && s.status !== 'cancelled' && amt((s.settlement || {}).pay) > 0);
+  const shows = m.shows.filter((s) => !showSettled(s, today) && s.status !== 'cancelled' && (!s.date || s.date >= today) && amt((s.settlement || {}).pay) > 0);
   return { total: shows.reduce((a, s) => a + amt(s.settlement.pay), 0), shows };
 }
 
@@ -168,7 +178,15 @@ export function memberSplit(net, members = [], { fund = '', shares = {} } = {}) 
   const w = list.map((x) => (shares && shares[x.id] !== undefined && shares[x.id] !== '' ? Math.max(0, amt(shares[x.id])) : 1));
   const total = w.reduce((a, b) => a + b, 0);
   const left = net - kept;
-  return { fund: total ? kept : cents(net), members: list.map((x, i) => ({ id: x.id, name: x.name, share: w[i], amount: total ? cents((left * w[i]) / total) : 0 })) };
+  if (!total) return { fund: cents(net), members: list.map((x, i) => ({ id: x.id, name: x.name, share: w[i], amount: 0 })) };
+  const out = list.map((x, i) => ({ id: x.id, name: x.name, share: w[i], amount: cents((left * w[i]) / total) }));
+  // rounding to cents can leave a cent or two over (or short): the first paid member takes it, so it adds up
+  const rest = cents(left - out.reduce((a, x) => a + x.amount, 0));
+  if (rest) {
+    const first = out.find((x) => x.share > 0);
+    first.amount = cents(first.amount + rest);
+  }
+  return { fund: kept, members: out };
 }
 
 /** One line for the band chat: "Split: $45 each (4 members) · band fund $60". '' when there's nothing to split. */

@@ -1400,7 +1400,7 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 
 /* ---- Manager: phone layout. The side nav becomes a scrolling strip on top, everything stacks. */
 @media (max-width: 760px) {
-  body.mode-manager .topbar { overflow-x: auto; min-width: 0; }
+  body.mode-manager:not(.mode-photo) .topbar { overflow-x: auto; min-width: 0; }
   .manager { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .mgr-side { flex-direction: column; border-right: 0; border-bottom: 1px solid var(--border); padding: 6px 8px; overflow: visible; }
   .mgr-side > div:first-child { display: flex; align-items: center; gap: 6px; min-width: 0; }

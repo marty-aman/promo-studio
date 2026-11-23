@@ -9,6 +9,7 @@ import { showSummary } from '../js/manager/page-shows.js';
 import { stageSetlistHTML } from '../js/manager/docs.js';
 import { setlistTimes } from '../js/manager/setlist.js';
 import { backupDue, viewHash, parseViewHash } from '../js/manager/shell.js';
+import { restoreArtist } from '../js/manager/artists.js';
 
 const TODAY = '2026-11-23';
 
@@ -36,6 +37,60 @@ test('"Mark everything before release day done" ticks the run-up only', () => {
   assert.equal(markPreReleaseDone(s), pre);
   assert.ok(s.release.filter((t) => t.offset > 0).every((t) => !t.done));
   assert.equal(markPreReleaseDone(s), 0); // nothing left the second time
+});
+
+test('calendar UIDs stay the same when a show, release, shoot or post moves', () => {
+  const m = newManager();
+  const s = { ...newSong('Static'), id: 'sg', releaseDate: addDays(TODAY, 10) };
+  s.shoot.date = addDays(TODAY, 3);
+  m.songs.push(s);
+  m.shows.push({ ...newShow(addDays(TODAY, 5)), id: 'sh1', venue: 'Funhouse', status: 'confirmed', setTime: '21:00', todo: [{ id: 't1', offset: -2, text: 'Flyer', done: false }] });
+  m.posts.push({ id: 'p1', songId: 'sg', title: 'Teaser', status: 'idea', date: addDays(TODAY, 4), stats: {} });
+  const uids = (t) => t.split('\r\n').filter((l) => l.startsWith('UID:')).sort();
+  const a = uids(managerICS(m, { from: TODAY }));
+  assert.ok(a.includes('UID:show-sh1@promo-studio'));
+  assert.ok(a.includes('UID:release-sg@promo-studio'));
+  m.shows[0].date = addDays(TODAY, 6); // the show is moved a day
+  s.releaseDate = addDays(TODAY, 12); // the release (and every task counted from it) moves
+  s.shoot.date = addDays(TODAY, 2);
+  m.posts[0].date = addDays(TODAY, 1);
+  const b = uids(managerICS(m, { from: TODAY }));
+  // the only new UIDs are release tasks that moved into the export's date range
+  assert.ok(b.filter((u) => !a.includes(u)).every((u) => u.startsWith('UID:task-sg-')), JSON.stringify(b.filter((u) => !a.includes(u))));
+  for (const u of ['UID:show-sh1@promo-studio', 'UID:release-sg@promo-studio', 'UID:shoot-sg@promo-studio', 'UID:post-p1@promo-studio', 'UID:task-sh1-t1@promo-studio']) assert.ok(b.includes(u), u);
+  // a moved release task keeps its UID
+  const task = s.release.find((t) => t.offset === -7);
+  assert.ok(b.includes(`UID:task-sg-${task.id}@promo-studio`));
+});
+
+test('calendar UIDs are unique for same-text tasks on two songs and across artists', async () => {
+  const { workspaceFrom, addArtist } = await import('../js/manager/artists.js');
+  const m = newManager();
+  m.songs.push({ ...newSong('One'), releaseDate: addDays(TODAY, 10) }, { ...newSong('Two'), releaseDate: addDays(TODAY, 10) });
+  const one = managerICS(m, { from: TODAY }).split('\r\n').filter((l) => l.startsWith('UID:'));
+  assert.equal(new Set(one).size, one.length);
+  let ws = workspaceFrom(m);
+  let id2;
+  [ws, id2] = addArtist(ws, 'Second');
+  const a2 = ws.artists.find((a) => a.id === id2);
+  a2.songs = [{ ...m.songs[0] }]; // the same song id under another artist
+  a2.shows = [{ ...newShow(addDays(TODAY, 3)), id: 'same', status: 'confirmed' }];
+  ws.artists[0].shows = [{ ...newShow(addDays(TODAY, 3)), id: 'same', status: 'confirmed' }];
+  const all = managerICS(null, { from: TODAY, ws }).split('\r\n').filter((l) => l.startsWith('UID:'));
+  assert.equal(new Set(all).size, all.length);
+  assert.ok(all.some((u) => u.startsWith('UID:show-same-')));
+});
+
+test('the agenda (Calendar and .ics) leaves out a released song’s run-up', () => {
+  const m = newManager();
+  const s = { ...newSong('Out'), status: 'released', releaseDate: addDays(TODAY, -3) };
+  m.songs.push(s);
+  const items = agenda(m, addDays(TODAY, -60), 120).filter((it) => it.kind === 'task');
+  const ids = new Set(items.map((it) => it.key));
+  assert.ok(s.release.filter((t) => t.offset <= 0).every((t) => !ids.has(t.id)), 'no run-up tasks');
+  assert.ok(s.release.filter((t) => t.offset > 0).every((t) => ids.has(t.id)), 'post-release tasks stay');
+  s.status = 'ready'; // not marked released: the run-up shows
+  assert.ok(agenda(m, addDays(TODAY, -60), 120).some((it) => it.kind === 'task' && it.key === s.release[0].id));
 });
 
 test('calendar UIDs stay the same when an earlier item is added', () => {
@@ -94,6 +149,36 @@ test('money counts played shows only; upcoming pay is shown as expected', () => 
   assert.deepEqual(ex.shows.map((s) => s.id), ['future']);
 });
 
+test('money edges: past ideas and pitches, today, holds, cancelled, costs ahead of the show', () => {
+  const m = newManager();
+  const S = (id, days, status, st) => ({ ...newShow(days == null ? '' : addDays(TODAY, days)), id, status, settlement: { pay: '', merch: '', costs: '', ...st } });
+  m.shows.push(
+    S('pastIdea', -5, 'idea', { pay: '300' }),
+    S('pastPitched', -5, 'pitched', { pay: '100' }),
+    S('pastHold', -5, 'hold', { pay: '40' }),
+    S('today', 0, 'confirmed', { pay: '50' }),
+    S('todayPlayed', 0, 'played', { pay: '7' }),
+    S('cancelledFuture', 5, 'cancelled', { pay: '80', costs: '25' }),
+    S('futureCosts', 9, 'confirmed', { pay: '200', costs: '120' }),
+    S('noDate', null, 'hold', { pay: '60' }),
+  );
+  const lines = moneyLines(m, TODAY);
+  const got = lines.map((e) => `${e.showId}:${e.kind}:${e.amount}`).sort();
+  assert.deepEqual(got, ['cancelledFuture:expense:25', 'futureCosts:expense:120', 'todayPlayed:income:7']);
+  // tomorrow, today's confirmed show counts
+  assert.ok(moneyLines(m, addDays(TODAY, 1)).some((e) => e.showId === 'today' && e.kind === 'income'));
+  // Expected: shows still to come (today included) and undated ones, never cancelled or past ones
+  const ex = expectedShowMoney(m, TODAY);
+  assert.deepEqual(ex.shows.map((s) => s.id).sort(), ['futureCosts', 'noDate', 'today']);
+  assert.equal(ex.total, 310);
+  // memberTotals honours from/to and only settled shows
+  m.band.members = [{ id: 'a', name: 'Ana' }];
+  m.shows.push(S('jan', -300, 'played', { pay: '10' }), S('nov', -2, 'played', { pay: '20' }));
+  assert.equal(memberTotals(m, { from: addDays(TODAY, -30), to: TODAY, today: TODAY }).members[0].amount, 27); // nov 20 + today's played 7, not jan
+  assert.equal(memberTotals(m, { from: addDays(TODAY, -30), to: addDays(TODAY, -1), today: TODAY }).members[0].amount, 20);
+  assert.equal(memberTotals(m, { today: TODAY }).members[0].amount, 37);
+});
+
 test('member split: 4 members, $240 net, 25% fund gives $45 each and $60 to the fund', () => {
   const members = ['Ana', 'Bo', 'Cy', 'Di'].map((name, i) => ({ id: `m${i}`, name }));
   const sp = memberSplit(240, members, { fund: 25 });
@@ -111,8 +196,14 @@ test('member split: 4 members, $240 net, 25% fund gives $45 each and $60 to the 
   // a loss or no members: nothing to split
   assert.deepEqual(memberSplit(-50, members, {}).members.map((x) => x.amount), [0, 0, 0, 0]);
   assert.equal(splitText(memberSplit(100, [], {})), '');
-  // an odd amount rounds to cents
-  assert.deepEqual(memberSplit(100, members.slice(0, 3), {}).members.map((x) => x.amount), [33.33, 33.33, 33.33]);
+  // an odd amount rounds to cents, and the leftover cent goes to the first paid member so it adds up
+  const odd = memberSplit(100, members.slice(0, 3), {});
+  assert.deepEqual(odd.members.map((x) => x.amount), [33.34, 33.33, 33.33]);
+  assert.equal(odd.fund, 0);
+  const withFund = memberSplit(100, members.slice(0, 3), { fund: 10 });
+  assert.equal(Math.round((withFund.fund + withFund.members.reduce((a, x) => a + x.amount, 0)) * 100), 10000);
+  // the first member sitting out: the cent goes to the next one who is paid
+  assert.deepEqual(memberSplit(100, members.slice(0, 4), { shares: { m0: 0 } }).members.map((x) => x.amount), [0, 33.34, 33.33, 33.33]);
   // a fund over 100% is capped
   assert.equal(memberSplit(100, members, { fund: 150 }).fund, 100);
 });
@@ -169,6 +260,29 @@ test('stage setlist: one page, big type, covers marked', () => {
   const short = stageSetlistHTML({}, {}, setlistTimes('One', []));
   assert.match(short, /font-size:60pt/);
   assert.match(stageSetlistHTML({}, {}, setlistTimes('<b>x</b>', [])), /&lt;b&gt;/);
+});
+
+test('undo delete puts the artist back in its slot and keeps later edits', () => {
+  const A = (id, songs) => ({ id, band: { name: id }, songs });
+  const before = { current: 'b', shared: { venues: ['old'] }, artists: [A('a', [1]), A('b', [2]), A('c', [3])] };
+  const now = { current: 'a', shared: { venues: ['old', 'new'] }, artists: [A('a', [1, 'edit']), A('c', [3]), A('d', [])] };
+  const back = restoreArtist(before, now, 'b');
+  assert.deepEqual(back.artists.map((x) => x.id), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(back.artists[0].songs, [1, 'edit']); // a's later edit kept
+  assert.deepEqual(back.artists[1].songs, [2]);
+  assert.equal(back.current, 'b');
+  assert.deepEqual(back.shared.venues, ['old', 'new']);
+  // an artist deleted since stays deleted
+  const now2 = { ...now, artists: [A('a', [1])] };
+  assert.deepEqual(restoreArtist(before, now2, 'b').artists.map((x) => x.id), ['a', 'b']);
+  // nothing to put back
+  assert.equal(restoreArtist(before, now, 'zz'), now);
+  assert.equal(restoreArtist(before, back, 'b'), back);
+});
+
+test('a shares list saved as an array loads as no shares', () => {
+  const m = normalizeManager({ shows: [{ id: 's', settlement: { pay: '1', shares: [1, 2] } }] });
+  assert.deepEqual(m.shows[0].settlement.shares, {});
 });
 
 test('backup reminder after 14 days', () => {
