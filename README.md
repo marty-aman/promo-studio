@@ -157,6 +157,32 @@ level M, no library) then points at that address, or at your Spotify link until 
 the page, in **Download QR (SVG)** and on a one-page flyer (**Print flyer**, then Save as PDF). The
 settings live in `band.linkInBio`, so backups, undo and artist switching cover them.
 
+### Fans & opportunities
+
+A Manager page after Money, with two tabs.
+
+**Fans** is each artist's own list of people who agreed to hear from the band: email, name (optional),
+city, region, where you met (show, signup form, merch table, other), the show, a note and an "agreed to
+hear from us" box. No phone numbers are kept. Add people by hand, paste a list (one per line: email,
+name, city), or import a CSV file (pick where each column goes; duplicates by email are skipped; up to
+2,000 rows per import and 5,000 people per artist). **Download CSV** exports the list shown (it holds
+personal data, so keep the file safe). **By city** counts fans per city and filters the list. **Fans near
+a show** lists your upcoming shows with the fans in that city, plus nearby towns you type in ("Also try
+nearby"). **Email these fans** opens your own mail app with the addresses in BCC, split into several
+emails when the list is long; only fans with the box ticked are included. The app sends nothing.
+
+The list is stored only in this browser and goes into backups. When there are fans, the backup area
+says so and offers **Back up without the fan list** (also on the page), the one to use when you share
+a backup with a bandmate. Fan details never go into the press kit, show sheets, PDFs or calendar files.
+
+**Opportunities** is one list shared by every artist: grants, festival and showcase calls, contests and
+residencies, with kind, organisation, link, deadline, region, fee, notes, status (interested, planning,
+applied, won, passed) and the day you last checked it. Filter by kind, status and region; sort by
+deadline. Reminders show in the Calendar and on Home 14 and 3 days before a deadline, until you mark it
+applied, won or passed. A starter list of 14 calls and grants for a heavy band in the Pacific Northwest
+is added once (checked 23 Nov 2026, each with its source link; deadlines that couldn't be confirmed are
+left blank). Dates change, so always confirm on the organiser's site; nothing here updates itself.
+
 ## How it's laid out
 
 The rail on the left has one **Start** tab for ideas, then a tab for each kind of thing you build:
