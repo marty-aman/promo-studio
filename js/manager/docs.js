@@ -35,6 +35,25 @@ ${settled ? `<h2>Settlement</h2><table><tr><th>Paid</th><td class="n">${money(nu
   return docHTML(`${band.name ? `${band.name} · ` : ''}${show.venue || 'Show'}`, body, { subtitle: [show.date ? niceDate(show.date) : 'Date to be set', show.city, show.status].filter(Boolean).join(' · ') });
 }
 
+/**
+ * The setlist for the stage floor: one page, big type, one song per line. Covers are marked, and
+ * each song's key shows small at the right when it has one. The type shrinks for a long set so it
+ * stays on one page. `times`: setlistTimes(...) for the set; `keys`: show the key column.
+ */
+export function stageSetlistHTML(show, band = {}, times, { keys = true } = {}) {
+  const rows = (times && times.rows) || [];
+  const n = Math.max(1, rows.length);
+  // about 640 pt of usable height on A4/Letter at these margins
+  const pt = Math.max(24, Math.min(60, Math.floor(560 / n / 1.15)));
+  const list = rows.map((r) => `<li><span class="t">${esc(r.title)}${r.song && r.song.cover ? ' <span class="c">(cover)</span>' : ''}</span>${keys && r.song && r.song.key ? `<span class="k">${esc(r.song.key)}</span>` : ''}</li>`).join('');
+  const css = `@page{margin:12mm}body{font-family:Impact,"Arial Black","Helvetica Neue",Arial,sans-serif}h1,.foot{display:none}
+.hd{display:flex;justify-content:space-between;font:600 14pt system-ui,sans-serif;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:8px}
+ol{list-style:none;margin:0;padding:0;counter-reset:s}li{counter-increment:s;display:flex;align-items:baseline;gap:.4em;font-size:${pt}pt;line-height:1.15;margin:0;text-transform:uppercase}
+li::before{content:counter(s);font-size:.45em;min-width:1.6em;color:#555}.t{flex:1}.c{font-size:.4em;color:#555;text-transform:none}.k{font:600 .4em system-ui,sans-serif;color:#333}`;
+  const head = `<div class="hd"><span>${esc(band.name || '')}${show.venue ? ` · ${esc(show.venue)}` : ''}${show.date ? ` · ${esc(niceDate(show.date, { weekday: false }))}` : ''}</span><span>${rows.length} songs${times && times.text ? ` · ${esc(times.text)}` : ''}</span></div>`;
+  return docHTML(`Setlist ${show.venue || ''}`.trim(), `${head}<ol class="stage">${list}</ol>`, { css });
+}
+
 /** The money page for a year: totals, by category, and every line. */
 export function moneyHTML({ band = {}, year = '', lines = [], sum, catLabel = (k) => k }) {
   const rows = lines.map((e) => `<tr><td>${esc(e.date || '')}</td><td>${e.kind === 'income' ? 'In' : 'Out'}</td><td>${esc(catLabel(e.category))}</td><td>${esc(e.note || '')}</td><td class="n">${money(e.kind === 'income' ? num(e.amount) : -num(e.amount))}</td></tr>`).join('');

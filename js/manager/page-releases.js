@@ -161,7 +161,7 @@ function releasePage(ctx, r) {
     h(
       'header',
       { class: 'mgr-head' },
-      h('div', { class: 'mgr-title' }, f.text(`rel-title-${r.id}`, '', r.title, R((x, v) => (x.title = v.trim() || 'Untitled'))), h('p', { class: 'muted' }, `${releaseTypeLabel(r.type)} · ${tracks.length} track${tracks.length === 1 ? '' : 's'}${total ? ` · ${fmtTime(total)}` : ''}`)),
+      h('div', { class: 'mgr-title' }, f.text(`rel-title-${r.id}`, '', r.title, R((x, v) => (x.title = v.trim() || 'Untitled')), { aria: 'Release title' }), h('p', { class: 'muted' }, `${releaseTypeLabel(r.type)} · ${tracks.length} track${tracks.length === 1 ? '' : 's'}${total ? ` · ${fmtTime(total)}` : ''}`)),
       h('div', { class: 'row' }, button('Design a post', () => ctx.studio.openPhoto(r.releaseDate && r.releaseDate > ctx.today() ? 'release' : 'promo', { releaseId: r.id }), { iconName: 'image', title: 'A release image for this EP or album in the Photo Studio' }), iconButton('trash', `Delete ${r.title}`, remove, 'ghost danger')),
     ),
     h(

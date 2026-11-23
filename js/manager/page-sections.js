@@ -29,7 +29,7 @@ export function sectionsTab(ctx, song, S) {
     h(
       'tr',
       {},
-      h('td', {}, ctx.form.text(`sec-l-${sec.id}`, '', sec.label, Sec(sec.id, (x, v) => (x.label = v.trim() || 'Section')), { list: 'mgr-section-names' })),
+      h('td', {}, ctx.form.text(`sec-l-${sec.id}`, '', sec.label, Sec(sec.id, (x, v) => (x.label = v.trim() || 'Section')), { list: 'mgr-section-names', aria: 'Section name' })),
       h('td', {}, timeIn(sec, 'start')),
       h('td', {}, timeIn(song.sections.find((x) => x.id === sec.id) || sec, 'end')),
       h('td', { class: 'n muted' }, sec.length != null ? fmtTime(sec.length) : '?'),

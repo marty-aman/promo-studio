@@ -24,6 +24,13 @@ export function scopeChips(ctx) {
 /** Open an item that may belong to another artist (switching to that artist first). */
 export const openItem = (ctx, it) => (it.artistId && it.artistId !== ctx.store.get().artistId ? ctx.switchArtist(it.artistId, it.ref.page, it.ref.id, it.ref.tab) : ctx.go(it.ref.page, it.ref.id, it.ref.tab));
 
+/** A reminder to download a backup, two weeks after the last one (or after you started). */
+function backupNudge(ctx) {
+  const days = ctx.backupDue ? ctx.backupDue() : 0;
+  if (!days) return null;
+  return h('div', { class: 'mgr-nudge', role: 'note' }, icon('download', 16), h('span', {}, `No backup in ${days} days. Everything here lives only in this browser; a backup file keeps it safe if the browser is cleared or the laptop dies.`), button('Back up now', () => ctx.backUp(), { variant: 'sm primary' }));
+}
+
 export function buildHome(ctx) {
   const m = ctx.store.get();
   const today = ctx.today();
@@ -106,11 +113,16 @@ export function buildHome(ctx) {
         h(
           'ul',
           { class: 'mgr-list' },
-          late.slice(0, 8).map(({ song, show, pitch, task, due, artistId, artist }) =>
+          late.slice(0, 8).map(({ song, show, pitch, followup, task, due, artistId, artist }) =>
             h(
               'li',
               { class: 'mgr-row' },
               all && artistId !== m.artistId ? h('span', { class: 'mgr-artist-dot small', title: artist, 'aria-hidden': 'true' }, (artist || '?')[0].toUpperCase()) : ctx.form.check(`late-${task.id}`, false, (d) => {
+                if (followup) {
+                  const x = d.shows.find((s) => s.id === show.id);
+                  if (x) x.followedUp = true;
+                  return;
+                }
                 if (pitch) {
                   const x = d.songs.find((s) => s.id === song.id)?.pitches.find((y) => y.id === pitch.id);
                   if (x) x.followedUp = true;
@@ -132,6 +144,7 @@ export function buildHome(ctx) {
     'div',
     { class: 'mgr-page' },
     h('header', { class: 'mgr-head' }, h('div', { class: 'mgr-head-who' }, all ? null : homeAvatar(ctx, m.band), h('div', {}, h('h1', {}, all ? 'All artists' : m.band.name || 'Your band'), h('p', { class: 'muted' }, all ? `${niceDate(today)} · ${ws.artists.length} artists` : `${niceDate(today)} · ${m.songs.length} song${m.songs.length === 1 ? '' : 's'} · ${m.shows.filter((s) => s.date >= today && s.status !== 'cancelled').length} upcoming show${m.shows.length === 1 ? '' : 's'}`), scopeChips(ctx))), all ? null : h('div', { class: 'row' }, button('New song', addSong, { iconName: 'plus', variant: 'sm' }), button('New show', addShow, { iconName: 'plus', variant: 'sm' }))),
+    backupNudge(ctx),
     h('div', { class: 'mgr-cards' }, nextShow, nextRelease, bestCard),
     lateList,
     h('section', { class: 'mgr-sect' }, h('h2', {}, 'Next two weeks'), week),

@@ -4,17 +4,31 @@ import { h, button, iconButton, download, toast } from '../dom.js';
 import { exportPDF } from './pdf.js';
 import { moneyHTML } from './docs.js';
 import { niceDate } from './model.js';
-import { MONEY_CATS, newEntry, moneyLines, moneySummary, releaseSpend } from './extras.js';
+import { MONEY_CATS, newEntry, moneyLines, moneySummary, releaseSpend, expectedShowMoney, memberTotals } from './extras.js';
 
 export const moneyUI = { year: '' };
 const $ = (v) => `${v < 0 ? '−' : ''}$${Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 const catLabel = (k) => (MONEY_CATS.find(([v]) => v === k) || [k, 'Other'])[1];
 
+/** Each member's take from the shows' splits (set on each show under After the show). */
+function perMember(m, range, today) {
+  const t = memberTotals(m, { ...range, today });
+  if (!t.members.length || (!t.fund && t.members.every((x) => !x.amount))) return null;
+  return h(
+    'section',
+    { class: 'mgr-sect' },
+    h('h2', {}, 'Paid to members'),
+    h('ul', { class: 'mgr-facts' }, t.members.map((x) => h('li', {}, h('span', {}, x.name), h('strong', {}, $(x.amount)))), t.fund ? h('li', {}, h('span', {}, 'Band fund'), h('strong', {}, $(t.fund))) : null),
+    h('p', { class: 'muted tiny' }, 'From played shows’ net, split as set on each show. Ledger lines aren’t split.'),
+  );
+}
+
 export function buildMoney(ctx) {
   const m = ctx.store.get();
   const f = ctx.form;
   const ui = moneyUI;
-  const lines = moneyLines(m);
+  const lines = moneyLines(m, ctx.today());
+  const expected = expectedShowMoney(m, ctx.today());
   const years = [...new Set(lines.map((e) => (e.date || '').slice(0, 4)).filter(Boolean))].sort().reverse();
   if (!ui.year) ui.year = ctx.today().slice(0, 4);
   const range = ui.year === 'all' ? {} : { from: `${ui.year}-01-01`, to: `${ui.year}-12-31` };
@@ -55,6 +69,7 @@ export function buildMoney(ctx) {
       h('div', { class: 'mgr-card stat' }, h('span', { class: 'mgr-card-k' }, 'In'), h('strong', { class: 'ok' }, $(sum.income))),
       h('div', { class: 'mgr-card stat' }, h('span', { class: 'mgr-card-k' }, 'Out'), h('strong', {}, $(sum.expense))),
       h('div', { class: 'mgr-card stat' }, h('span', { class: 'mgr-card-k' }, 'Net'), h('strong', { class: sum.net >= 0 ? 'ok' : 'bad' }, $(sum.net))),
+      expected.total ? h('div', { class: 'mgr-card stat', title: 'Pay typed in for shows still to come. It counts once the show is played.' }, h('span', { class: 'mgr-card-k' }, 'Expected'), h('strong', {}, $(expected.total)), h('span', { class: 'muted tiny' }, `from ${expected.shows.length} upcoming show${expected.shows.length === 1 ? '' : 's'}, not in the totals yet`)) : null,
     ),
     h(
       'div',
@@ -75,11 +90,11 @@ export function buildMoney(ctx) {
                   h(
                     'tr',
                     {},
-                    h('td', {}, f.text(`md-${e.id}`, '', e.date, E(e.id, (x, v) => (x.date = v)), { type: 'date' })),
-                    h('td', {}, f.select(`mk-${e.id}`, '', e.kind, [['income', 'In'], ['expense', 'Out']], E(e.id, (x, v) => (x.kind = v)))),
-                    h('td', {}, f.select(`mc-${e.id}`, '', e.category, MONEY_CATS, E(e.id, (x, v) => (x.category = v)))),
+                    h('td', {}, f.text(`md-${e.id}`, '', e.date, E(e.id, (x, v) => (x.date = v)), { type: 'date', aria: `Date: ${e.note || 'money line'}` })),
+                    h('td', {}, f.select(`mk-${e.id}`, '', e.kind, [['income', 'In'], ['expense', 'Out']], E(e.id, (x, v) => (x.kind = v)), { aria: `In or out: ${e.note || 'money line'}` })),
+                    h('td', {}, f.select(`mc-${e.id}`, '', e.category, MONEY_CATS, E(e.id, (x, v) => (x.category = v)), { aria: `Category: ${e.note || 'money line'}` })),
                     h('td', {}, f.text(`ma-${e.id}`, '', e.amount, E(e.id, (x, v) => (x.amount = v)), { type: 'number', placeholder: '$' })),
-                    h('td', {}, f.select(`ms-${e.id}`, '', e.songId || '', [['', '—'], ...m.songs.map((s) => [s.id, s.title])], E(e.id, (x, v) => (x.songId = v)))),
+                    h('td', {}, f.select(`ms-${e.id}`, '', e.songId || '', [['', '—'], ...m.songs.map((s) => [s.id, s.title])], E(e.id, (x, v) => (x.songId = v)), { aria: `Song: ${e.note || 'money line'}` })),
                     h('td', {}, f.text(`mn-${e.id}`, '', e.note, E(e.id, (x, v) => (x.note = v)), { placeholder: 'What for' })),
                     h('td', {}, iconButton('trash', 'Delete this line', () => ctx.update((d) => (d.money = d.money.filter((x) => x.id !== e.id))), 'ghost')),
                   ),
@@ -92,6 +107,7 @@ export function buildMoney(ctx) {
       h(
         'div',
         {},
+        perMember(m, range, ctx.today()),
         h(
           'section',
           { class: 'mgr-sect' },

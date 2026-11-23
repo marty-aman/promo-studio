@@ -2,7 +2,7 @@
 // content plan, suggested playlists, the press release and playlist pitching. "Make a promo" hands the song to the video studio.
 import { h, icon, button, iconButton, toast, pickFiles } from '../dom.js';
 import { driveButton } from '../gdrive.js';
-import { SONG_STATUSES, TASK_CATS, newSong, taskDue, releaseProgress, releaseChecklist, niceDate, daysBetween, mid } from './model.js';
+import { SONG_STATUSES, TASK_CATS, newSong, taskDue, releaseProgress, releaseChecklist, niceDate, daysBetween, mid, deleteSong, markPreReleaseDone, isPreReleaseMoot } from './model.js';
 import { hookLines, planPosts } from './ideas.js';
 import { buildShootTab } from './page-shoot.js';
 import { pressTab, playlistsTab, pitchTab } from './page-press.js';
@@ -154,7 +154,7 @@ function coversSection(ctx) {
                 return h(
                   'tr',
                   {},
-                  h('td', {}, f.text(`cv-t-${c.id}`, '', c.title, C(c.id, (x, v) => (x.title = v.trim() || x.title)))),
+                  h('td', {}, f.text(`cv-t-${c.id}`, '', c.title, C(c.id, (x, v) => (x.title = v.trim() || x.title)), { aria: 'Cover title' })),
                   h('td', {}, f.text(`cv-a-${c.id}`, '', c.artist, C(c.id, (x, v) => (x.artist = v.trim())), { placeholder: 'e.g. Deftones' })),
                   h('td', { class: bad ? 'bad' : '' }, f.text(`cv-l-${c.id}`, '', c.length, C(c.id, (x, v) => (x.length = tidyLength(v))), { placeholder: '3:45' }), bad ? h('span', { class: 'tiny warn-text' }, 'Type it like 3:45') : null),
                   h('td', {}, f.text(`cv-k-${c.id}`, '', c.key, C(c.id, (x, v) => (x.key = v.trim())), { placeholder: 'e.g. Drop C' })),
@@ -183,11 +183,8 @@ function songPage(ctx, song) {
   };
   const tab = TABS.some(([k]) => k === ctx.view.tab) ? ctx.view.tab : 'overview';
   const remove = () => {
-    if (!confirm(`Delete “${song.title}” and its plan? Its posts are deleted too.`)) return;
-    ctx.update((d) => {
-      d.songs = d.songs.filter((s) => s.id !== song.id);
-      d.posts = d.posts.filter((p) => p.songId !== song.id);
-    });
+    if (!confirm(`Delete “${song.title}” and its plan? Posts not posted yet are deleted too; posted ones and their stats stay on the Content page.`)) return;
+    ctx.update((d) => deleteSong(d, song.id));
     ctx.go('songs');
   };
   const body = { overview: overviewTab, lyrics: lyricsTab, files: filesTab, sections: sectionsTab, shoot: buildShootTab, release: releaseTab, content: contentTab, playlists: playlistsTab, press: pressTab, pitch: pitchTab }[tab](ctx, song, S);
@@ -198,7 +195,7 @@ function songPage(ctx, song) {
     h(
       'header',
       { class: 'mgr-head song' },
-      h('div', { class: 'mgr-title' }, f.text(`title-${song.id}`, '', song.title, S((s, v) => (s.title = v.trim() || 'Untitled'))), h('div', { class: 'row' }, f.select(`status-${song.id}`, '', song.status, SONG_STATUSES, S((s, v) => (s.status = v))), h('label', { class: 'mgr-inline mgr-instr', title: 'No vocals: no lyrics needed, and the pitches and press release say it’s instrumental' }, f.check(`instr-${song.id}`, song.instrumental, S((s, v) => (s.instrumental = v)), 'Instrumental'), h('span', { class: 'small' }, 'Instrumental')), h('label', { class: 'mf inline' }, h('span', { class: 'mf-l' }, 'Release date'), f.text(`rel-${song.id}`, '', song.releaseDate, S((s, v) => (s.releaseDate = v)), { type: 'date' })))),
+      h('div', { class: 'mgr-title' }, f.text(`title-${song.id}`, '', song.title, S((s, v) => (s.title = v.trim() || 'Untitled')), { aria: 'Song title' }), h('div', { class: 'row' }, f.select(`status-${song.id}`, '', song.status, SONG_STATUSES, S((s, v) => (s.status = v)), { aria: `Status for ${song.title}` }), h('label', { class: 'mgr-inline mgr-instr', title: 'No vocals: no lyrics needed, and the pitches and press release say it’s instrumental' }, f.check(`instr-${song.id}`, song.instrumental, S((s, v) => (s.instrumental = v)), 'Instrumental'), h('span', { class: 'small' }, 'Instrumental')), h('label', { class: 'mf inline' }, h('span', { class: 'mf-l' }, 'Release date'), f.text(`rel-${song.id}`, '', song.releaseDate, S((s, v) => (s.releaseDate = v)), { type: 'date' })))),
       h('div', { class: 'row' }, button('Design a post', () => ctx.studio.openPhoto(song.releaseDate && song.releaseDate > ctx.today() ? 'release' : 'promo', { songId: song.id }), { iconName: 'image', variant: '', title: 'Open the Photo Studio with a release image for this song (more templates there: countdown, lyric card, carousel…)' }), button('Spotify Canvas', () => ctx.studio.openCanvas(song), { iconName: 'repeat', variant: '', title: 'Make the 3–8 second loop that plays behind this song in Spotify, from its cover art or music video' }), button('Make a promo', () => ctx.studio.openPromo(song), { iconName: 'film', variant: 'primary', title: 'Open the video studio with this song’s title, lyrics and audio' }), iconButton('trash', `Delete “${song.title}”`, remove, 'ghost danger')),
     ),
     h('div', { class: 'mgr-tabs', role: 'tablist' }, TABS.map(([k, label]) => h('button', { type: 'button', role: 'tab', 'aria-selected': k === tab ? 'true' : 'false', class: `mgr-tab${k === tab ? ' on' : ''}`, onclick: () => ctx.setTab(k) }, label))),
@@ -339,26 +336,28 @@ function releaseTab(ctx, song, S) {
   const reset = () => confirm('Put back the standard checklist? Tasks you added are kept; ticked standard tasks are reset.') && ctx.update(S((s) => (s.release = [...s.release.filter((t) => t.date), ...releaseChecklist()])));
   const rows = tasks.map((t) => {
     const due = taskDue(song, t);
-    const late = !t.done && due && due < today;
+    const late = !t.done && due && due < today && !isPreReleaseMoot(song, t);
     return h(
       'li',
       { class: `mgr-task${t.done ? ' done' : ''}${late ? ' late' : ''}` },
       f.check(`done-${t.id}`, t.done, T(t.id, (x, v) => (x.done = v)), `Done: ${t.text}`),
       h('span', { class: 'mgr-when' }, due ? niceDate(due, { weekday: false }) : t.offset === 0 ? 'Release day' : `${Math.abs(t.offset)} days ${t.offset < 0 ? 'before' : 'after'}`),
-      f.text(`task-${t.id}`, '', t.text, T(t.id, (x, v) => (x.text = v))),
+      f.text(`task-${t.id}`, '', t.text, T(t.id, (x, v) => (x.text = v)), { aria: `Task: ${t.text}` }),
       h('span', { class: 'mgr-chip' }, TASK_CATS[t.cat] || 'Other'),
-      t.date ? f.text(`tdate-${t.id}`, '', t.date, T(t.id, (x, v) => (x.date = v)), { type: 'date' }) : null,
+      t.date ? f.text(`tdate-${t.id}`, '', t.date, T(t.id, (x, v) => (x.date = v)), { type: 'date', aria: `Due date: ${t.text}` }) : null,
       iconButton('trash', `Delete “${t.text}”`, () => ctx.update(S((s) => (s.release = s.release.filter((x) => x.id !== t.id)))), 'ghost'),
     );
   });
   const p = releaseProgress(song);
+  // offered once the song is out (or its date has passed) and run-up tasks are still open
+  const preLeft = song.status === 'released' || (song.releaseDate && song.releaseDate <= today) ? song.release.filter((t) => !t.done && !t.date && (t.offset || 0) <= 0).length : 0;
   return h(
     'section',
     { class: 'mgr-sect' },
     h('h2', {}, `Release checklist · ${p.done}/${p.total}`),
     song.releaseDate ? h('p', { class: 'muted small' }, `Counted back from ${niceDate(song.releaseDate)}. Change the release date above and every date moves with it.`) : h('p', { class: 'warn-list' }, 'Set a release date above to put dates on these tasks.'),
     h('ul', { class: 'mgr-tasks' }, rows),
-    h('div', { class: 'row' }, button('Add a task', addTask, { iconName: 'plus', variant: 'sm' }), button('Put back the standard checklist', reset, { variant: 'sm ghost' })),
+    h('div', { class: 'row' }, button('Add a task', addTask, { iconName: 'plus', variant: 'sm' }), preLeft ? button(`Mark everything before release day done (${preLeft})`, () => ctx.update(S((s) => markPreReleaseDone(s))), { iconName: 'check', variant: 'sm ghost', title: 'For a song that is already out: tick the run-up tasks so only what’s left after release stays open' }) : null, button('Put back the standard checklist', reset, { variant: 'sm ghost' })),
   );
 }
 
@@ -395,11 +394,11 @@ function contentTab(ctx, song) {
               h(
                 'tr',
                 {},
-                h('td', {}, f.text(`pdate-${p.id}`, '', p.date, P(p.id, (x, v) => (x.date = v)), { type: 'date' })),
-                h('td', {}, f.text(`ptitle-${p.id}`, '', p.title, P(p.id, (x, v) => (x.title = v))), p.idea ? h('span', { class: 'muted tiny' }, p.idea) : null),
-                h('td', {}, f.text(`phook-${p.id}`, '', p.hook, P(p.id, (x, v) => (x.hook = v)))),
-                h('td', {}, f.text(`pplat-${p.id}`, '', p.platform, P(p.id, (x, v) => (x.platform = v)))),
-                h('td', {}, f.select(`pst-${p.id}`, '', p.status, POST_STATUSES, P(p.id, (x, v) => (x.status = v)))),
+                h('td', {}, f.text(`pdate-${p.id}`, '', p.date, P(p.id, (x, v) => (x.date = v)), { type: 'date', aria: `Date: ${p.title || 'post'}` })),
+                h('td', {}, f.text(`ptitle-${p.id}`, '', p.title, P(p.id, (x, v) => (x.title = v)), { aria: 'Post title' }), p.idea ? h('span', { class: 'muted tiny' }, p.idea) : null),
+                h('td', {}, f.text(`phook-${p.id}`, '', p.hook, P(p.id, (x, v) => (x.hook = v)), { aria: `Hook: ${p.title || 'post'}` })),
+                h('td', {}, f.text(`pplat-${p.id}`, '', p.platform, P(p.id, (x, v) => (x.platform = v)), { aria: `Platform: ${p.title || 'post'}` })),
+                h('td', {}, f.select(`pst-${p.id}`, '', p.status, POST_STATUSES, P(p.id, (x, v) => (x.status = v)), { aria: `Status: ${p.title || 'post'}` })),
                 h('td', {}, f.text(`purl-${p.id}`, '', p.url, P(p.id, (x, v) => (x.url = v.trim())), { type: 'url', placeholder: 'Paste the post link' })),
                 h('td', {}, iconButton('trash', `Delete “${p.title}”`, () => ctx.update((d) => (d.posts = d.posts.filter((x) => x.id !== p.id))), 'ghost')),
               ),

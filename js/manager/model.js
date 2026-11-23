@@ -123,7 +123,7 @@ export function newSong(title = 'New song') {
 }
 
 export function newShow(date = '') {
-  return { id: mid('show'), date, doors: '', setTime: '', loadIn: '', venueId: null, venue: '', city: 'Seattle', billing: 'support', lineup: [], status: 'idea', tickets: '', price: '', deal: '', contact: '', setlist: '', notes: '', posterId: null, todo: [], settlement: { gross: '', pay: '', merch: '', costs: '' } };
+  return { id: mid('show'), date, doors: '', setTime: '', loadIn: '', venueId: null, venue: '', city: 'Seattle', billing: 'support', lineup: [], status: 'idea', tickets: '', price: '', deal: '', contact: '', setlist: '', notes: '', posterId: null, todo: [], pitchedOn: '', followedUp: false, settlement: { gross: '', pay: '', merch: '', costs: '', fund: '', shares: {} } };
 }
 
 export function newManager() {
@@ -170,7 +170,7 @@ export function normalizeManager(raw) {
   m.band.epkPhotos = Array.isArray(m.band.epkPhotos) ? m.band.epkPhotos.filter((x) => typeof x === 'string').slice(0, 4) : [];
   m.playlists = list(raw.playlists);
   m.playlistsOff = Array.isArray(raw.playlistsOff) ? raw.playlistsOff.filter((x) => typeof x === 'string') : [];
-  m.shows = m.shows.map((s) => ({ ...newShow(), ...s, posterId: typeof s.posterId === 'string' && s.posterId ? s.posterId : null, settlement: { ...newShow().settlement, ...(s.settlement || {}) } }));
+  m.shows = m.shows.map((s) => ({ ...newShow(), ...s, posterId: typeof s.posterId === 'string' && s.posterId ? s.posterId : null, settlement: { ...newShow().settlement, ...(s.settlement || {}), shares: s.settlement && s.settlement.shares && typeof s.settlement.shares === 'object' ? { ...s.settlement.shares } : {} } }));
   m.covers = normalizeCovers(raw.covers);
   m.seeded = raw.seeded && typeof raw.seeded === 'object' ? raw.seeded : {};
   return m;
@@ -219,20 +219,23 @@ export function agenda(m, from, days = 14) {
     if (s.status !== 'cancelled' && s.date) {
       for (const t of s.todo || []) {
         const due = addDays(s.date, t.offset || 0);
-        if (!t.done && t.offset !== 0 && inRange(due)) out.push({ date: due, kind: 'task', title: t.text, sub: `Show: ${s.venue || 'venue TBD'}`, ref: { page: 'shows', id: s.id } });
+        if (!t.done && t.offset !== 0 && inRange(due)) out.push({ date: due, kind: 'task', key: t.id, title: t.text, sub: `Show: ${s.venue || 'venue TBD'}`, ref: { page: 'shows', id: s.id } });
       }
     }
+    const fu = showFollowUp(s);
+    if (fu && inRange(fu)) out.push({ date: fu, kind: 'task', key: 'followup', title: `Follow up with ${s.venue || 'the venue'}`, sub: 'Show pitched a week ago', ref: { page: 'shows', id: s.id } });
     if (inRange(s.date) && s.status !== 'cancelled') out.push({ date: s.date, kind: 'show', title: s.venue || 'Show', sub: [s.status === 'confirmed' ? 'Confirmed' : SHOW_STATUSES.find(([k]) => k === s.status)?.[1], s.setTime && `set ${s.setTime}`].filter(Boolean).join(' · '), ref: { page: 'shows', id: s.id } });
   }
   for (const song of m.songs) {
     if (inRange(song.releaseDate)) out.push({ date: song.releaseDate, kind: 'release', title: `“${song.title}” comes out`, sub: 'Release day', ref: { page: 'songs', id: song.id, tab: 'release' } });
     if (inRange(song.shoot.date)) out.push({ date: song.shoot.date, kind: 'shoot', title: `Shoot: “${song.title}”`, sub: song.shoot.callTime ? `call ${song.shoot.callTime}` : 'Video shoot', ref: { page: 'songs', id: song.id, tab: 'shoot' } });
     for (const t of song.release) {
+      if (isPreReleaseMoot(song, t)) continue;
       const due = taskDue(song, t);
-      if (!t.done && inRange(due)) out.push({ date: due, kind: 'task', title: t.text, sub: `“${song.title}” · ${TASK_CATS[t.cat] || 'Task'}`, ref: { page: 'songs', id: song.id, tab: 'release' } });
+      if (!t.done && inRange(due)) out.push({ date: due, kind: 'task', key: t.id, title: t.text, sub: `“${song.title}” · ${TASK_CATS[t.cat] || 'Task'}`, ref: { page: 'songs', id: song.id, tab: 'release' } });
     }
     for (const p of song.pitches || []) {
-      if (p.status === 'sent' && !p.followedUp && inRange(p.followUp)) out.push({ date: p.followUp, kind: 'task', title: `Follow up: ${p.curator || p.playlist || 'curator'}`, sub: `“${song.title}” · Pitch${p.playlist ? ` to ${p.playlist}` : ''}`, ref: { page: 'songs', id: song.id, tab: 'pitch' } });
+      if (p.status === 'sent' && !p.followedUp && inRange(p.followUp)) out.push({ date: p.followUp, kind: 'task', key: p.id, title: `Follow up: ${p.curator || p.playlist || 'curator'}`, sub: `“${song.title}” · Pitch${p.playlist ? ` to ${p.playlist}` : ''}`, ref: { page: 'songs', id: song.id, tab: 'pitch' } });
     }
   }
   for (const p of m.posts) {
@@ -243,12 +246,47 @@ export function agenda(m, from, days = 14) {
   return out.sort((a, b) => a.date.localeCompare(b.date) || order[a.kind] - order[b.kind]);
 }
 
+/** When to chase a venue you pitched a show to: a week after pitching, while it's still Pitched. '' when not. */
+export const showFollowUp = (s) => (s.status === 'pitched' && s.pitchedOn && !s.followedUp ? addDays(s.pitchedOn, 7) : '');
+
+/** Set a show's status, noting the day it was pitched (for the follow-up a week later). */
+export function setShowStatus(s, status, today) {
+  if (status === 'pitched' && s.status !== 'pitched') (s.pitchedOn = today), (s.followedUp = false);
+  s.status = status;
+}
+
+/** A release-day-or-earlier task on a song marked Released (nothing to chase any more). */
+export const isPreReleaseMoot = (song, t) => song.status === 'released' && !t.date && (t.offset || 0) <= 0;
+
+/** Tick every task due on or before release day ("Mark everything before release day done"). Returns how many changed. */
+export function markPreReleaseDone(song) {
+  let n = 0;
+  for (const t of song.release) {
+    if (!t.done && !t.date && (t.offset || 0) <= 0) (t.done = true), n++;
+  }
+  return n;
+}
+
+/**
+ * Delete a song. Posts not yet posted go with it; posted ones (and their stats, which feed
+ * "What works best") stay, with the song's title kept on them.
+ */
+export function deleteSong(d, songId) {
+  const song = d.songs.find((s) => s.id === songId);
+  d.songs = d.songs.filter((s) => s.id !== songId);
+  d.posts = d.posts
+    .filter((p) => p.songId !== songId || p.status === 'posted')
+    .map((p) => (p.songId === songId ? { ...p, songId: '', songTitle: (song && song.title) || p.songTitle || '' } : p));
+}
+
 /** Release tasks that are past due and not done, oldest first. */
 export function overdueTasks(m, today) {
   const out = [];
   for (const song of m.songs) {
     if (song.status === 'released' && daysBetween(song.releaseDate, today) > 60) continue;
     for (const t of song.release) {
+      // a song that's out no longer needs its run-up: only the after-release tasks can be late
+      if (isPreReleaseMoot(song, t)) continue;
       const due = taskDue(song, t);
       if (!t.done && due && due < today) out.push({ song, task: t, due });
     }
@@ -257,6 +295,8 @@ export function overdueTasks(m, today) {
     }
   }
   for (const show of m.shows) {
+    const fu = showFollowUp(show);
+    if (fu && fu < today) out.push({ show, song: null, followup: true, task: { id: `${show.id}-followup`, text: `Follow up with ${show.venue || 'the venue'} about the show` }, due: fu });
     if (show.status === 'cancelled' || !show.date || daysBetween(show.date, today) > 14) continue;
     for (const t of show.todo || []) {
       const due = addDays(show.date, t.offset || 0);

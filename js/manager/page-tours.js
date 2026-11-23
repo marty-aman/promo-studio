@@ -240,7 +240,7 @@ function tourPage(ctx, tour) {
         'li',
         { class: 'tr-pick' },
         h('div', {}, h('strong', {}, v.name), h('span', { class: 'muted tiny' }, [v.capacity && ` cap ${v.capacity}`, v.bookingEmail, label(VENUE_STATUSES, v.status)].filter(Boolean).join(' · ')), h('div', { class: 'mgr-links tiny' }, v.bookingEmail ? h('a', { href: `mailto:${v.bookingEmail}` }, 'Email') : null, ext(v.website, 'Website'), button('Pitch email', () => ctx.go('planner', null, 'venues'), { variant: 'link tiny', title: 'Open it in Show planner → Venues to write the pitch' }))),
-        f.select(`tr-ps-${p.id}`, '', p.status, PICK_STATUSES, P((y, val) => (y.status = val))),
+        f.select(`tr-ps-${p.id}`, '', p.status, PICK_STATUSES, P((y, val) => (y.status = val)), { aria: 'Venue status' }),
         f.text(`tr-pn-${p.id}`, '', p.note, P((y, val) => (y.note = val)), { placeholder: 'Deal offered, who replied…' }),
         h('div', { class: 'row' }, s.showId ? null : button('Confirm here', () => confirm1(p), { iconName: 'check', variant: 'sm', title: 'Make this stop a confirmed show at this venue' }), iconButton('trash', `Take ${v.name} off the shortlist`, () => ctx.update(St(s.id, (x) => (x.picks = x.picks.filter((z) => z.id !== p.id)))), 'ghost')),
       );
@@ -254,8 +254,8 @@ function tourPage(ctx, tour) {
         { class: 'tr-stop-head' },
         h('span', { class: 'tr-num' }, String(i + 1)),
         h('div', { class: 'tr-city' }, h('strong', {}, s.city), h('span', { class: 'muted tiny' }, [s.region, s.country].filter(Boolean).join(', '))),
-        f.text(`tr-date-${s.id}`, '', s.date, St(s.id, (x, v) => (x.date = v)), { type: 'date' }),
-        f.select(`tr-st-${s.id}`, '', s.status, STOP_STATUSES, St(s.id, (x, v) => (x.status = v))),
+        f.text(`tr-date-${s.id}`, '', s.date, St(s.id, (x, v) => (x.date = v)), { type: 'date', aria: `Date in ${s.city || 'this city'}` }),
+        f.select(`tr-st-${s.id}`, '', s.status, STOP_STATUSES, St(s.id, (x, v) => (x.status = v)), { aria: `Status in ${s.city || 'this city'}` }),
         h('span', { class: `mgr-net ${r.net >= 0 ? 'ok' : 'bad'}` }, $(r.net)),
         h('div', { class: 'row' }, iconButton('arrowUp', 'Earlier in the tour', () => ctx.update(T((t) => {
           const k = t.stops.findIndex((x) => x.id === s.id);

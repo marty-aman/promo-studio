@@ -31,7 +31,7 @@ function draftBox(ctx, song, S, key, label, text, drafts, { rows = 10, filename 
     'section',
     { class: 'mgr-sect' },
     h('div', { class: 'mgr-sect-head' }, h('h2', {}, label), h('span', { class: 'muted tiny' }, `${wordCount(text)} words`)),
-    ctx.form.text(`press-${key}-${song.id}`, '', text, set, { rows }),
+    ctx.form.text(`press-${key}-${song.id}`, '', text, set, { rows, aria: label }),
     edited ? h('p', { class: 'muted tiny' }, 'You edited this draft, so changes to the fields above no longer update it.') : null,
     h(
       'div',
@@ -180,12 +180,12 @@ export function playlistsTab(ctx, song, S) {
                   h(
                     'tr',
                     {},
-                    h('td', {}, f.text(`pl-n-${p.id}`, '', p.name, O(p.id, (x, v) => (x.name = v)))),
-                    h('td', {}, f.select(`pl-s-${p.id}`, '', p.service, PITCH_SERVICES.map((x) => [x, x]), O(p.id, (x, v) => (x.service = v)))),
-                    h('td', {}, f.text(`pl-c-${p.id}`, '', p.curator, O(p.id, (x, v) => (x.curator = v)))),
-                    h('td', {}, f.text(`pl-e-${p.id}`, '', p.contact, O(p.id, (x, v) => (x.contact = v.trim())))),
+                    h('td', {}, f.text(`pl-n-${p.id}`, '', p.name, O(p.id, (x, v) => (x.name = v)), { aria: 'Playlist name' })),
+                    h('td', {}, f.select(`pl-s-${p.id}`, '', p.service, PITCH_SERVICES.map((x) => [x, x]), O(p.id, (x, v) => (x.service = v)), { aria: `Service: ${p.name || 'playlist'}` })),
+                    h('td', {}, f.text(`pl-c-${p.id}`, '', p.curator, O(p.id, (x, v) => (x.curator = v)), { aria: `Curator: ${p.name || 'playlist'}` })),
+                    h('td', {}, f.text(`pl-e-${p.id}`, '', p.contact, O(p.id, (x, v) => (x.contact = v.trim())), { aria: `Contact: ${p.name || 'playlist'}` })),
                     h('td', {}, f.text(`pl-g-${p.id}`, '', p.genres, O(p.id, (x, v) => (x.genres = v)), { placeholder: 'metalcore, emo' })),
-                    h('td', {}, f.text(`pl-u-${p.id}`, '', p.url, O(p.id, (x, v) => (x.url = v.trim())), { type: 'url' })),
+                    h('td', {}, f.text(`pl-u-${p.id}`, '', p.url, O(p.id, (x, v) => (x.url = v.trim())), { type: 'url', aria: `Link: ${p.name || 'playlist'}` })),
                     h('td', {}, iconButton('trash', `Delete ${p.name || 'playlist'}`, () => ctx.update((d) => (d.playlists = d.playlists.filter((x) => x.id !== p.id))), 'ghost')),
                   ),
                 ),
@@ -333,9 +333,9 @@ export function pitchTab(ctx, song, S) {
                 'tr',
                 { class: due ? 'late' : '' },
                 h('td', {}, f.text(`pt-p-${p.id}`, '', p.playlist, Pt(p.id, (x, v) => (x.playlist = v)), { placeholder: 'Playlist' })),
-                h('td', {}, f.select(`pt-s-${p.id}`, '', p.service, PITCH_SERVICES.map((x) => [x, x]), Pt(p.id, (x, v) => (x.service = v)))),
-                h('td', {}, f.text(`pt-c-${p.id}`, '', p.curator, Pt(p.id, (x, v) => (x.curator = v)))),
-                h('td', {}, f.text(`pt-e-${p.id}`, '', p.contact, Pt(p.id, (x, v) => (x.contact = v.trim())))),
+                h('td', {}, f.select(`pt-s-${p.id}`, '', p.service, PITCH_SERVICES.map((x) => [x, x]), Pt(p.id, (x, v) => (x.service = v)), { aria: `Service: ${p.playlist || 'pitch'}` })),
+                h('td', {}, f.text(`pt-c-${p.id}`, '', p.curator, Pt(p.id, (x, v) => (x.curator = v)), { aria: `Curator: ${p.playlist || 'pitch'}` })),
+                h('td', {}, f.text(`pt-e-${p.id}`, '', p.contact, Pt(p.id, (x, v) => (x.contact = v.trim())), { aria: `Contact: ${p.playlist || 'pitch'}` })),
                 h('td', {}, f.select(`pt-st-${p.id}`, '', p.status, PITCH_STATUSES, Pt(p.id, (x, v) => {
                   x.status = v;
                   if (v === 'sent' && !x.sent) {
@@ -343,10 +343,10 @@ export function pitchTab(ctx, song, S) {
                     x.followUp ||= addDays(today, 7);
                   }
                 }))),
-                h('td', {}, f.text(`pt-d-${p.id}`, '', p.sent, Pt(p.id, (x, v) => (x.sent = v)), { type: 'date' })),
-                h('td', {}, f.text(`pt-f-${p.id}`, '', p.followUp, Pt(p.id, (x, v) => ((x.followUp = v), (x.followedUp = false))), { type: 'date' }), due ? h('button', { type: 'button', class: 'link', onclick: () => ctx.update(Pt(p.id, (x) => (x.followedUp = true))) }, 'Followed up') : null),
+                h('td', {}, f.text(`pt-d-${p.id}`, '', p.sent, Pt(p.id, (x, v) => (x.sent = v)), { type: 'date', aria: `Sent: ${p.playlist || 'pitch'}` })),
+                h('td', {}, f.text(`pt-f-${p.id}`, '', p.followUp, Pt(p.id, (x, v) => ((x.followUp = v), (x.followedUp = false))), { type: 'date', aria: `Follow up on: ${p.playlist || 'pitch'}` }), due ? h('button', { type: 'button', class: 'link', onclick: () => ctx.update(Pt(p.id, (x) => (x.followedUp = true))) }, 'Followed up') : null),
                 h('td', { class: 'mgr-cost' }, f.text(`pt-$-${p.id}`, '', p.cost ?? '', Pt(p.id, (x, v) => (x.cost = v)), { type: 'number', placeholder: '$' })),
-                h('td', {}, f.text(`pt-n-${p.id}`, '', p.notes, Pt(p.id, (x, v) => (x.notes = v)))),
+                h('td', {}, f.text(`pt-n-${p.id}`, '', p.notes, Pt(p.id, (x, v) => (x.notes = v)), { aria: `Notes: ${p.playlist || 'pitch'}` })),
                 h('td', {}, iconButton('trash', `Delete pitch to ${p.playlist || 'playlist'}`, () => ctx.update(S((s) => (s.pitches = s.pitches.filter((x) => x.id !== p.id)))), 'ghost')),
               );
             }),

@@ -21,6 +21,55 @@ import { buildStats } from './page-stats.js';
 import { buildReleases } from './page-releases.js';
 
 const VIEW_KEY = 'pvm.manager.view.v1';
+// when the last backup file was made and when you first changed anything: { lastBackupAt, firstEditAt } (ms)
+export const BACKUP_INFO_KEY = 'pvm.manager.backupInfo.v1';
+export const BACKUP_NUDGE_DAYS = 14;
+// the workspace as it was just before the last Restore (so a wrong file can be undone)
+const BEFORE_RESTORE_KEY = 'pvm.manager.beforeRestore';
+const readBackupInfo = () => {
+  try {
+    const x = JSON.parse(localStorage.getItem(BACKUP_INFO_KEY));
+    return x && typeof x === 'object' ? x : {};
+  } catch {
+    return {};
+  }
+};
+const writeBackupInfo = (patch) => {
+  try {
+    localStorage.setItem(BACKUP_INFO_KEY, JSON.stringify({ ...readBackupInfo(), ...patch }));
+  } catch {
+    /* storage full: the save-failed banner already says so */
+  }
+};
+/**
+ * Whether to nudge for a backup: none in `days` days, or none ever and you started more than
+ * `days` days ago. `info` is { lastBackupAt, firstEditAt } in ms. Returns days since, or 0 for no nudge.
+ */
+export function backupDue(info, now = Date.now(), days = BACKUP_NUDGE_DAYS) {
+  const since = info.lastBackupAt || info.firstEditAt;
+  if (!since) return 0;
+  const d = Math.floor((now - since) / 86400000);
+  return d >= days ? d : 0;
+}
+/** "today", "yesterday", "12 days ago". */
+const agoText = (ms, now = Date.now()) => {
+  const d = Math.floor((now - ms) / 86400000);
+  return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`;
+};
+/** A Manager page address for the browser's Back button and links: #m/<page>/<id>/<tab>. */
+export const viewHash = (v) => `#m/${[v.page, v.id || '', v.tab && v.tab !== 'overview' ? v.tab : ''].map((x) => encodeURIComponent(x || '')).join('/').replace(/\/+$/, '')}`;
+export function parseViewHash(hash) {
+  const m = /^#m\/([^/]*)(?:\/([^/]*))?(?:\/([^/]*))?/.exec(hash || '');
+  if (!m) return null;
+  const dec = (x) => {
+    try {
+      return decodeURIComponent(x || '');
+    } catch {
+      return '';
+    }
+  };
+  return { page: dec(m[1]), id: dec(m[2]) || null, tab: dec(m[3]) || 'overview' };
+}
 export const MANAGER_PAGES = [
   { id: 'home', label: 'Home', icon: 'home', build: buildHome },
   { id: 'songs', label: 'Songs & releases', icon: 'music', build: buildSongs },
@@ -39,18 +88,20 @@ export const MANAGER_PAGES = [
 
 /** Small form helpers shared by the pages. Every control has a stable data-k so focus survives a re-render. */
 export function formKit(update) {
-  const text = (k, label, value, set, { type = 'text', placeholder = '', rows = 0, hint = '', list = null } = {}) => {
+  // `aria`: the name screen readers hear for a field shown without a visible label
+  const text = (k, label, value, set, { type = 'text', placeholder = '', rows = 0, hint = '', list = null, aria = '' } = {}) => {
+    const al = !label && aria ? aria : null;
     const el = rows
-      ? h('textarea', { rows, placeholder, 'data-k': k }, value || '')
-      : h('input', { type, placeholder, value: value ?? '', 'data-k': k, list });
+      ? h('textarea', { rows, placeholder, 'data-k': k, 'aria-label': al }, value || '')
+      : h('input', { type, placeholder, value: value ?? '', 'data-k': k, list, 'aria-label': al });
     if (rows) el.value = value || '';
     // date and time fields save when you've finished typing (see onDateCommit)
     if (type === 'date' || type === 'time' || type === 'month') onDateCommit(el, (v) => update((d) => set(d, v)));
     else el.addEventListener('change', () => update((d) => set(d, type === 'number' ? (el.value === '' ? '' : +el.value) : el.value)));
     return label ? h('label', { class: 'mf' }, h('span', { class: 'mf-l' }, label), el, hint ? h('span', { class: 'mf-h' }, hint) : null) : el;
   };
-  const select = (k, label, value, options, set) => {
-    const el = h('select', { 'data-k': k }, options.map(([v, l]) => h('option', { value: v, selected: v === value }, l)));
+  const select = (k, label, value, options, set, { aria = '' } = {}) => {
+    const el = h('select', { 'data-k': k, 'aria-label': !label && aria ? aria : null }, options.map(([v, l]) => h('option', { value: v, selected: v === value }, l)));
     el.addEventListener('change', () => update((d) => set(d, el.value)));
     return label ? h('label', { class: 'mf' }, h('span', { class: 'mf-l' }, label), el) : el;
   };
@@ -73,16 +124,52 @@ export function createManager({ root, studio }) {
   } catch {
     /* default view */
   }
+  // a link or bookmark to a Manager page (#m/songs/<id>/release) opens that page
+  const fromHash = parseViewHash(location.hash);
+  if (fromHash && MANAGER_PAGES.some((p) => p.id === fromHash.page)) view = { ...view, ...fromHash, ...(fromHash.page === 'songs' && fromHash.id ? { songId: fromHash.id } : {}) };
   if (!MANAGER_PAGES.some((p) => p.id === view.page)) view.page = 'home';
+  // the page you opened on is remembered in its history entry (the address isn't touched while loading)
+  history.replaceState({ ...(history.state || {}), mgrView: { page: view.page, id: view.id, tab: view.tab } }, '');
 
   const nav = h('nav', { class: 'mgr-nav', 'aria-label': 'Manager pages' });
   const main = h('main', { class: 'mgr-main', tabindex: '-1' });
   const status = h('span', { class: 'muted tiny mgr-saved' }, 'Saved in this browser');
+  const backupNote = h('span', { class: 'muted tiny mgr-saved mgr-backup-note' });
+  const renderBackupNote = () => {
+    const info = readBackupInfo();
+    backupNote.textContent = info.lastBackupAt ? `Last backup: ${agoText(info.lastBackupAt)}` : 'No backup yet';
+    backupNote.classList.toggle('warn', !!backupDue(info));
+  };
+  // a save that fails (storage full, or blocked) stays on screen until a save works again
+  const saveError = h('div', { class: 'mgr-save-err', role: 'alert', hidden: true }, h('strong', {}, 'Your last change could not be saved in this browser.'), h('span', {}, 'The storage may be full. Download a backup now so nothing is lost, then free some space (Photos and Files hold the most).'), button('Back up now', () => backUp(), { iconName: 'download', variant: 'sm primary' }));
+  // a bar with one button that puts something back (a restore, a deleted artist), for 15 seconds
+  const undoBar = h('div', { class: 'mgr-undo', role: 'status', hidden: true });
+  let undoTimer = null;
+  const offerUndo = (msg, label, fn) => {
+    clearTimeout(undoTimer);
+    undoBar.replaceChildren(h('span', {}, msg), button(label, () => ((undoBar.hidden = true), fn()), { variant: 'sm primary' }), button('Dismiss', () => (undoBar.hidden = true), { variant: 'sm ghost' }));
+    undoBar.hidden = false;
+    undoTimer = setTimeout(() => (undoBar.hidden = true), 15000);
+  };
+  const backUp = () => {
+    download(new Blob([workspaceBackup(current(), studio.mediaNames ? studio.mediaNames(referencedIds(current())) : null)], { type: 'application/json' }), `band-manager-${todayISO()}.json`);
+    writeBackupInfo({ lastBackupAt: Date.now() });
+    renderBackupNote();
+    if (view.page === 'home') render();
+  };
+  /** Swap in a whole workspace (restore, undo of a restore or a delete). */
+  const replaceWorkspace = (next) => {
+    ws = next;
+    saveWorkspace(ws);
+    store.replace(viewOf(ws));
+    studio.artistsChanged && studio.artistsChanged();
+  };
   const tools = h(
     'div',
     { class: 'mgr-tools' },
     status,
-    button('Back up', () => download(new Blob([workspaceBackup(current(), studio.mediaNames ? studio.mediaNames(referencedIds(current())) : null)], { type: 'application/json' }), `band-manager-${todayISO()}.json`), { iconName: 'download', variant: 'sm ghost', title: 'Download every artist in the manager as one file' }),
+    backupNote,
+    button('Back up', backUp, { iconName: 'download', variant: 'sm ghost', title: 'Download every artist in the manager as one file' }),
     button('Restore', async () => {
       const [f] = await pickFiles('.json,application/json', false);
       if (!f) return;
@@ -90,11 +177,21 @@ export function createManager({ root, studio }) {
         const text = await f.text();
         const next = parseWorkspaceBackup(text);
         const songs = next.artists.reduce((n, a) => n + a.songs.length, 0);
-        if (!confirm(`Replace everything in the manager with this backup (${next.artists.length} artist${next.artists.length > 1 ? 's' : ''}, ${songs} songs)?`)) return;
-        ws = next;
+        if (!confirm(`Replace everything in the manager with this backup (${next.artists.length} artist${next.artists.length > 1 ? 's' : ''}, ${songs} songs)? You can undo this right after.`)) return;
+        // keep what's here now, so the restore can be undone (and survives a reload in this browser)
+        const before = JSON.parse(JSON.stringify(current()));
+        try {
+          localStorage.setItem(BEFORE_RESTORE_KEY, JSON.stringify(before));
+        } catch {
+          /* too big to keep a second copy: the undo below still works until the tab closes */
+        }
         studio.learnNames && studio.learnNames(backupMediaNames(text)); // so files this browser doesn't have can be asked for by name
-        store.replace(viewOf(ws));
+        replaceWorkspace(next);
         toast('Backup restored');
+        offerUndo('Backup restored.', 'Undo restore', () => {
+          replaceWorkspace(before);
+          toast('Put back what you had before the restore.');
+        });
       } catch (e) {
         toast(e.message, 'error', 5000);
       }
@@ -108,7 +205,8 @@ export function createManager({ root, studio }) {
     const ph = a.photoId && studio.mediaInfo ? studio.mediaInfo(a.photoId) : null;
     return ph ? h('span', { class: `mgr-artist-dot photo ${cls}`, 'aria-hidden': 'true' }, h('img', { src: ph.url, alt: '' })) : h('span', { class: `mgr-artist-dot ${cls}`, 'aria-hidden': 'true' }, (a.name[0] || '?').toUpperCase());
   };
-  root.replaceChildren(h('div', { class: 'mgr-side' }, h('div', {}, switcher, nav), tools), main);
+  root.replaceChildren(h('div', { class: 'mgr-side' }, h('div', {}, switcher, nav), tools), main, saveError, undoBar);
+  renderBackupNote();
 
   // ---- artists
   const switchArtist = (id, page = null, itemId = null, tab = null) => {
@@ -132,12 +230,18 @@ export function createManager({ root, studio }) {
     const w = current();
     const a = w.artists.find((x) => x.id === id);
     if (!a || w.artists.length < 2) return;
-    if (!confirm(`Delete ${a.band.name || 'this artist'} and all of its songs, shows, posts and money? Venues, bands and contacts stay. Back up first if you might want it again.`)) return;
-    ws = removeArtist(w, id);
-    saveWorkspace(ws);
-    store.replace(viewOf(ws));
-    studio.artistsChanged && studio.artistsChanged();
+    if (!confirm(`Delete ${a.band.name || 'this artist'} and all of its songs, shows, posts and money? Venues, bands and contacts stay. You can undo this right after.`)) return;
+    const before = JSON.parse(JSON.stringify(w));
+    replaceWorkspace(removeArtist(w, id));
     go('home');
+    offerUndo(`Deleted ${a.band.name || 'the artist'}.`, 'Undo delete', () => {
+      // put the artist back, keeping anything changed since in the other artists
+      const now = current();
+      const back = { ...now, artists: [...before.artists.map((x) => (x.id === id ? x : now.artists.find((y) => y.id === x.id) || x)), ...now.artists.filter((y) => !before.artists.some((x) => x.id === y.id))], current: id };
+      replaceWorkspace(back);
+      go('home');
+      toast(`${a.band.name || 'The artist'} is back.`);
+    });
   };
   function renderSwitcher() {
     const list = artistList(current());
@@ -166,8 +270,18 @@ export function createManager({ root, studio }) {
     view = { ...view, page, id, tab: tab || (page === view.page && id === view.id ? view.tab : 'overview') };
     if (page === 'songs' && id) view.songId = id; // the song shown in the header
     localStorage.setItem(VIEW_KEY, JSON.stringify(view));
+    // each page gets a history entry, so the browser's Back button steps back through the Manager
+    const hash = viewHash(view);
+    if (location.hash !== hash && !root.hidden) history.pushState({ mgr: 1 }, '', hash);
     render(true);
   };
+  window.addEventListener('popstate', (e) => {
+    const v = parseViewHash(location.hash) || (e.state && e.state.mgrView) || null;
+    if (!v || !MANAGER_PAGES.some((p) => p.id === v.page)) return;
+    view = { ...view, ...v, ...(v.page === 'songs' && v.id ? { songId: v.id } : {}) };
+    localStorage.setItem(VIEW_KEY, JSON.stringify(view));
+    render(true);
+  });
   const ctx = {
     store,
     update: (fn, key) => store.update(fn, key),
@@ -186,6 +300,9 @@ export function createManager({ root, studio }) {
     artists: () => artistList(current()),
     switchArtist,
     deleteArtist,
+    /** Days since the last backup when a reminder is due (0 when not), and making one. */
+    backupDue: () => backupDue(readBackupInfo()),
+    backUp,
     get combined() {
       return !!view.combined;
     },
@@ -204,6 +321,9 @@ export function createManager({ root, studio }) {
         return h('button', { type: 'button', class: `mgr-nav-btn${on ? ' on' : ''}`, 'aria-current': on ? 'page' : null, onclick: () => go(p.id) }, icon(p.icon, 18), h('span', {}, p.label));
       }),
     );
+    // on a phone the nav is a sideways strip: keep the open page's button in view
+    const on = nav.querySelector('.mgr-nav-btn.on');
+    if (on && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = Math.max(0, on.offsetLeft - nav.offsetLeft - 40);
   }
 
   function render(scrollTop = false) {
@@ -234,12 +354,28 @@ export function createManager({ root, studio }) {
   }
 
   let saveTimer = null;
+  let asked = false;
   store.subscribe(() => {
     render();
     status.textContent = 'Saving…';
+    if (!asked) {
+      asked = true;
+      // ask the browser not to clear this site's storage on its own (no prompt in most browsers)
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+      if (!readBackupInfo().firstEditAt) writeBackupInfo({ firstEditAt: Date.now() });
+    }
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      status.textContent = saveWorkspace(current()) ? 'Saved in this browser' : 'Could not save (storage full?)';
+      let ok = saveWorkspace(current());
+      if (!ok && localStorage.getItem(BEFORE_RESTORE_KEY)) {
+        // the copy kept for "Undo restore" is the first thing to give up for room
+        localStorage.removeItem(BEFORE_RESTORE_KEY);
+        ok = saveWorkspace(current());
+      }
+      status.textContent = ok ? 'Saved in this browser' : 'Not saved: storage full';
+      status.classList.toggle('bad', !ok);
+      if (!ok && saveError.hidden) toast('Could not save your change in this browser. Back up now.', 'error', 8000);
+      saveError.hidden = ok;
       studio.artistsChanged && studio.artistsChanged();
     }, 400);
   });
