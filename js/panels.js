@@ -2021,7 +2021,7 @@ export function createPanels({ store, engine, ui }) {
         h(
           'div',
           { class: 'list-row' },
-          h('button', { type: 'button', class: 'link', onclick: () => ui.select({ type: 'audio', id: a.id }) }, `Audio ${i + 1}: ${r ? r.name : 'missing'}`),
+          h('button', { type: 'button', class: 'link', onclick: () => ui.select({ type: 'audio', id: a.id }) }, `Audio ${i + 1}: ${r ? r.name : media.missingLabel(a.mediaId, 'audio').replace('Missing ', 'missing ')}`),
           h('span', { class: 'muted tiny' }, `${formatTime(a.start)} · ${a.duration.toFixed(1)}s`),
         ),
       );

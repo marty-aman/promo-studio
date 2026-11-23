@@ -3,6 +3,7 @@
 // picture, stems as a drum chart, a visualizer or an extra audio track.
 import { h, button, iconButton, toast, pickFiles } from '../dom.js';
 import { driveButton } from '../gdrive.js';
+import { relinkNotice } from '../relink.js';
 import { STEM_ROLES, newFiles, addStems, addFootage, addTabs, setVideo, fileCounts, stemName, groupStems, moveStem, VIDEO_STATUSES, videoDone } from './files.js';
 
 /** Which upload is running (not saved). */
@@ -63,13 +64,16 @@ export function filesTab(ctx, song, S) {
     return sel;
   };
   const send = (id, how) => st.useInEditor(id, how, { open: false });
-  const missing = (label, onRemove) => h('div', { class: 'mgr-file missing' }, h('span', { class: 'muted small' }, `${label}: this file was removed from the media library.`), button('Remove', onRemove, { variant: 'sm ghost' }));
+  const missing = (label, onRemove, id) => {
+    const name = st.fileName ? st.fileName(id) : '';
+    return h('div', { class: 'mgr-file missing' }, h('span', { class: 'muted small' }, `${label}: ${name ? `“${name}”` : 'this file'} is not in the media library. Use Replace missing files above to give it back.`), button('Remove', onRemove, { variant: 'sm ghost' }));
+  };
 
   // ---- Guitar Pro tabs
   const tabRows = (files.tabs || []).map((t) => {
     const m = info(t.mediaId);
     const drop = () => ctx.update(S((x) => (x.files.tabs = x.files.tabs.filter((y) => y.id !== t.id))));
-    if (!m) return missing('Tab', drop);
+    if (!m) return missing('Tab', drop, t.mediaId);
     const parts = [...(m.tracks || []), m.drumTracks ? `drums${m.drumTracks > 1 ? ` ×${m.drumTracks}` : ''}` : ''].filter(Boolean);
     return h(
       'div',
@@ -104,7 +108,7 @@ export function filesTab(ctx, song, S) {
   const stemRow = (s, i, group) => {
     const m = info(s.mediaId);
     const drop = () => ctx.update(S((x) => (x.files.stems = x.files.stems.filter((y) => y.id !== s.id))));
-    if (!m) return missing('Stem', drop);
+    if (!m) return missing('Stem', drop, s.mediaId);
     const name = stemName(s, m.name);
     const edit = (fn) => S((x, v) => {
       const y = x.files.stems.find((z) => z.id === s.id);
@@ -174,7 +178,7 @@ export function filesTab(ctx, song, S) {
     { class: 'mgr-sect' },
     h('h2', {}, 'Music video'),
     videoState,
-    files.video && !vm ? missing('Music video', dropVideo) : null,
+    files.video && !vm ? missing('Music video', dropVideo, files.video.mediaId) : null,
     vm
       ? h(
           'div',
@@ -207,7 +211,7 @@ export function filesTab(ctx, song, S) {
   const clips = files.footage.map((c) => {
     const m = info(c.mediaId);
     const drop = () => ctx.update(S((x) => (x.files.footage = x.files.footage.filter((y) => y.id !== c.id))));
-    if (!m) return missing('Clip', drop);
+    if (!m) return missing('Clip', drop, c.mediaId);
     return h(
       'div',
       { class: 'mgr-clip' },
@@ -248,6 +252,7 @@ export function filesTab(ctx, song, S) {
   return h(
     'div',
     {},
+    relinkNotice('manager', () => [song]),
     h(
       'div',
       { class: 'mgr-files-head' },

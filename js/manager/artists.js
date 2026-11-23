@@ -97,7 +97,16 @@ export function saveWorkspace(ws) {
 }
 
 /** Backups hold every artist. Old single-artist backups still restore (as one artist). */
-export const workspaceBackup = (ws) => JSON.stringify({ promoStudioManager: WORKSPACE_VERSION, savedAt: new Date().toISOString(), ...ws }, null, 1);
+export const workspaceBackup = (ws, mediaNames = null) => JSON.stringify({ promoStudioManager: WORKSPACE_VERSION, savedAt: new Date().toISOString(), ...ws, ...(mediaNames && Object.keys(mediaNames).length ? { mediaNames } : {}) }, null, 1);
+/** The file names a backup carries for the media its songs and photos use (id -> [name, path, kind]), or {}. */
+export function backupMediaNames(text) {
+  try {
+    const n = JSON.parse(text).mediaNames;
+    return n && typeof n === 'object' && !Array.isArray(n) ? n : {};
+  } catch {
+    return {};
+  }
+}
 export function parseWorkspaceBackup(text) {
   let raw;
   try {
@@ -108,5 +117,6 @@ export function parseWorkspaceBackup(text) {
   if (!raw || typeof raw !== 'object' || !raw.promoStudioManager) throw new Error('That file isn’t a band manager backup.');
   delete raw.promoStudioManager;
   delete raw.savedAt;
+  delete raw.mediaNames;
   return normalizeWorkspace(raw);
 }

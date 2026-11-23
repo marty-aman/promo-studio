@@ -4,6 +4,7 @@
 // the press kit / profile / logo buttons for each photo). Only one page of photos is drawn at a time.
 import { h, icon, button, iconButton, toast, pickFiles, download } from '../dom.js';
 import { driveButton } from '../gdrive.js';
+import { relinkNotice } from '../relink.js';
 import { addPhotos, filterPhotos, photoTags, toggleEpkPhoto, parseTags, EPK_PHOTO_MAX, newFolder, subfolders, folderPath, photosIn, deleteFolder, movePhotos, moveFolder, PAGE_SIZES, loadPageSize, savePageSize, paginate, tagPhotos, parseTagEdit, clickSelect } from './photos.js';
 
 const MODE_KEY = 'pvm.photos.mode';
@@ -339,7 +340,7 @@ export function buildPhotos(ctx) {
     el.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/x-pvm-photos', (sel.has(p.id) ? [...sel] : [p.id]).join(',')));
     return el;
   };
-  const missing = (p) => h('div', { class: 'mgr-ph missing' }, h('p', { class: 'muted small' }, 'This photo was removed from the media library.'), button('Remove', () => removeOne(p), { variant: 'sm ghost' }));
+  const missing = (p) => h('div', { class: 'mgr-ph missing' }, h('p', { class: 'muted small' }, `${st.fileName && st.fileName(p.mediaId) ? `“${st.fileName(p.mediaId)}” is` : 'This photo is'} not in the media library. Use Replace missing files above to give it back.`), button('Remove', () => removeOne(p), { variant: 'sm ghost' }));
   const where = (p) => (filtering && p.folder ? h('button', { type: 'button', class: 'link tiny mgr-ph-folder', onclick: () => openFolder(p.folder) }, h('span', { class: 'mgr-ficon small', 'aria-hidden': 'true' }), ` ${pathOf(p.folder).map((fo) => fo.name).join(' › ')}`) : null);
 
   /** Browse: the picture and one quiet line under it. */
@@ -470,6 +471,7 @@ export function buildPhotos(ctx) {
     'div',
     { class: 'mgr-page wide' },
     h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, 'Photos'), h('p', { class: 'muted' }, `${band.name || 'This artist'} · ${m.photos.length} photo${m.photos.length === 1 ? '' : 's'} · ${folders.length} folder${folders.length === 1 ? '' : 's'}${epk.length ? ` · ${epk.length} in the press kit` : ''}`)), h('div', { class: 'row' }, button('New folder', newOne, { iconName: 'plus', variant: 'ghost' }), driveButton(IMAGE_ACCEPT, true, (fs) => upload(fs), { variant: 'ghost' }), button(ui.busy ? 'Adding…' : 'Upload photos', () => upload(), { iconName: 'upload', variant: 'primary', disabled: ui.busy }))),
+    relinkNotice('manager', () => [m.photos]),
     h('div', { class: 'mgr-photos-top' }, drop, libSel),
     m.photos.length || folders.length ? h('div', { class: 'mgr-photos-layout' }, tree, content) : h('p', { class: 'muted small' }, 'No photos yet. Press shots, live photos and behind-the-scenes go here; pick the best four for the press kit.'),
     viewer,

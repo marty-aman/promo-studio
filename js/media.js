@@ -6,14 +6,50 @@ import { drumTracks, drumTimelineFromScore, drumHitsFromAudio, drumTimelineFromM
 import { analyseAudioBlob } from './viz.js';
 import { ensureMattes } from './bgremove.js';
 import { MIDI_EXTENSIONS, parseMidi } from './midi.js';
+import { remember, trim, mergeIndex } from './mediamatch.js';
 
 const library = new Map(); // id -> record
 const listeners = new Set();
 const emit = () => listeners.forEach((fn) => fn());
 
+// What every media id was called (and where it came from), kept apart from the records so a project, a song or a
+// design that points at a file which is gone still knows its name. Never shrinks when a record is removed.
+const NAMES_KEY = 'pvm.mediaNames.v1';
+let names = null;
+const nameIndex = () => {
+  if (!names) {
+    try {
+      names = JSON.parse(localStorage.getItem(NAMES_KEY)) || {};
+    } catch {
+      names = {};
+    }
+  }
+  return names;
+};
+const saveNames = () => {
+  try {
+    localStorage.setItem(NAMES_KEY, JSON.stringify(trim(nameIndex(), (id) => library.has(id))));
+  } catch {
+    /* storage full: names are only kept for this visit */
+  }
+};
+
 export const media = {
   get: (id) => library.get(id) || null,
+  has: (id) => library.has(id),
   all: () => [...library.values()],
+  /** "Missing: kick.wav" for an id with no record (falls back to `what`, e.g. "Missing audio"). */
+  missingLabel: (id, what = 'media') => {
+    const n = nameIndex()[id];
+    return n && n[0] ? `Missing: ${n[0]}` : `Missing ${what}`;
+  },
+  /** The name index: id -> [name, relative path, kind] for every file this browser has held. */
+  names: nameIndex,
+  /** Take in names from a backup. Ids this browser already knows are left alone. */
+  learnNames(other) {
+    mergeIndex(nameIndex(), other);
+    saveNames();
+  },
   onChange(fn) {
     listeners.add(fn);
     return () => listeners.delete(fn);
@@ -300,12 +336,28 @@ export async function addMedia(blob, name, meta = {}, { persist = true, id = nul
   if (kind === 'audio' || (kind === 'video' && meta.analyse)) await analyseAudio(rec);
   rec.thumb = await makeThumb(rec);
   rec.ready = true;
+  rec.path = meta.path || blob.webkitRelativePath || '';
   library.set(rec.id, rec);
+  remember(nameIndex(), rec.id, { name, path: rec.path, kind });
+  saveNames();
   if (persist) {
-    mediaDB.put({ id: rec.id, name, kind, blob, source: rec.source, attribution: rec.attribution });
+    mediaDB.put({ id: rec.id, name, kind, blob, source: rec.source, attribution: rec.attribution, path: rec.path });
   }
   emit();
   return rec;
+}
+
+const AUDIO_EXT = /\.(mp3|wav|m4a|aac|ogg|oga|opus|flac|aiff?)$/i;
+/** The kind of a picked file, by its type and then its name (null when the app can't use it). */
+export const fileKind = (file) => kindOf(file.type || '', file.name) || (AUDIO_EXT.test(file.name) ? 'audio' : null);
+
+/**
+ * Give a missing id its file back. The id stays the same, so every clip, layer, song file and photo that used it
+ * works again; the file is analysed afresh (duration, waveform, thumbnail). An id that is present is never touched.
+ */
+export async function restoreMissing(id, file) {
+  if (library.has(id)) throw new Error(`“${file.name}” is not missing.`);
+  return addMedia(file, file.name, { kind: fileKind(file) || undefined }, { id });
 }
 
 export function removeMedia(id) {
@@ -321,7 +373,7 @@ export async function restoreMedia() {
   const recs = await mediaDB.all();
   for (const r of recs) {
     try {
-      await addMedia(r.blob, r.name, { kind: r.kind, source: r.source, attribution: r.attribution }, { persist: false, id: r.id });
+      await addMedia(r.blob, r.name, { kind: r.kind, source: r.source, attribution: r.attribution, path: r.path }, { persist: false, id: r.id });
     } catch (e) {
       console.warn('Could not restore', r.name, e);
     }
@@ -341,14 +393,14 @@ export function clipElement(clip) {
   const rec = library.get(clip.mediaId);
   if (!rec || rec.kind !== 'video') return null;
   let entry = clipEls.get(clip.id);
-  if (!entry || entry.mediaId !== clip.mediaId) {
+  if (!entry || entry.mediaId !== clip.mediaId || entry.url !== rec.url) {
     if (entry) entry.el.pause();
     const el = document.createElement('video');
     el.preload = 'auto';
     el.playsInline = true;
     el.muted = true;
     el.src = rec.url;
-    entry = { el, mediaId: clip.mediaId, audioNode: null };
+    entry = { el, mediaId: clip.mediaId, url: rec.url, audioNode: null };
     clipEls.set(clip.id, entry);
   }
   return entry;

@@ -6,6 +6,7 @@ import { h, icon, button, iconButton, toast, download, pickFiles, keyBox } from 
 import { createStore, loadSettings, saveSettings, FONTS } from '../state.js';
 import { PROVIDERS, searchStockPhotos, downloadStock } from '../stock.js';
 import { driveButton } from '../gdrive.js';
+import { relinkButton } from '../relink.js';
 import { SIZES, sizeById, BLENDS, MASKS, SHAPES, LOOKS, defaultAdjust, newDoc, newLayer, normalizeDoc, hitTest, moveLayer, duplicateLayer, resizeBox, loadDesigns, saveDesigns, docMedia, slidesForImage } from './model.js';
 import { drawDoc, renderDoc, renderSlides, canvasBlob, layoutText } from './render.js';
 import { TEMPLATES, templateById, countdownSet, carouselSlides } from './templates.js';
@@ -653,6 +654,7 @@ export function createPhotoStudio({ root, studio }) {
       button('Fit', () => ((ui.zoom = 0), draw()), { variant: 'sm ghost', title: 'Fit the design in the window' }),
       iconButton('zoomIn', 'Zoom in', () => ((ui.zoom = (ui.zoom || scale) * 1.25), draw()), 'ghost'),
       h('div', { class: 'spacer' }),
+      relinkButton('photo'),
       h('span', { class: 'muted tiny' }, `${doc.w}×${doc.h}${doc.slides > 1 ? ` · ${doc.slides} slides of ${Math.round(doc.w / doc.slides)}×${doc.h}` : ''}`),
       posterShow(doc) ? button('Use as the show’s poster', usePoster, { iconName: 'check', variant: 'sm', title: `Save it to the media library and put it on the show at ${posterShow(doc).venue || 'this venue'}` }) : null,
       button('Save to media', saveToLibrary, { iconName: 'image', variant: 'sm', title: 'Add the finished image(s) to the media library, the Photos page and the Video Studio' }),
@@ -673,7 +675,8 @@ export function createPhotoStudio({ root, studio }) {
     return blobs.map((b, i) => ({ blob: b, name: `${slug(doc.name)}${canv.length > 1 ? `-${i + 1}` : ''}.${ext}` }));
   }
   async function exportImages(type) {
-    if (missing().length) toast('A photo in this design is no longer in the media library; it is left out.', 'error', 5000);
+    const gone = missing();
+    if (gone.length) toast(`${gone.length === 1 ? 'A photo in this design is' : `${gone.length} photos in this design are`} not in the media library (${gone.map((id) => (studio.fileName && studio.fileName(id)) || 'name unknown').join(', ')}) and left out. Use Replace missing files to put ${gone.length === 1 ? 'it' : 'them'} back.`, 'error', 7000);
     const out = await images(type);
     for (const [i, f] of out.entries()) {
       if (i) await new Promise((r) => setTimeout(r, 350)); // browsers drop downloads fired together
@@ -1016,5 +1019,7 @@ export function createPhotoStudio({ root, studio }) {
       drawOverlay();
     },
     designs: () => saved.docs,
+    /** The saved designs and the open one, for finding the photos they point at. */
+    refSources: () => [saved.docs, store.get()],
   };
 }

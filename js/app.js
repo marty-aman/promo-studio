@@ -3,7 +3,8 @@ import { ASPECTS, clipAt, splitClip, formatTime, clamp, linesFromText, timelineT
 import { gameParts, applySongTemplate } from './songtemplates.js';
 import { syncLayer } from './layersync.js';
 import { createStore, newProject, loadProject, saveProject, FONTS, findClip } from './state.js';
-import { media, restoreMedia, addMedia, kindOf } from './media.js';
+import { media, restoreMedia, restoreMissing, fileKind, addMedia, kindOf } from './media.js';
+import { configureRelink, refreshRelink, relinkButton } from './relink.js';
 import { Engine } from './engine.js';
 import { createTimeline } from './timeline.js';
 import { createPanels } from './panels.js';
@@ -95,7 +96,7 @@ const header = h(
   h('div', { class: 'brand' }, icon('disc', 22), h('span', {}, 'Band Manager')),
   modeSwitch,
   nowOn,
-  studioOnly(nameInput, artistSel, aspectSel, undoBtn, redoBtn, saveState),
+  studioOnly(nameInput, artistSel, aspectSel, undoBtn, redoBtn, saveState, relinkButton('studio')),
   h('div', { class: 'spacer' }),
   studioOnly(
     postSlot,
@@ -633,6 +634,11 @@ manager = createManager({
       if (added.length) ui.refreshPanels(true);
       return { added, skipped };
     },
+    /** The names this browser knows for these media ids (they go into a backup so another browser can ask for the files). */
+    mediaNames: (ids) => Object.fromEntries([...ids].filter((id) => media.names()[id]).map((id) => [id, media.names()[id]])),
+    learnNames: (names) => media.learnNames(names),
+    /** What a media id was called, even when its file is gone ('' when never known). */
+    fileName: (id) => (media.names()[id] || [])[0] || '',
     /** Library files of some kinds, for "pick from the library" menus. */
     libraryFiles: (kinds) => media.all().filter((m) => kinds.includes(m.kind)).map((m) => ({ id: m.id, name: m.name, kind: m.kind })),
     /** Switch to the Video Studio's Video tab. */
@@ -797,6 +803,7 @@ photo = createPhotoStudio({
   studio: {
     images: () => media.all().filter((x) => x.kind === 'image').map((x) => ({ id: x.id, name: x.name, thumb: x.thumb, url: x.url, width: x.width, height: x.height })),
     get: (id) => media.get(id),
+    fileName: (id) => (media.names()[id] || [])[0] || '',
     fonts: () => media.all().filter((x) => x.kind === 'font' && x.family).map((x) => x.family),
     async upload(files) {
       const out = [];
@@ -839,6 +846,33 @@ photo = createPhotoStudio({
   },
 });
 media.onChange(() => mode === 'photo' && photo.mediaChanged());
+
+// ------------------------------------------------------------ replace missing files
+// Looks through the edit, every artist's manager data and the photo designs for media ids with no file.
+configureRelink({
+  has: (id) => media.has(id),
+  names: () => media.names(),
+  restore: restoreMissing,
+  kindOfFile: fileKind,
+  sources: { studio: () => [store.get()], manager: () => [manager.workspace()], photo: () => photo.refSources() },
+  after() {
+    ui.refreshPanels(true);
+    timeline.render();
+    engine.render();
+    manager.show();
+    photo.mediaChanged();
+    postcheck.refresh();
+    refreshRelink();
+  },
+});
+let relinkTimer = null;
+const soonRefreshRelink = () => {
+  clearTimeout(relinkTimer);
+  relinkTimer = setTimeout(refreshRelink, 200);
+};
+store.subscribe(soonRefreshRelink);
+manager.store.subscribe(soonRefreshRelink);
+media.onChange(soonRefreshRelink);
 // ------------------------------------------------------------ lyrics for the chosen song
 /**
  * Fill the Lyrics tab for a song file. source: 'auto' (when a song is picked: your own lyrics from Songs &
@@ -1119,6 +1153,8 @@ async function boot() {
   await Promise.all(FONTS.map((f) => document.fonts.load(`40px "${f.id}"`).catch(() => {})));
   engine.render();
   await restoreMedia();
+  configureRelink({ ready: true }); // from here on, a media id with no file is really missing
+  refreshRelink();
   rebuildLeft();
   rebuildInspector();
   timeline.render();
