@@ -112,6 +112,24 @@ Cloud project you own, so connect it once (Manager → **Google Drive**, bottom 
 Signing in uses the `drive.file` permission: the app can open only the files you pick, nothing else in
 your Drive, and the sign-in lasts until you close the tab. Google Docs, Sheets and Slides are skipped.
 
+### Outreach and the press kit health check
+
+**Content → Outreach** keeps the blogs, playlist curators, radio shows, podcasts and press you pitch that
+aren't a song's own playlist pitch. Each has a type, contact, email, link, an optional song, a status (Idea,
+Drafted, Sent, Replied, Placed, Passed), notes and a short log. **Draft email** opens your own mail app with
+the pitch filled in (the band, the picked song and your links, using the same text as the song pitches);
+tick several to write one email with everyone in BCC. **Mark sent** sets today and a follow-up a week later
+(change it under Edit), and the follow-up shows on Home and the Calendar until you mark it followed up or
+set Replied, Placed or Passed. Your songs' playlist pitches are listed on the same tab, read only; edit them
+on each song's Pitch tab. The app sends nothing and can't see your inbox, so replies are marked by hand.
+Contacts stay in this browser and your backups and never go into the press kit.
+
+**Press kit → Health check** looks at what a booker or blog checks first: a short bio of a sensible length,
+a profile photo, a press photo of at least 2000 px on its long side ("can't tell" until the photo has
+loaded), a YouTube link, streaming stats imported in the last 90 days, a booking email, a social link, a
+released song with links, and a confirmed upcoming show. Each one that isn't met says how to fix it and
+links to the page or field. The score counts passed checks only.
+
 ## How it's laid out
 
 The rail on the left has one **Start** tab for ideas, then a tab for each kind of thing you build:

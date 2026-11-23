@@ -1,6 +1,7 @@
 // EPK (press kit): the band's profile in one place, and a one-page press kit you download as a
 // single HTML file (photos embedded) to email to venues, press and curators or host anywhere.
-import { h, button, iconButton, toast, download, pickFiles } from '../dom.js';
+import { h, icon, button, iconButton, toast, download, pickFiles } from '../dom.js';
+import { pressCheck, pressScore } from './presscheck.js';
 import { mid } from './model.js';
 import { exportPDF } from './pdf.js';
 import { EPK_LINKS, epkHTML, shortBio } from './extras.js';
@@ -10,6 +11,41 @@ import { THEMES } from '../themes.js';
 import { photoStyle, photoPos, nudgePhoto } from './artists.js';
 
 export const epkUI = { photos: [], reposition: false, page: 1, size: 0 };
+
+const PAGE_NAMES = { epk: 'Press kit', photos: 'Photos', stats: 'Streaming stats', songs: 'Songs & releases', shows: 'Shows' };
+/** The health check: what a booker or blog looks for, each with a one-line fix and where to make it. */
+function healthPanel(ctx, m) {
+  const sizeOf = (id) => {
+    const i = ctx.studio.mediaInfo ? ctx.studio.mediaInfo(id) : undefined;
+    return i ? { width: i.width || 0, height: i.height || 0 } : i;
+  };
+  const checks = pressCheck({ band: m.band, songs: m.songs, photos: m.photos, stats: m.stats, shows: m.shows, today: ctx.today(), sizeOf });
+  const { pass, total } = pressScore(checks);
+  const goFix = (c) => {
+    if (c.page !== 'epk') return ctx.go(c.page);
+    const el = c.field && document.querySelector(`[data-k="${CSS.escape(c.field)}"]`);
+    if (el) el.scrollIntoView({ block: 'center' }), el.focus && el.focus({ preventScroll: true });
+  };
+  const mark = { pass: ['check', 'Pass'], warn: ['activity', 'To fix'], unknown: ['eye', 'Can’t tell'] };
+  return h(
+    'section',
+    { class: 'mgr-sect kc-panel', 'data-k': 'epk-health' },
+    h('h2', {}, 'Health check'),
+    h('p', { class: 'kc-score' }, h('strong', {}, `${pass} of ${total}`), ' checks pass', h('span', { class: 'muted tiny' }, ' · each check counts once; “can’t tell” is not a pass')),
+    h(
+      'ul',
+      { class: 'kc-list' },
+      checks.map((c) =>
+        h(
+          'li',
+          { class: `kc-item ${c.state}`, 'data-check': c.id },
+          h('span', { class: 'kc-mark', title: mark[c.state][1] }, icon(mark[c.state][0], 14), h('span', { class: 'kc-sr' }, mark[c.state][1])),
+          h('div', {}, h('strong', {}, c.label), h('span', { class: 'muted small' }, ` ${c.detail}`), c.fix ? h('p', { class: 'kc-fix small' }, c.fix, ' ', h('button', { type: 'button', class: 'link', onclick: () => goFix(c) }, c.page === 'epk' ? 'Show me' : `Open ${PAGE_NAMES[c.page] || c.page}`)) : null),
+        ),
+      ),
+    ),
+  );
+}
 
 const setPos = (ctx, pos) => ctx.update((d) => (d.band.photoPos = photoPos(pos)), 'photoPos');
 
@@ -242,7 +278,7 @@ export function buildEPK(ctx) {
           h('p', { class: 'muted tiny' }, 'Picked photos are embedded in the downloaded file (resized to 1400 px). The preview leaves them out.'),
         ),
       ),
-      h('div', {}, h('section', { class: 'mgr-sect mgr-epk-prev' }, h('h2', {}, 'Preview'), preview, h('p', { class: 'muted tiny' }, 'Music lists songs with a release date; shows list confirmed upcoming dates and venues you’ve played (marked Played).')),
+      h('div', {}, healthPanel(ctx, m), h('section', { class: 'mgr-sect mgr-epk-prev' }, h('h2', {}, 'Preview'), preview, h('p', { class: 'muted tiny' }, 'Music lists songs with a release date; shows list confirmed upcoming dates and venues you’ve played (marked Played).')),
         ctx.artists().length > 1 ? h('section', { class: 'mgr-sect' }, h('h2', {}, 'This artist'), h('p', { class: 'muted small' }, `Deletes ${b.name || 'this artist'} with its songs, shows, posts, money, photos, tours, releases, calendar events, outreach, fans, merch, caption bank and availability. Venues, bands and contacts are shared and stay.`), button(`Delete ${b.name || 'this artist'}`, () => ctx.deleteArtist(m.artistId), { iconName: 'trash', variant: 'sm danger' })) : null,
       ),
     ),

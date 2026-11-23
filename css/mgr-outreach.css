@@ -1,1 +1,46 @@
 /* Manager: outreach. Owned by the build that adds it; app.css stays untouched. */
+
+/* ---- Content → Outreach tab */
+.out-tab { display: grid; gap: 14px; min-width: 0; }
+.out-note { display: flex; gap: 8px; align-items: flex-start; margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--panel-2); color: var(--muted); font-size: 13px; }
+.out-note svg { flex: none; margin-top: 3px; color: var(--accent); }
+.out-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.out-stats > div { display: grid; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.out-stats b { font-size: 22px; line-height: 1.1; color: var(--text); }
+.out-stats span { font-size: 12px; color: var(--muted); }
+.out-undo { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--raised); }
+.out-bulk { margin: 6px 0 10px; min-height: 30px; }
+.out-list, .out-pitches, .out-log { list-style: none; margin: 0; padding: 0; }
+.out-list { display: grid; gap: 8px; }
+.out-card { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); min-width: 0; }
+.out-card.late { border-color: var(--danger); }
+.out-card.open { border-color: var(--accent); }
+.out-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.out-name { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; min-width: 0; }
+.out-name a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.out-type { font-size: 11px; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--text); }
+.out-meta { margin: 0; overflow-wrap: anywhere; }
+.out-card.late .out-meta { color: var(--danger); }
+.out-actions { flex-wrap: wrap; gap: 6px; }
+.out-actions a.btn { text-decoration: none; }
+.out-edit { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.out-log li { margin: 2px 0; }
+.out-pitches { display: grid; gap: 6px; }
+.out-pitches li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto; gap: 8px; align-items: center; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; }
+@media (max-width: 640px) {
+  .out-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .out-pitches li { grid-template-columns: minmax(0, 1fr); }
+  .out-top { grid-template-columns: auto minmax(0, 1fr); }
+  .out-top select { grid-column: 1 / -1; }
+}
+
+/* ---- Press kit → Health check */
+.kc-score { margin: 0 0 8px; }
+.kc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.kc-item { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); }
+.kc-item .kc-mark { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; }
+.kc-item.pass .kc-mark { background: var(--ok); color: var(--bg); }
+.kc-item.warn .kc-mark { background: var(--danger); color: #fff; }
+.kc-item.unknown .kc-mark { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border-strong); }
+.kc-fix { margin: 2px 0 0; color: var(--muted); }
+.kc-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
