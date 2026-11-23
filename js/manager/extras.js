@@ -76,7 +76,7 @@ export function managerICS(m, { from = '', days = 400, stamp = new Date(), ws = 
       const endT = `${String(Math.floor((end % 1440) / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
       lines.push(`DTSTART:${icsLocal(it.date, time)}`, `DTEND:${icsLocal(endDay, endT)}`);
     } else lines.push(`DTSTART;VALUE=DATE:${icsDay(it.date)}`, `DTEND;VALUE=DATE:${icsDay(addDays(it.date, 1))}`);
-    const title = `${views ? `${it.artist}: ` : ''}${{ show: `Show: ${it.title}`, release: it.title, shoot: it.title, post: `Post: ${it.title}`, task: `To do: ${it.title}` }[it.kind]}`;
+    const title = `${views ? `${it.artist}: ` : ''}${{ show: `Show: ${it.title}`, release: it.title, shoot: it.title, post: `Post: ${it.title}`, task: `To do: ${it.title}` }[it.kind] || `To do: ${it.title}`}`;
     lines.push(fold(`SUMMARY:${icsEsc(title)}`), fold(`DESCRIPTION:${icsEsc(it.sub)}`));
     if (show && show.venue) lines.push(fold(`LOCATION:${icsEsc([show.venue, show.city].filter(Boolean).join(', '))}`));
     lines.push('END:VEVENT');

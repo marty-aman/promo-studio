@@ -243,7 +243,7 @@ export function buildEPK(ctx) {
         ),
       ),
       h('div', {}, h('section', { class: 'mgr-sect mgr-epk-prev' }, h('h2', {}, 'Preview'), preview, h('p', { class: 'muted tiny' }, 'Music lists songs with a release date; shows list confirmed upcoming dates and venues you’ve played (marked Played).')),
-        ctx.artists().length > 1 ? h('section', { class: 'mgr-sect' }, h('h2', {}, 'This artist'), h('p', { class: 'muted small' }, `Deletes ${b.name || 'this artist'} with its songs, shows, posts and money. Venues, bands and contacts are shared and stay.`), button(`Delete ${b.name || 'this artist'}`, () => ctx.deleteArtist(m.artistId), { iconName: 'trash', variant: 'sm danger' })) : null,
+        ctx.artists().length > 1 ? h('section', { class: 'mgr-sect' }, h('h2', {}, 'This artist'), h('p', { class: 'muted small' }, `Deletes ${b.name || 'this artist'} with its songs, shows, posts, money, photos, tours, releases, calendar events, outreach, fans, merch, caption bank and availability. Venues, bands and contacts are shared and stay.`), button(`Delete ${b.name || 'this artist'}`, () => ctx.deleteArtist(m.artistId), { iconName: 'trash', variant: 'sm danger' })) : null,
       ),
     ),
   );

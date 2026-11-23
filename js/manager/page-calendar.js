@@ -10,6 +10,7 @@ import { scopeChips, openItem } from './page-home.js';
 
 export const calUI = { month: '', draft: null, isNew: false };
 const KIND = { show: ['ticket', 'Show'], release: ['disc', 'Release'], shoot: ['film', 'Shoot'], event: ['calendar', 'Event'], post: ['share', 'Post'], task: ['check', 'To do'] };
+const kindOf = (k) => KIND[k] || KIND.task; // an unknown kind from an agenda source shows as a task
 
 /** Open the event form: a new event on `date`, or a copy of an existing one to edit. */
 const openDraft = (ctx, ev, isNew) => {
@@ -129,7 +130,7 @@ export function buildCalendar(ctx) {
           { class: `mgr-cal-d${out ? ' out' : ''}${d === today ? ' today' : ''}`, role: 'gridcell', 'aria-label': niceDate(d), onclick: (e) => !all && (e.target === cell || e.target.classList.contains('mgr-cal-n')) && addOn(d) },
           h('span', { class: 'mgr-cal-n' }, String(+d.slice(8))),
           all ? null : h('button', { type: 'button', class: 'mgr-cal-add', 'aria-label': `Add an event on ${niceDate(d)}`, title: 'Add an event', onclick: () => addOn(d) }, icon('plus', 12)),
-          list.slice(0, 4).map((it) => h('button', { type: 'button', class: `mgr-cal-item ${it.kind}${it.evKind ? ` ev-${it.evKind}` : ''}`, title: `${all ? `${it.artist} · ` : ''}${KIND[it.kind][1]}: ${it.title}${it.sub ? ` · ${it.sub}` : ''}`, onclick: () => openItem(ctx, it) }, all ? h('b', { class: 'mgr-cal-who', 'aria-hidden': 'true' }, (it.artist || '?')[0].toUpperCase()) : null, icon(KIND[it.kind][0], 11), h('span', {}, all ? `${it.artist}: ${it.title}` : it.title))),
+          list.slice(0, 4).map((it) => h('button', { type: 'button', class: `mgr-cal-item ${it.kind}${it.evKind ? ` ev-${it.evKind}` : ''}`, title: `${all ? `${it.artist} · ` : ''}${kindOf(it.kind)[1]}: ${it.title}${it.sub ? ` · ${it.sub}` : ''}`, onclick: () => openItem(ctx, it) }, all ? h('b', { class: 'mgr-cal-who', 'aria-hidden': 'true' }, (it.artist || '?')[0].toUpperCase()) : null, icon(kindOf(it.kind)[0], 11), h('span', {}, all ? `${it.artist}: ${it.title}` : it.title))),
           list.length > 4 ? h('span', { class: 'muted tiny' }, `+${list.length - 4} more`) : null,
         );
         return cell;

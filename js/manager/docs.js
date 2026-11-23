@@ -70,6 +70,6 @@ export function calendarHTML({ title, monthName, items }) {
   const byDay = new Map();
   for (const it of [...items].sort((a, b) => a.date.localeCompare(b.date))) (byDay.get(it.date) || byDay.set(it.date, []).get(it.date)).push(it);
   const KIND = { show: 'Show', release: 'Release', shoot: 'Shoot', post: 'Post', task: 'To do', event: 'Event' };
-  const rows = [...byDay].map(([d, list]) => `<tr><th style="width:150px">${esc(niceDate(d))}</th><td><ul>${list.map((x) => `<li><b>${esc(KIND[x.kind] || x.kind)}</b> · ${esc(x.title || x.text || '')}${x.kind === 'event' && x.sub ? ` · ${esc(x.sub)}` : ''}${x.artist ? ` <span class="muted">(${esc(x.artist)})</span>` : ''}</li>`).join('')}</ul></td></tr>`).join('');
+  const rows = [...byDay].map(([d, list]) => `<tr><th style="width:150px">${esc(niceDate(d))}</th><td><ul>${list.map((x) => `<li><b>${esc(KIND[x.kind] || KIND.task)}</b> · ${esc(x.title || x.text || '')}${x.kind === 'event' && x.sub ? ` · ${esc(x.sub)}` : ''}${x.artist ? ` <span class="muted">(${esc(x.artist)})</span>` : ''}</li>`).join('')}</ul></td></tr>`).join('');
   return docHTML(title, rows ? `<table>${rows}</table>` : '<p class="muted">Nothing planned this month.</p>', { subtitle: monthName });
 }
