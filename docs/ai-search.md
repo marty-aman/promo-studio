@@ -41,6 +41,32 @@ has footage. The example buttons run a search straight away.
 - Cancel stops between frames. Videos already finished stay in the cache, and the one in progress is not stored.
 - A full browser store shows the app's storage message. The index then works until you reload.
 
+## Smart photo search (Manager → Photos)
+The same model also powers the Photos page's search box. Word matches (caption, photographer, tags, file name) are
+found by `filterPhotos` as before and stay first, in their own order. Picture matches come after them.
+- **What is indexed:** the open artist's photos that have a file. Each photo gets one 512-number vector from a copy
+  decoded straight to a 224 px short side (`createImageBitmap` with resize options, so a 12 MP photo is never held at
+  full size). Photos are done one per step (`PHOTO_BATCH = 1`), with a 24 ms pause between steps. With the real model
+  on WASM, one photo blocks the page for about 0.15 s, and the longest pause measured was 172 ms.
+- **Cache:** IndexedDB `pvm-ai-search`, store `photos` (added in database version 2; the video stores are unchanged).
+  The key is `mediaId | fingerprint | model | p1`, where the fingerprint is the size plus FNV-1a of the first and
+  last 16 KB. Nothing is evicted. **Clear photo index** empties the store.
+- **Ranking:** the cosine of "a photo of …" against each photo in the scope. A photo counts only when its score is at
+  least one standard deviation above the mean of the photos searched (`visualCut`). When the best score is less than
+  0.015 above the mean, nothing is shown. The bar is relative to the best picture match shown. Word matches are never
+  repeated as picture matches. These are `visualCut` and `mixMatches` in `js/ai/clipsearch.js`, both unit tested.
+- **Run control:** progress "Indexing photos n/N", **Pause** / **Resume**, **Stop** / **Index now**. A redraw of the
+  page while a run is going only updates the list, and photos added during a run are picked up. Results are
+  redrawn when new vectors arrive, at most every 3 s while indexing.
+- **Consent:** the bar offers **Set up smart search**, which shows the same prompt as Find a moment (23 MB,
+  huggingface.co, MIT, nothing sent). When the model is already in the browser, indexing starts with no prompt.
+- **Switch:** `localStorage['pvm.photos.smart']` (`off` turns it off; on by default).
+- Measured with the real model (`v64_realmodel.py`, headless Firefox, WASM): 40 photos took 7.9 s, including 2.5 s
+  to download and load. Searching for "drums" over flat-colour test photos listed 6 red ones, and "singer on stage"
+  listed 8 loose matches. That shows the limit: the statistical cut keeps whatever stands out, even when nothing
+  really matches. Real band photos were not tried.
+- The Photo Studio's Photos tab has no search box, so it is unchanged.
+
 ## Model
 `onnx-community/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M-ONNX`, `onnx/model_quantized.onnx` (q8), **23.2 MB**, plus about
 0.7 MB of tokenizer files. MIT licence (Microsoft TinyCLIP, `wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M`). One file holds
@@ -75,7 +101,10 @@ Real band footage was not tried.
 frame), `js/ai/searchindex.js` (sampling, model calls, IndexedDB, current search), `js/ai/panel-search.js` (the box),
 one fold in `js/panels.js` (and `addClip` takes `{ from, len }`), the hook call in `js/panel-suggest.js`, the
 `MODELS.tinyclip` row and `runtimeLibrary()` in `js/ai/runtime.js`, and CSS under `/* == ai-search == */`.
+Photos: the photo half of `js/ai/clipsearch.js` and `js/ai/searchindex.js`, `js/ai/panel-photosearch.js` (bar,
+switch, badge), a few lines in `js/manager/page-photos.js`, and CSS under `/* == ai-photosearch == */`.
 
 ## Tests
-`node --test test/` (`test/ai-search.test.js`). Browser check `v63_check.py`, with the model stubbed as a mean-colour
-vector. Opt-in `v63_realmodel.py` downloads and runs the real model once.
+`node --test test/` (`test/ai-search.test.js`, `test/ai-photosearch.test.js`). Browser checks `v63_check.py` and
+`v64_check.py` (200 generated photos), with the model stubbed as a mean-colour vector. Opt-in `v63_realmodel.py` and
+`v64_realmodel.py` download and run the real model once.

@@ -5,6 +5,9 @@
 import { h, icon, button, iconButton, toast, pickFiles, download } from '../dom.js';
 import { driveButton } from '../gdrive.js';
 import { relinkNotice } from '../relink.js';
+import { media } from '../media.js';
+import { mixMatches } from '../ai/clipsearch.js';
+import { smartSearchBar, visualScorer, looksBadge, smartOn } from '../ai/panel-photosearch.js';
 import { addPhotos, filterPhotos, photoTags, toggleEpkPhoto, parseTags, EPK_PHOTO_MAX, newFolder, subfolders, folderPath, photosIn, deleteFolder, movePhotos, moveFolder, PAGE_SIZES, loadPageSize, savePageSize, paginate, tagPhotos, parseTagEdit, clickSelect } from './photos.js';
 
 const MODE_KEY = 'pvm.photos.mode';
@@ -113,11 +116,17 @@ export function buildPhotos(ctx) {
   // a search or a filter looks in every folder; otherwise you see the open folder
   const filtering = !!(ui.q || ui.tag || ui.starred || ui.epkOnly || ui.everywhere);
   const pool = filtering ? m.photos : photosIn(m.photos, folders, ui.folder);
-  const shown = filterPhotos(pool, { q: ui.q, tag: ui.tag, starred: ui.starred, epk: ui.epkOnly ? epk : null, nameOf: (id) => info(id)?.name || '' });
+  const narrow = { tag: ui.tag, starred: ui.starred, epk: ui.epkOnly ? epk : null, nameOf: (id) => info(id)?.name || '' };
+  const byWords = filterPhotos(pool, { ...narrow, q: ui.q });
+  // smart search: photos whose picture matches the words come after the word matches (same scope and filters)
+  const scorer = visualScorer(ui.q);
+  const mixed = scorer ? mixMatches(byWords, filterPhotos(pool, narrow), (p) => scorer(media.get(p.mediaId))) : null;
+  const shown = mixed ? mixed.items.map((x) => x.photo) : byWords;
+  const looks = new Map(mixed ? mixed.items.filter((x) => x.visual).map((x) => [x.photo.id, x.visual]) : []);
   const pg = paginate(shown, ui.page, ui.size);
   ui.page = pg.page;
   const tags = photoTags(m.photos);
-  const search = h('input', { type: 'search', placeholder: 'Search captions, tags, photographers (every folder)', value: ui.q, 'aria-label': 'Search photos', 'data-k': 'photos-q' });
+  const search = h('input', { type: 'search', placeholder: smartOn() ? 'Search captions, tags, photographers or what’s in the picture (every folder)' : 'Search captions, tags, photographers (every folder)', value: ui.q, 'aria-label': 'Search photos', 'data-k': 'photos-q' });
   let timer = null;
   search.addEventListener('input', () => {
     clearTimeout(timer);
@@ -332,6 +341,7 @@ export function buildPhotos(ctx) {
       h('label', { class: 'mgr-ph-tick' }, tick),
       h('button', { type: 'button', class: `mgr-ph-star${p.favorite ? ' on' : ''}`, 'aria-pressed': p.favorite ? 'true' : 'false', 'aria-label': p.favorite ? 'Unstar' : 'Star', onclick: () => ctx.update(P(p.id, (y) => (y.favorite = !y.favorite))) }, p.favorite ? '★' : '☆'),
       inKit || isLogo || isProfile ? h('span', { class: 'mgr-ph-badges' }, isProfile ? h('span', {}, 'Profile') : null, inKit ? h('span', {}, 'Press kit') : null, isLogo ? h('span', {}, 'Logo') : null) : null,
+      looks.has(p.id) ? looksBadge(looks.get(p.id), ui.q) : null,
     );
   };
   const draggable = (el, p) => {
@@ -447,6 +457,7 @@ export function buildPhotos(ctx) {
     { class: 'mgr-sect mgr-photos-main' },
     crumbs,
     h('div', { class: 'mgr-photos-tools' }, search, modeSwitch),
+    smartSearchBar({ records: () => m.photos.map((p) => media.get(p.mediaId)).filter((r) => r && r.kind === 'image'), query: () => ui.q, refresh: redraw }),
     h(
       'div',
       { class: 'chips' },
@@ -457,6 +468,7 @@ export function buildPhotos(ctx) {
       filtering ? button('Clear', () => Object.assign(ui, { q: '', tag: '', starred: false, epkOnly: false, everywhere: false }), { variant: 'chip' }) : null,
     ),
     filtering ? h('p', { class: 'muted tiny' }, 'Showing matches from every folder; each photo says where it is.') : null,
+    mixed ? h('p', { class: 'muted tiny', 'data-k': 'photos-mix', 'data-text': String(mixed.nText), 'data-visual': String(mixed.nVisual) }, `${mixed.nText} by caption, tag or name first, then ${mixed.nVisual} that look like “${ui.q}” (best first, marked “looks like”).${mixed.nVisual ? '' : ' No picture stands out for those words.'}`) : null,
     tiles.length ? h('h3', { class: 'mgr-h3' }, `Folders · ${tiles.length}`) : null,
     tiles.length ? h('div', { class: 'mgr-folders' }, tiles) : null,
     selBar,
