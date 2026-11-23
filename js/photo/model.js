@@ -284,3 +284,15 @@ export function saveDesigns(state, storage = globalThis.localStorage) {
     return false;
   }
 }
+
+/** After the design gets narrower, move layers that start past the right edge back onto the last slide. Returns how many moved. */
+export function pullBackLayers(d, slides = 1) {
+  let moved = 0;
+  for (const L of d.layers) {
+    if (L.x >= d.w) {
+      L.x = Math.max(0, d.w - Math.max(1, Math.min(L.w, d.w / Math.max(1, slides))));
+      moved++;
+    }
+  }
+  return moved;
+}

@@ -91,8 +91,13 @@ undoes; drag rows in the layer list to reorder, hide or lock them.
   **Tour poster**.
 - **Photos** from the shared media library, an upload, Google Drive, or **Stock** (Pexels, Pixabay or
   Wikimedia Commons; the same keys as stock video; the credit is kept with the photo).
-- **Export** PNG or JPG at full size (a carousel downloads one image per slide), or **Save to media** to
-  use it in the Video Studio and on the artist's Photos page. Designs are saved in this browser.
+- **Export** PNG or JPG at full size (a carousel downloads as one `.zip` of numbered images; **Separate
+  files** gives one download per slide), or **Save to media** to use it in the Video Studio and on the
+  artist's Photos page. An export waits for a *cut out the person* layer to finish being found, and a
+  warning about missing photos stays on screen. Making a carousel shorter moves layers that would be
+  left off the edge back onto the last slide. Delete and Backspace only remove a layer when the focus is
+  on the design, not on a button or behind a dialog. Designs are saved in this browser. Media is restored
+  four files at a time on start.
 
 **Export PDF.** The press release, press kit, call sheet, show sheet, show plan, stage plot, tour sheet,
 money report and the month's calendar each have **Export PDF**. It opens the print dialog with a clean
