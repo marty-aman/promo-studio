@@ -19,6 +19,7 @@ import { buildMoney } from './page-money.js';
 import { buildTours } from './page-tours.js';
 import { buildStats } from './page-stats.js';
 import { buildReleases } from './page-releases.js';
+import { buildFans } from './page-fans.js';
 
 const VIEW_KEY = 'pvm.manager.view.v1';
 // when the last backup file was made and when you first changed anything: { lastBackupAt, firstEditAt } (ms)
@@ -86,6 +87,7 @@ export const MANAGER_PAGES = [
   { id: 'photos', label: 'Photos', icon: 'image', build: buildPhotos },
   { id: 'epk', label: 'Press kit', icon: 'clipboard', build: buildEPK },
   { id: 'money', label: 'Money', icon: 'dollar', build: buildMoney },
+  { id: 'fans', label: 'Fans & opportunities', icon: 'users', build: buildFans },
 ];
 
 /** Small form helpers shared by the pages. Every control has a stable data-k so focus survives a re-render. */
@@ -147,7 +149,12 @@ export function createManager({ root, studio }) {
     const info = readBackupInfo();
     backupNote.textContent = info.lastBackupAt ? `Last backup: ${agoText(info.lastBackupAt)}` : 'No backup yet';
     backupNote.classList.toggle('warn', !!backupDue(info));
+    // a backup holds every artist's fan list: say so, and offer one without it
+    const fans = ws.artists.reduce((n, a) => n + (a.id === ws.current ? (store.get().fans || []).length : (a.fans || []).length), 0);
+    fansNote.hidden = fanless.hidden = !fans;
+    fansNote.textContent = fans ? `This backup contains your fan list (${fans} ${fans === 1 ? 'person' : 'people'}).` : '';
   };
+  const fansNote = h('span', { class: 'muted tiny mgr-saved mgr-fans-note', hidden: true });
   // a save that fails (storage full, or blocked) stays on screen until a save works again
   const saveError = h('div', { class: 'mgr-save-err', role: 'alert', hidden: true }, h('strong', {}, 'Your last change could not be saved in this browser.'), h('span', {}, 'The storage may be full. Download a backup now so nothing is lost, then free some space (Photos and Files hold the most).'), button('Back up now', () => backUp(), { iconName: 'download', variant: 'sm primary' }));
   // a bar with one button that puts something back (a restore, a deleted artist), for 15 seconds
@@ -165,6 +172,16 @@ export function createManager({ root, studio }) {
     renderBackupNote();
     if (view.page === 'home') render();
   };
+  /** The same backup with every artist's fan list left out (the lists here are not touched). */
+  const backUpWithoutFans = () => {
+    download(new Blob([workspaceBackup(current(), studio.mediaNames ? studio.mediaNames(referencedIds(current())) : null, { withoutFans: true })], { type: 'application/json' }), `band-manager-${todayISO()}-no-fans.json`);
+    writeBackupInfo({ lastBackupAt: Date.now() });
+    renderBackupNote();
+    toast('Backup saved without the fan list.');
+  };
+  const fanless = button('Back up without the fan list', () => backUpWithoutFans(), { iconName: 'download', variant: 'sm ghost', title: 'The same backup with every artist’s fan list left out' });
+  fanless.hidden = true;
+  fanless.classList.add('fo-fanless');
   /** Swap in a whole workspace (restore, undo of a restore or a delete). */
   const replaceWorkspace = (next) => {
     ws = next;
@@ -178,6 +195,8 @@ export function createManager({ root, studio }) {
     status,
     backupNote,
     button('Back up', backUp, { iconName: 'download', variant: 'sm ghost', title: 'Download every artist in the manager as one file' }),
+    fansNote,
+    fanless,
     button('Restore', async () => {
       const [f] = await pickFiles('.json,application/json', false);
       if (!f) return;
@@ -310,6 +329,7 @@ export function createManager({ root, studio }) {
     /** Days since the last backup when a reminder is due (0 when not), and making one. */
     backupDue: () => backupDue(readBackupInfo()),
     backUp,
+    backUpWithoutFans,
     get combined() {
       return !!view.combined;
     },
@@ -364,6 +384,7 @@ export function createManager({ root, studio }) {
   let asked = false;
   store.subscribe((_, meta) => {
     render();
+    renderBackupNote();
     status.textContent = 'Saving…';
     if (meta && meta.type === 'update') edits++;
     // only a real edit (not an artist switch, a restore or an undo) counts as the first one

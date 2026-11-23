@@ -1,1 +1,60 @@
 /* Manager: fans. Owned by the build that adds it; app.css stays untouched. */
+/* Fans & opportunities page (js/manager/page-fans.js); every selector starts with .fo- or a tools id. */
+.mgr-tools .mgr-fans-note[hidden], .mgr-tools .btn[hidden] { display: none; }
+.mgr-fans-note { color: #fb923c; min-width: 0; overflow-wrap: anywhere; }
+.mgr-tools .fo-fanless { white-space: normal; text-align: left; height: auto; min-width: 0; }
+.mgr-tools .fo-fanless span { min-width: 0; }
+
+.fo-privacy { border-color: rgba(251, 146, 60, 0.55); }
+.fo-privacy > strong { display: block; margin-bottom: 4px; }
+.fo-privacy .row { margin-bottom: 0; }
+.fo-warn { padding: 10px 14px; margin-bottom: 12px; border: 1px solid rgba(251, 146, 60, 0.55); border-radius: 10px; background: rgba(251, 146, 60, 0.08); font-size: 13px; }
+.fo-undo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; margin-bottom: 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--panel-2); }
+.fo-undo > span { flex: 1 1 200px; }
+
+.fo-add { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.fo-add > :first-child { grid-column: 1 / -1; }
+.fo-fans textarea { width: 100%; }
+.fo-csv { margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: 10px; }
+.fo-csv-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 8px 0; }
+.fo-preview { margin-bottom: 8px; }
+
+.fo-cities { display: flex; flex-wrap: wrap; gap: 6px; }
+.fo-near { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 10px; }
+.fo-near-row { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.fo-near-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; }
+.fo-near-head .link { flex: 1 1 220px; text-align: left; }
+.fo-near-row .mf { margin-bottom: 0; }
+
+.fo-list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.fo-list-head h2 { margin: 0; }
+.fo-email { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 4px 0 8px; }
+.fo-email .mf { flex: 1 1 240px; margin: 0; }
+.fo-mail { margin: 0 0 10px; }
+.fo-mail .row { margin-bottom: 4px; }
+.fo-table-wrap { overflow-x: auto; }
+.fo-table { min-width: 640px; }
+.fo-table td:nth-child(2) input { min-width: 180px; }
+
+.fo-opp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.fo-opp { padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); min-width: 0; }
+.fo-opp.open { border-color: var(--border-strong); }
+.fo-opp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.fo-opp-title { display: grid; gap: 2px; min-width: 0; }
+.fo-opp-title a, .fo-opp-title strong { font-weight: 700; overflow-wrap: anywhere; }
+.fo-opp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.fo-opp-row select { width: auto; }
+.fo-opp-row input[type=date] { width: auto; }
+.fo-opp-notes { margin: 8px 0 0; color: var(--muted); }
+.fo-opp-more { margin-top: 8px; }
+.fo-opp-more summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.fo-opp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0 10px; margin-top: 8px; }
+.mgr-chip.fo-soon, .mgr-chip.fo-closed { color: var(--danger); border-color: rgba(255, 92, 108, 0.5); }
+.mgr-chip.fo-due { color: var(--accent); border-color: rgba(255, 212, 0, 0.5); }
+.mgr-chip.fo-open { color: var(--ok); border-color: rgba(74, 222, 128, 0.5); }
+.mgr-chip.fo-nodate { color: #fb923c; border-color: rgba(251, 146, 60, 0.5); }
+
+@media (max-width: 700px) {
+  .fo-add { grid-template-columns: minmax(0, 1fr); }
+  .fo-opp-head { flex-direction: column; }
+}
