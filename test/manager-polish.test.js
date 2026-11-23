@@ -59,7 +59,7 @@ test('calendar UIDs stay the same when a show, release, shoot or post moves', ()
   assert.ok(b.filter((u) => !a.includes(u)).every((u) => u.startsWith('UID:task-sg-')), JSON.stringify(b.filter((u) => !a.includes(u))));
   for (const u of ['UID:show-sh1@promo-studio', 'UID:release-sg@promo-studio', 'UID:shoot-sg@promo-studio', 'UID:post-p1@promo-studio', 'UID:task-sh1-t1@promo-studio']) assert.ok(b.includes(u), u);
   // a moved release task keeps its UID
-  const task = s.release.find((t) => t.offset === -7);
+  const task = s.release.find((t) => t.offset === -7 && t.text === 'Teaser with the hook'); // the EPK task at -7 ticks itself (todoauto.js)
   assert.ok(b.includes(`UID:task-sg-${task.id}@promo-studio`));
 });
 

@@ -31,6 +31,7 @@ import { applyTheme, themeById } from './themes.js';
 import { loadSettings } from './state.js';
 import { findSong, titleFromFile, fetchLyrics } from './lyricsfetch.js';
 import { findCover } from './manager/covers.js';
+import { configureTodoAuto } from './manager/todoauto.js';
 import { songLyricsPlan, lyricsFromTiming, timingFromLyrics, autoSaveDecision, setSongTiming, keepTiming, retimeLines, timingStale, timingSourceOf, markTimed } from './manager/lyrictiming.js';
 
 const store = createStore(loadProject() || newProject());
@@ -1529,6 +1530,7 @@ async function boot() {
   engine.render();
   await restoreMedia();
   configureRelink({ ready: true }); // from here on, a media id with no file is really missing
+  configureTodoAuto({ has: (id) => media.has(id) }); // to-dos tick themselves only for files really in the library
   refreshRelink();
   rebuildLeft();
   rebuildInspector();

@@ -9,6 +9,7 @@ import { newStats, normalizeStats } from './stats.js';
 import { normalizeReleases, normalizeSections } from './releases.js';
 import { normalizeCovers } from './covers.js';
 import { normalizeLyricTiming } from './lyrictiming.js';
+import { releaseTaskDone, showTaskDone } from './todoauto.js';
 
 export const MANAGER_KEY = 'pvm.manager.v1';
 export const MANAGER_VERSION = 1;
@@ -254,7 +255,7 @@ export function agenda(m, from, days = 14) {
     if (s.status !== 'cancelled' && s.date) {
       for (const t of s.todo || []) {
         const due = addDays(s.date, t.offset || 0);
-        if (!t.done && t.offset !== 0 && inRange(due)) out.push({ date: due, kind: 'task', key: t.id, title: t.text, sub: `Show: ${s.venue || 'venue TBD'}`, ref: { page: 'shows', id: s.id } });
+        if (!showTaskDone(s, t) && t.offset !== 0 && inRange(due)) out.push({ date: due, kind: 'task', key: t.id, title: t.text, sub: `Show: ${s.venue || 'venue TBD'}`, ref: { page: 'shows', id: s.id } });
       }
     }
     const fu = showFollowUp(s);
@@ -267,7 +268,7 @@ export function agenda(m, from, days = 14) {
     for (const t of song.release) {
       if (isPreReleaseMoot(song, t)) continue;
       const due = taskDue(song, t);
-      if (!t.done && inRange(due)) out.push({ date: due, kind: 'task', key: t.id, title: t.text, sub: `“${song.title}” · ${TASK_CATS[t.cat] || 'Task'}`, ref: { page: 'songs', id: song.id, tab: 'release' } });
+      if (!releaseTaskDone(song, t, m) && inRange(due)) out.push({ date: due, kind: 'task', key: t.id, title: t.text, sub: `“${song.title}” · ${TASK_CATS[t.cat] || 'Task'}`, ref: { page: 'songs', id: song.id, tab: 'release' } });
     }
     for (const p of song.pitches || []) {
       if (p.status === 'sent' && !p.followedUp && inRange(p.followUp)) out.push({ date: p.followUp, kind: 'task', key: p.id, title: `Follow up: ${p.curator || p.playlist || 'curator'}`, sub: `“${song.title}” · Pitch${p.playlist ? ` to ${p.playlist}` : ''}`, ref: { page: 'songs', id: song.id, tab: 'pitch' } });
@@ -326,7 +327,7 @@ export function overdueTasks(m, today) {
       // a song that's out no longer needs its run-up: only the after-release tasks can be late
       if (isPreReleaseMoot(song, t)) continue;
       const due = taskDue(song, t);
-      if (!t.done && due && due < today) out.push({ song, task: t, due });
+      if (!releaseTaskDone(song, t, m) && due && due < today) out.push({ song, task: t, due });
     }
     for (const p of song.pitches || []) {
       if (p.status === 'sent' && !p.followedUp && p.followUp && p.followUp < today) out.push({ song, pitch: p, task: { id: p.id, text: `Follow up with ${p.curator || p.playlist || 'the curator'}` }, due: p.followUp });
@@ -338,14 +339,17 @@ export function overdueTasks(m, today) {
     if (show.status === 'cancelled' || !show.date || daysBetween(show.date, today) > 14) continue;
     for (const t of show.todo || []) {
       const due = addDays(show.date, t.offset || 0);
-      if (!t.done && due < today) out.push({ show, song: null, task: t, due });
+      if (!showTaskDone(show, t) && due < today) out.push({ show, song: null, task: t, due });
     }
   }
   return out.sort((a, b) => a.due.localeCompare(b.due));
 }
 
-/** How far along a song's release checklist is: { done, total }. */
-export const releaseProgress = (song) => ({ done: song.release.filter((t) => t.done).length, total: song.release.length });
+/**
+ * How far along a song's release checklist is: { done, total }, counting tasks that ticked themselves
+ * (todoauto.js). Pass the artist's data `m` so a cover or UPC on the song's EP or album counts too.
+ */
+export const releaseProgress = (song, m = null) => ({ done: song.release.filter((t) => releaseTaskDone(song, t, m)).length, total: song.release.length });
 
 /** The next release (today or later), and the next show. */
 export function nextUp(m, today) {
