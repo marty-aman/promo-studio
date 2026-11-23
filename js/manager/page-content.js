@@ -6,23 +6,29 @@ import { planPosts } from './ideas.js';
 import { POST_STATUSES } from './page-songs.js';
 import { FORMATS, PLATFORMS, GROUPINGS, formatLabel, parseLink, isYouTube, fetchYouTubeStats, postMetrics, compare, findings, importRows, matchImport } from './content.js';
 import { buildOutreach } from './page-outreach.js'; // also registers the outreach follow-ups in the agenda
+import { captionsTab, saveToBank } from './page-captions.js';
 
 export const contentUI = { song: '', status: '', by: 'format', open: null, busy: false };
+/**
+ * Tabs on the Content page: [key, label, build(ctx) => node]. The first (no builder) is the schedule
+ * below. A build adds its tab with ONE line at the end of this file: CONTENT_TABS.push([...]).
+ */
+export const CONTENT_TABS = [['schedule', 'Schedule', null]];
 const pct = (x) => (x == null ? '—' : `${(x * 100).toFixed(x < 0.1 ? 1 : 0)}%`);
 const fix1 = (x) => (x == null ? '—' : x.toFixed(1));
 const big = (x) => (x == null ? '—' : x >= 1e6 ? `${(x / 1e6).toFixed(1)}M` : x >= 1e4 ? `${Math.round(x / 1e3)}k` : x.toLocaleString());
 
 const TABS = [['overview', 'Schedule & stats'], ['outreach', 'Outreach']];
-const tabBar = (ctx, tab) => h('div', { class: 'mgr-tabs', role: 'tablist' }, TABS.map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': k === tab ? 'true' : 'false', class: `mgr-tab${k === tab ? ' on' : ''}`, onclick: () => ctx.go('content', null, k) }, l)));
+const tabBar = (ctx, tab) => h('div', { class: 'mgr-tabs', role: 'tablist' }, [...TABS, ...CONTENT_TABS.slice(1)].map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': k === tab ? 'true' : 'false', class: `mgr-tab${k === tab ? ' on' : ''}`, onclick: () => ctx.go('content', null, k) }, l)));
 
 export function buildContent(ctx) {
-  const tab = ctx.view.tab === 'outreach' ? 'outreach' : 'overview';
-  if (tab === 'outreach') {
+  const view = ctx.view.tab === 'outreach' ? 'outreach' : 'overview';
+  if (view === 'outreach') {
     return h(
       'div',
       { class: 'mgr-page wide' },
       h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, 'Content'), h('p', { class: 'muted' }, 'Blogs, curators, radio, podcasts and press you pitch, and when to follow up.'))),
-      tabBar(ctx, tab),
+      tabBar(ctx, view),
       buildOutreach(ctx),
     );
   }
@@ -36,6 +42,7 @@ export function buildContent(ctx) {
     if (p) fn(p, v);
   };
   const songTitle = (id) => (m.songs.find((s) => s.id === id) || {}).title || '';
+  const tab = CONTENT_TABS.find(([k]) => k === ctx.view.tab) || CONTENT_TABS[0];
 
   // ---- YouTube stats
   const keyIn = h('input', { type: 'password', placeholder: 'Paste your YouTube Data API key', value: settings.youtubeKey || '', autocomplete: 'off' });
@@ -193,7 +200,7 @@ export function buildContent(ctx) {
         {},
         h('button', { type: 'button', class: `mgr-statbtn${mt ? ' has' : ''}`, 'aria-expanded': ui.open === p.id ? 'true' : 'false', onclick: () => ((ui.open = ui.open === p.id ? null : p.id), re()) }, mt ? `${big(mt.views)} · ${pct(mt.engagement)}` : link.platform === 'YouTube' || link.platform === 'Shorts' ? 'Fetch / add' : 'Add stats'),
       ),
-      h('td', {}, iconButton('trash', `Delete “${p.title}”`, () => ctx.update((d) => (d.posts = d.posts.filter((x) => x.id !== p.id))), 'ghost')),
+      h('td', { class: 'g6-rowbtns' }, iconButton('star', `Save “${p.hook || p.title}” to the caption bank`, () => saveToBank(ctx, p), 'ghost'), iconButton('trash', `Delete “${p.title}”`, () => ctx.update((d) => (d.posts = d.posts.filter((x) => x.id !== p.id))), 'ghost')),
     );
     return ui.open === p.id ? [main, statsEditor(p)] : [main];
   });
@@ -207,13 +214,14 @@ export function buildContent(ctx) {
       h('div', {}, h('h1', {}, 'Content'), h('p', { class: 'muted' }, 'Every planned and posted short across your songs, with its stats.')),
       h('div', { class: 'row' }, button('Import stats (CSV)', importCSV, { iconName: 'upload', variant: 'sm', title: 'TikTok Studio or Instagram / Meta Business Suite content export' }), button(ui.busy ? 'Fetching…' : `Fetch YouTube stats${ytPosts.length ? ` (${ytPosts.length})` : ''}`, () => fetchYT(), { iconName: 'download', variant: 'sm', disabled: ui.busy }), button('Add a post', add, { iconName: 'plus', variant: 'sm primary' })),
     ),
-    tabBar(ctx, tab),
-    keyBox('YouTube Data API key', keyIn, {
+    tabBar(ctx, tab[2] ? tab[0] : 'overview'),
+    tab[2] ? h('div', { class: 'mgr-tabbody', role: 'tabpanel' }, tab[2](ctx)) : null,
+    tab[2] ? null : keyBox('YouTube Data API key', keyIn, {
       saved: !!settings.youtubeKey,
       help: h('span', {}, 'Free. In ', h('a', { href: 'https://console.cloud.google.com/apis/library/youtube.googleapis.com', target: '_blank', rel: 'noopener noreferrer' }, 'Google Cloud'), ', enable “YouTube Data API v3”, then Credentials → Create API key. It reads public numbers (views, likes, comments) for any YouTube or Shorts link. Stored in this browser only.'),
     }),
-    insights,
-    h(
+    tab[2] ? null : insights,
+    tab[2] ? null : h(
       'section',
       { class: 'mgr-sect' },
       h('h2', {}, `Schedule · ${posts.length} posts`),
@@ -226,3 +234,5 @@ export function buildContent(ctx) {
 }
 
 export { formatLabel };
+
+CONTENT_TABS.push(['captions', 'Captions', captionsTab]);

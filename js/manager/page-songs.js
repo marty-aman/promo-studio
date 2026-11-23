@@ -19,6 +19,7 @@ import { sectionsTab } from './page-sections.js';
 import { coverPicker } from './page-cover.js';
 import { releaseCard } from './page-releases.js';
 import { coverOf, setRelease, releaseTypeLabel, sectionSpans, newRelease, parseTime, fmtTime } from './releases.js';
+import { splitsTab, splitChip } from './page-splits.js';
 
 const TABS = [
   ['overview', 'Overview'],
@@ -31,6 +32,7 @@ const TABS = [
   ['playlists', 'Playlists'],
   ['press', 'Press release'],
   ['pitch', 'Pitching'],
+  ['splits', 'Splits'],
 ];
 export const POST_STATUSES = [['idea', 'Idea'], ['filmed', 'Filmed'], ['edited', 'Edited'], ['scheduled', 'Scheduled'], ['posted', 'Posted']];
 const statusLabel = (k) => (SONG_STATUSES.find(([v]) => v === k) || [k, k])[1];
@@ -105,7 +107,7 @@ function songList(ctx) {
                   const x = c && ctx.studio.mediaInfo(c);
                   return x ? h('img', { src: x.url, alt: '', loading: 'lazy' }) : icon('disc', 22);
                 })()),
-                h('span', { class: 'mgr-card-chips' }, h('span', { class: `mgr-chip st-${s.status}` }, statusLabel(s.status)), s.instrumental ? h('span', { class: 'mgr-chip', title: 'Instrumental' }, 'Instrumental') : null, videoDone(s) ? h('span', { class: 'mgr-chip ok', title: `Music video: ${videoStatusLabel(s.videoStatus)}` }, '✓ Video') : null),
+                h('span', { class: 'mgr-card-chips' }, h('span', { class: `mgr-chip st-${s.status}` }, statusLabel(s.status)), s.instrumental ? h('span', { class: 'mgr-chip', title: 'Instrumental' }, 'Instrumental') : null, videoDone(s) ? h('span', { class: 'mgr-chip ok', title: `Music video: ${videoStatusLabel(s.videoStatus)}` }, '✓ Video') : null, splitChip(s)),
                 h('strong', {}, s.title),
                 h('span', { class: 'muted tiny' }, rel ? `${releaseTypeLabel(rel.type)}: ${rel.title} · track ${s.track || '?'}` : 'Single'),
                 h('span', { class: 'muted tiny' }, s.releaseDate ? `${niceDate(s.releaseDate)}${days != null && days >= 0 ? ` · in ${days} days` : ''}` : 'No release date'),
@@ -190,7 +192,7 @@ function songPage(ctx, song) {
     ctx.update((d) => deleteSong(d, song.id));
     ctx.go('songs');
   };
-  const body = { overview: overviewTab, lyrics: lyricsTab, files: filesTab, sections: sectionsTab, shoot: buildShootTab, release: releaseTab, content: contentTab, playlists: playlistsTab, press: pressTab, pitch: pitchTab }[tab](ctx, song, S);
+  const body = { overview: overviewTab, lyrics: lyricsTab, files: filesTab, sections: sectionsTab, shoot: buildShootTab, release: releaseTab, content: contentTab, playlists: playlistsTab, press: pressTab, pitch: pitchTab, splits: splitsTab }[tab](ctx, song, S);
   return h(
     'div',
     { class: 'mgr-page' },
@@ -248,6 +250,7 @@ function overviewTab(ctx, song, S) {
         h('li', {}, h('span', {}, 'Video shoot'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('shoot') }, song.shoot.date ? niceDate(song.shoot.date) : song.shoot.concept ? 'Concept picked, no date' : 'Not planned')),
         h('li', {}, h('span', {}, 'Planned posts'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('content') }, `${posts.length} (${posts.filter((x) => x.status === 'posted').length} posted)`)),
         h('li', {}, h('span', {}, 'Tab, stems, video and footage'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('files') }, (({ tabs, stems, video, footage, total }) => (total ? [tabs && `${tabs} tab${tabs === 1 ? '' : 's'}`, stems && `${stems} stem${stems === 1 ? '' : 's'}`, video && 'music video', footage && `${footage} clip${footage === 1 ? '' : 's'}`].filter(Boolean).join(' · ') : 'None yet'))(fileCounts(song)))),
+        h('li', {}, h('span', {}, 'Split sheet'), splitChip(song, () => ctx.setTab('splits'))),
         h('li', {}, h('span', {}, 'Playlist pitches'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('pitch') }, (({ total, sent, added }) => (total ? `${sent} sent · ${added} added` : 'None yet'))(pitchStats(song)))),
         h('li', {}, h('span', {}, 'Sections'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('sections') }, song.sections.length ? sectionSpans(song.sections).map((x) => x.label).slice(0, 4).join(' · ') + (song.sections.length > 4 ? '…' : '') : 'None yet')),
         h('li', {}, h('span', {}, 'Lyrics'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('lyrics') }, song.instrumental ? 'Instrumental' : song.lyrics.trim() ? `${song.lyrics.trim().split(/\n+/).length} lines${song.lyricTiming ? ', timed' : ''}` : 'None yet')),
