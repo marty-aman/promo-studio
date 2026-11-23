@@ -301,6 +301,22 @@ with no recap (for two weeks). Cancelled, past and not-played shows give no remi
   type, song and hashtag from this month's posts with stats, always with how many posts it is based on.
   Home's *What works* card shows the same.
 
+### Spotify popularity (typed in)
+
+Since February 2026 Spotify's Web API no longer gives the 0–100 popularity score to apps like this one, so
+the app can't read it. Look it up where you usually do (SubmitHub, Chartmetric, an artist tool) and type it in.
+
+- **Where.** A **Spotify popularity** box on each song's **Overview** tab, and a section on **Streaming stats**
+  with a song picker. Type the score and the date you checked it, then press **Add score**. The score must be a
+  whole number from 0 to 100, and the date must be a real date that is not in the future. A second score on the same date replaces the first.
+- **History.** Every check is listed, newest first, with its change. Edit a score or date in place, or delete it.
+- **Streaming stats table.** A *Spotify popularity* column next to *Deezer rank* shows the latest score, the
+  change since the previous check, a small trend line and "checked N days ago". After 14 days it reads
+  *check again*. A song with no score has an **Add score** button that opens its entry box. The PDF export
+  includes the latest score and its date.
+- **Saved with the song** as `song.spotifyPop` (`js/manager/spotifypop.js`), so it is in saves, backups and
+  restores. Older saves load with an empty list. No outside calls are made.
+
 ## How it's laid out
 
 The rail on the left has one **Start** tab for ideas, then a tab for each kind of thing you build:

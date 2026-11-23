@@ -41,3 +41,36 @@ button.g6-split-chip { cursor: pointer; font: inherit; background: none; }
   .g6-caps { grid-template-columns: 1fr; }
   .g6-cap-filters input[type='search'] { min-width: 0; width: 100%; }
 }
+
+/* Spotify popularity typed in by hand (song Overview, Streaming stats) */
+.sp-col { display: grid; gap: 16px; min-width: 0; }
+.sp-col > .mgr-sect { margin-bottom: 0; }
+.sp-latest { display: inline-flex; align-items: baseline; gap: 6px; font-size: 1.3em; }
+.sp-change { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sp-change.up { color: var(--ok); }
+.sp-change.down { color: var(--accent); }
+.sp-change.same { color: var(--muted, inherit); opacity: 0.75; }
+.sp-stale { color: var(--accent); }
+.mgr-chip.sp-stale { border-color: currentColor; }
+.sp-trend { display: block; color: var(--accent); overflow: visible; }
+.sp-trend-wrap { margin: 6px 0 10px; max-width: 100%; }
+.sp-trend-wrap .sp-trend { width: 100%; max-width: 240px; height: auto; }
+.sp-addrow { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 8px 0; }
+.sp-addrow .mf { margin: 0; }
+.sp-addrow .sp-score-in { width: 6em; }
+.sp-err { color: var(--accent); margin: 4px 0; }
+.sp-history summary { cursor: pointer; margin: 6px 0; }
+.sp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sp-list li { display: grid; grid-template-columns: minmax(0, 11em) 5.5em 4.5em auto; align-items: center; gap: 8px; }
+.sp-list li input { margin: 0; min-width: 0; width: 100%; }
+.sp-td { min-width: 7.5em; }
+.sp-cell { display: inline-grid; justify-items: end; gap: 2px; }
+.sp-cell-top { display: inline-flex; align-items: center; gap: 6px; }
+.sp-cell .link { white-space: nowrap; }
+.sp-stats .mf.inline select { max-width: 100%; }
+@media (max-width: 600px) {
+  .sp-list li { grid-template-columns: minmax(0, 1fr) 4.5em auto auto; gap: 6px; }
+  .sp-addrow > .btn { flex: 1 0 100%; justify-content: center; }
+}
+.sp-nested { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.sp-nested .mgr-sect-head h3 { margin: 0; }

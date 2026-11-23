@@ -6,9 +6,11 @@ import { niceDate } from './model.js';
 import { normISRC, deezerByISRC } from './isrc.js';
 import { parseLink, fetchYouTubeStats } from './content.js';
 import { exportPDF, docHTML, esc } from './pdf.js';
+import { spotifyCell, spotifyScoreBox, SPOTIFY_POP_NOTE } from './page-spotifypop.js';
+import { scoreSummary } from './spotifypop.js';
 import { normalizeStats, parseStatsFile, addImport, removeImport, assignTitle, songStats, lastfmURL, parseLastfm, parseDeezerRank, setLive } from './stats.js';
 
-export const statsUI = { busy: '', timelineSong: '', sort: 'streams' };
+export const statsUI = { busy: '', timelineSong: '', sort: 'streams', spSong: '' };
 const fmt = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n >= 1e4 ? `${Math.round(n / 1e3)}K` : Math.round(n).toLocaleString());
 const $ = (n) => `$${n.toLocaleString(undefined, { minimumFractionDigits: n && n < 100 ? 2 : 0, maximumFractionDigits: 2 })}`;
 const ext = (href, text) => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text);
@@ -141,15 +143,16 @@ export function buildStats(ctx) {
       h('td', { class: 'n' }, r.youtube ? h('span', { title: `${r.youtube.likes} likes · checked ${niceDate(r.youtube.at.slice(0, 10), { weekday: false })}` }, fmt(r.youtube.views)) : h('span', { class: 'muted' }, '—')),
       h('td', { class: 'n' }, r.lastfm ? h('span', { title: `${r.lastfm.listeners} listeners` }, fmt(r.lastfm.plays)) : h('span', { class: 'muted' }, '—')),
       h('td', { class: 'n' }, r.deezer ? h('span', { title: 'Deezer rank: a popularity score that rises with recent plays' }, fmt(r.deezer.rank)) : h('span', { class: 'muted' }, '—')),
+      h('td', { class: 'n sp-td' }, spotifyCell(m.songs.find((s) => s.id === r.id), ctx.today(), () => spOpen(r.id))),
       h('td', { class: 'n' }, r.earnings ? $(r.earnings) : h('span', { class: 'muted' }, '—')),
       h('td', { class: 'st-trend' }, spark(r.monthly)),
     ),
   );
 
   const pdf = () => {
-    const body = `<table><tr><th>Song</th><th class="n">Streams</th>${stores.map((k) => `<th class="n">${esc(k)}</th>`).join('')}<th class="n">Listeners</th><th class="n">Saves</th><th class="n">YouTube views</th><th class="n">Last.fm scrobbles</th><th class="n">Earnings</th></tr>
-${sorted.map((r) => `<tr><td>${esc(r.title)}</td><td class="n"><b>${r.streams.toLocaleString()}</b></td>${stores.map((k) => `<td class="n">${r.byStore[k] ? r.byStore[k].streams.toLocaleString() : '—'}</td>`).join('')}<td class="n">${r.listeners ? r.listeners.toLocaleString() : '—'}</td><td class="n">${r.saves ? r.saves.toLocaleString() : '—'}</td><td class="n">${r.youtube ? r.youtube.views.toLocaleString() : '—'}</td><td class="n">${r.lastfm ? r.lastfm.plays.toLocaleString() : '—'}</td><td class="n">${r.earnings ? $(r.earnings) : '—'}</td></tr>`).join('')}
-<tr><th>Total</th><th class="n">${sum.total.streams.toLocaleString()}</th>${stores.map((k) => `<th class="n">${(sum.stores.find((s) => s[0] === k) || [0, { streams: 0 }])[1].streams.toLocaleString()}</th>`).join('')}<th></th><th></th><th class="n">${sum.total.youtube.toLocaleString()}</th><th class="n">${sum.total.lastfm.toLocaleString()}</th><th class="n">${$(sum.total.earnings)}</th></tr></table>
+    const body = `<table><tr><th>Song</th><th class="n">Streams</th>${stores.map((k) => `<th class="n">${esc(k)}</th>`).join('')}<th class="n">Listeners</th><th class="n">Saves</th><th class="n">YouTube views</th><th class="n">Last.fm scrobbles</th><th class="n">Spotify popularity</th><th class="n">Earnings</th></tr>
+${sorted.map((r) => { const sp = scoreSummary(m.songs.find((s) => s.id === r.id), ctx.today()).latest; return `<tr><td>${esc(r.title)}</td><td class="n"><b>${r.streams.toLocaleString()}</b></td>${stores.map((k) => `<td class="n">${r.byStore[k] ? r.byStore[k].streams.toLocaleString() : '—'}</td>`).join('')}<td class="n">${r.listeners ? r.listeners.toLocaleString() : '—'}</td><td class="n">${r.saves ? r.saves.toLocaleString() : '—'}</td><td class="n">${r.youtube ? r.youtube.views.toLocaleString() : '—'}</td><td class="n">${r.lastfm ? r.lastfm.plays.toLocaleString() : '—'}</td><td class="n">${sp ? `${sp.score} (${esc(sp.date)})` : '—'}</td><td class="n">${r.earnings ? $(r.earnings) : '—'}</td></tr>`; }).join('')}
+<tr><th>Total</th><th class="n">${sum.total.streams.toLocaleString()}</th>${stores.map((k) => `<th class="n">${(sum.stores.find((s) => s[0] === k) || [0, { streams: 0 }])[1].streams.toLocaleString()}</th>`).join('')}<th></th><th></th><th class="n">${sum.total.youtube.toLocaleString()}</th><th class="n">${sum.total.lastfm.toLocaleString()}</th><th></th><th class="n">${$(sum.total.earnings)}</th></tr></table>
 <h2>By store</h2><table><tr><th>Store</th><th class="n">Streams</th><th class="n">Earnings</th><th class="n">Per 1,000 streams</th></tr>${sum.stores.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n">${v.streams.toLocaleString()}</td><td class="n">${$(v.earnings)}</td><td class="n">${v.paid && v.earnings ? $((v.earnings / v.paid) * 1000) : '—'}</td></tr>`).join('')}</table>
 <h2>Sources</h2><ul>${stats.imports.map((x) => `<li>${esc(x.label)}: ${esc(x.name)} (${x.rows} rows, imported ${esc(x.at.slice(0, 10))})</li>`).join('') || '<li>No imports yet</li>'}</ul>`;
     exportPDF(docHTML(`${m.band.name || 'Band'} · streaming stats`, body, { subtitle: `As of ${ctx.today()}` }), `${m.band.name || 'Band'} streaming stats`);
@@ -157,6 +160,26 @@ ${sorted.map((r) => `<tr><td>${esc(r.title)}</td><td class="n"><b>${r.streams.to
   };
 
   const songOpts = m.songs.map((s) => [s.id, s.title]);
+
+  // ---- Spotify popularity, typed in by hand (see spotifypop.js)
+  const spSong = m.songs.find((s) => s.id === ui.spSong) || m.songs[0] || null;
+  const spOpen = (id) => {
+    ui.spSong = id;
+    re();
+    requestAnimationFrame(() => {
+      const box = document.getElementById('sp-stats');
+      box?.scrollIntoView({ block: 'start' });
+      box?.querySelector('.sp-score-in')?.focus({ preventScroll: true });
+    });
+  };
+  const spSel = h('select', { 'aria-label': 'Song', 'data-k': 'sp-song' }, songOpts.map(([v, l]) => h('option', { value: v, selected: spSong && v === spSong.id }, l)));
+  spSel.addEventListener('change', () => ((ui.spSong = spSel.value), re()));
+  const SP = (id) => (fn) => (d, v) => {
+    const s = d.songs.find((x) => x.id === id);
+    if (s) fn(s, v, d);
+  };
+  const spStale = m.songs.filter((s) => scoreSummary(s, ctx.today()).stale).length;
+  const spNone = m.songs.filter((s) => !scoreSummary(s, ctx.today()).latest).length;
   return h(
     'div',
     { class: 'mgr-page wide' },
@@ -179,10 +202,20 @@ ${sorted.map((r) => `<tr><td>${esc(r.title)}</td><td class="n"><b>${r.streams.to
       { class: 'mgr-sect' },
       h('h2', {}, `Songs · ${m.songs.length}`),
       m.songs.length
-        ? h('div', { class: 'st-scroll' }, h('table', { class: 'mgr-table st-table' }, h('thead', {}, h('tr', {}, h('th', {}, h('button', { type: 'button', class: `link${ui.sort === 'title' ? ' on' : ''}`, onclick: () => ((ui.sort = 'title'), re()) }, 'Song')), th('All streams', 'streams'), ...stores.map((k) => th(k)), th('Spotify listeners', 'listeners'), th('Saves', 'saves'), th('YouTube views'), th('Last.fm scrobbles'), th('Deezer rank'), th('Earnings', 'earnings'), h('th', {}, 'By month'))), h('tbody', {}, rows)))
+        ? h('div', { class: 'st-scroll' }, h('table', { class: 'mgr-table st-table' }, h('thead', {}, h('tr', {}, h('th', {}, h('button', { type: 'button', class: `link${ui.sort === 'title' ? ' on' : ''}`, onclick: () => ((ui.sort = 'title'), re()) }, 'Song')), th('All streams', 'streams'), ...stores.map((k) => th(k)), th('Spotify listeners', 'listeners'), th('Saves', 'saves'), th('YouTube views'), th('Last.fm scrobbles'), th('Deezer rank'), h('th', { class: 'n', title: 'Typed in by hand: Spotify no longer gives this score to apps' }, 'Spotify popularity'), th('Earnings', 'earnings'), h('th', {}, 'By month'))), h('tbody', {}, rows)))
         : h('p', { class: 'muted small' }, 'Add your songs first (Songs page).'),
       sum.total.streams || Object.keys(stats.live).length ? null : h('p', { class: 'muted small' }, 'No numbers yet. Import a Spotify for Artists or distributor report, or press Refresh live numbers.'),
     ),
+    m.songs.length
+      ? h(
+          'section',
+          { class: 'mgr-sect sp-stats', id: 'sp-stats' },
+          h('div', { class: 'mgr-sect-head' }, h('h2', {}, 'Spotify popularity'), h('div', { class: 'row' }, spNone ? h('span', { class: 'mgr-chip' }, `${spNone} without a score`) : null, spStale ? h('span', { class: 'mgr-chip sp-stale' }, `${spStale} to check again`) : null)),
+          h('p', { class: 'muted small' }, SPOTIFY_POP_NOTE),
+          h('label', { class: 'mf inline' }, h('span', { class: 'mf-l' }, 'Song'), spSel),
+          spSong ? spotifyScoreBox(ctx, spSong, SP(spSong.id), { heading: 'h3', nested: true }) : null,
+        )
+      : null,
     sum.unmatched.length
       ? h(
           'section',
@@ -219,6 +252,7 @@ ${sorted.map((r) => `<tr><td>${esc(r.title)}</td><td class="n"><b>${r.streams.to
           h('li', {}, h('span', {}, 'YouTube'), h('span', { class: 'small' }, settings.youtubeKey ? 'Live views from each song’s YouTube link (key from the Content page).' : 'Add a YouTube Data API key on the Content page, and a YouTube link on each song.')),
           h('li', {}, h('span', {}, 'Last.fm'), h('span', { class: 'small' }, 'Listeners and scrobbles from people who track their listening, so lower than real plays, but live and free.')),
           h('li', {}, h('span', {}, 'Deezer'), h('span', { class: 'small' }, 'A rank (popularity score) found by each song’s ISRC. No key.')),
+          h('li', {}, h('span', {}, 'Spotify popularity'), h('span', { class: 'small' }, 'Typed in by hand with the date you checked it: Spotify no longer gives this 0–100 score to apps like this one.')),
         ),
         keyBox('Last.fm API key', lfmIn, { saved: !!settings.lastfmKey, help: h('span', {}, 'Free: ', ext('https://www.last.fm/api/account/create', 'create a Last.fm API account'), ' and paste the API key. Stored in this browser only.') }),
         h('div', { class: 'row' }, timelineSel, button('Import a report', () => importFiles(), { iconName: 'upload', variant: 'sm' })),
