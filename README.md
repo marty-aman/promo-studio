@@ -974,3 +974,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/app.js` | Layout, wiring, shortcuts, the four workspaces, save banner and export lock |
 | `js/studioedit.js` | Pure editing helpers: split, duplicate, copy and paste of timeline items, safe areas, level maths (unit tested) |
 | `js/projectfile.js` | Project files and the earlier-projects list (unit tested) |
+
+### Mobile: Photo Studio
+
+On a phone or tablet (window up to 1100px wide) the Photo Studio puts the canvas first and moves the side panels into a sheet above a bottom toolbar: Add, Layers, Style, Templates, Export. Undo and redo stay at the top. Buttons over the canvas replace the keyboard actions (style, edit text, crop, duplicate, forward, back, lock, delete). One finger moves a layer, pulls a handle or turns the knob; two fingers pinch to zoom the view and pan; double-tap text to edit it. While cropping, one finger slides the photo inside its frame and a pinch zooms it. Layers reorder with the grip on each row. Photos far bigger than the screen are drawn from a smaller copy while editing; exports use the original. Code: `js/photo/gesture.js` (touch maths, unit tested in `test/photo-touch.test.js`) and `css/mobile-photo.css`.
