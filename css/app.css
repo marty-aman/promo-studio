@@ -1233,6 +1233,17 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .mgr-release-pick { display: grid; gap: 4px; margin-bottom: 8px; }
 .mgr-sections input.mgr-time, input.mgr-time { width: 80px; font-variant-numeric: tabular-nums; }
 .mgr-sections td.n { text-align: right; }
+.mgr-stack { display: grid; gap: 16px; min-width: 0; }
+.mgr-stack > .mgr-sect { margin-bottom: 0; }
+.mgr-detect-run { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mgr-detect-run progress { flex: 1 1 140px; min-width: 0; height: 10px; }
+.mgr-detect-prop { margin-top: 10px; display: grid; gap: 6px; min-width: 0; }
+.mgr-detect-table { width: 100%; }
+.mgr-detect-table td, .mgr-detect-table th { padding: 4px 6px; }
+.mgr-conf { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--panel-2); }
+.mgr-conf-good { background: color-mix(in srgb, #22c55e 25%, transparent); }
+.mgr-conf-fair { background: color-mix(in srgb, #eab308 25%, transparent); }
+.mgr-conf-rough { background: color-mix(in srgb, #ef4444 22%, transparent); }
 .sec-export .sec-list { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; }
 .sec-export .sec-list li { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .sec-export .sec-list li.off { opacity: 0.5; }
