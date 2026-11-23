@@ -708,6 +708,27 @@ name was never saved, are listed as “a file whose name was not saved” and ca
 Limit: if a record exists in IndexedDB but could not be opened, it counts as missing and a replacement
 overwrites it. Matching is in `js/mediamatch.js` (unit tested); the dialog is `js/relink.js`.
 
+## Smart photo search
+
+On **Manager → Photos**, the search box also finds photos by what is in them. Type "drums", "crowd" or "singer on
+stage" and you get the photos whose caption, photographer, tags or file name match first, as before and at once.
+After them come the photos that **look like** the words, best first, each with a "looks like" badge and a match bar.
+The search covers the same photos as a word search: every folder, narrowed by a tag, Starred or Press kit filter.
+
+- **Set up smart search** asks before the one-time 23 MB download of the picture model (TinyCLIP, MIT licence,
+  from huggingface.co). Find a moment in the Video Studio uses the same model, so a model you already have is reused
+  with no prompt. No photo or search words leave the computer.
+- Each photo is looked at once, from a small copy (224 px), one at a time in the background, with a progress line
+  ("Indexing photos 120/600"), **Pause** and **Stop**. You can keep using the page while it runs. New photos are
+  looked at when they are added, and photos already done are skipped, even after a reload.
+- The **Smart search** switch turns it off; the search is then words only. **Clear photo index** deletes what was
+  learned (the photos are not touched), and **Index now** starts again.
+- Limit: TinyCLIP 8M is a small model. Broad things (drums, crowd, stage lights) work better than detail, and some
+  matches will be loose. A photo only counts as a match when its score stands out from the rest; when nothing stands
+  out, none are shown.
+
+Details: `docs/ai-search.md`.
+
 ## Tests
 
 ```bash
@@ -762,6 +783,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/manager/page-files.js` | The song's Files tab |
 | `js/manager/photos.js` | An artist's photos: adding, filters, tags, the press kit's four photos and credits (unit tested) |
 | `js/manager/page-photos.js` | The Photos page |
+| `js/ai/panel-photosearch.js` | Smart photo search on the Photos page: the switch, the indexing bar and the "looks like" badge |
 | `js/manager/playlists.js` | Lyric themes, genre families, the built-in playlist list, playlist matching and playlist types (unit tested) |
 | `js/manager/press.js` | Press release drafts, the Spotify pitch, curator notes, pitch deadline and follow-ups (unit tested) |
 | `js/manager/page-press.js` | The song's Playlists, Press release and Pitching tabs |

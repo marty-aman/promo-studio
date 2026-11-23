@@ -5,7 +5,7 @@
 // files that are missing are kept (a re-link with the same file needs no new pass) but never searched.
 import { reportSaveFail } from '../state.js';
 import { loadPipeline, modelInfo, runtimeLibrary } from './runtime.js';
-import { sampleTimes, fingerprint, cacheKey, isFresh, normalize, toGray, sharpness, rankMoments, extraScoreFor, promptFor, evictIds, HEAD_BYTES } from './clipsearch.js';
+import { sampleTimes, fingerprint, cacheKey, isFresh, normalize, toGray, sharpness, rankMoments, extraScoreFor, promptFor, evictIds, HEAD_BYTES, photoCacheKey, isFreshPhoto, batches, photosToIndex, cosine, PHOTO_BATCH } from './clipsearch.js';
 
 export const SEARCH_TASK = 'zero-shot-image-classification';
 export const SEARCH_MODEL = 'tinyclip';
@@ -21,12 +21,17 @@ let dbP = null;
 function db() {
   if (!dbP) {
     dbP = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 1);
+      // v2 adds `photos` (one vector per photo, Manager → Photos smart search)
+      const req = indexedDB.open(DB_NAME, 2);
       req.onupgradeneeded = () => {
-        req.result.createObjectStore('frames', { keyPath: 'id' });
-        req.result.createObjectStore('meta', { keyPath: 'id' });
+        for (const s of ['frames', 'meta', 'photos']) if (!req.result.objectStoreNames.contains(s)) req.result.createObjectStore(s, { keyPath: 'id' });
       };
-      req.onsuccess = () => resolve(req.result);
+      req.onblocked = () => reject(new Error('Close the app’s other tabs once so the search index can be updated.'));
+      req.onsuccess = () => {
+        const d = req.result;
+        d.onversionchange = () => (d.close(), (dbP = null)); // a newer tab needs the upgrade: let it through
+        resolve(d);
+      };
       req.onerror = () => reject(req.error);
     });
     dbP.catch(() => (dbP = null));
@@ -129,9 +134,9 @@ const once = (el, ev, ms) =>
 const aborted = () => Object.assign(new Error('Cancelled'), { name: 'AbortError' });
 
 /** The fingerprint of a library record's file (size + hash of both ends). */
-export async function fileFingerprint(blob) {
-  const head = new Uint8Array(await blob.slice(0, HEAD_BYTES).arrayBuffer());
-  const tail = blob.size > HEAD_BYTES ? new Uint8Array(await blob.slice(Math.max(HEAD_BYTES, blob.size - HEAD_BYTES)).arrayBuffer()) : new Uint8Array(0);
+export async function fileFingerprint(blob, bytes = HEAD_BYTES) {
+  const head = new Uint8Array(await blob.slice(0, bytes).arrayBuffer());
+  const tail = blob.size > bytes ? new Uint8Array(await blob.slice(Math.max(bytes, blob.size - bytes)).arrayBuffer()) : new Uint8Array(0);
   return fingerprint(blob.size, head, tail);
 }
 
@@ -285,3 +290,198 @@ export function activeExtraScore() {
   if (!searchState.vec || !searchState.entries.length) return null;
   return extraScoreFor(new Map(searchState.entries.map((e) => [e.id, e])), searchState.vec);
 }
+
+// ---------------------------------------------------------------- photos (Manager → Photos: smart search)
+// One picture vector per photo, from a small decoded preview (224 px short side), so hundreds of photos do not
+// fill the memory. Stored per media id in the same database (store `photos`), keyed by the file's fingerprint
+// like a video. Indexing runs in the background in small batches with a pause between them, can be paused or
+// stopped, and skips photos already looked at. Missing files keep their entries for a re-link.
+const PHOTO_HEAD = 16384; // a photo's fingerprint reads this much from each end
+let photoDone = new WeakMap(); // library record -> fresh entry (checked this visit)
+let photoBad = new WeakSet(); // records that could not be decoded this visit
+const photoFp = new WeakMap(); // record -> Promise<fingerprint>
+let stored = null; // Promise<Map id -> entry>, read from IndexedDB once
+const loadStored = () =>
+  (stored ||= tx(['photos'], 'readonly', (s) => s.getAll())
+    .then((list) => new Map((list || []).map((e) => [e.id, e])))
+    .catch(() => new Map()));
+const fpOf = (rec) => {
+  if (!photoFp.has(rec)) photoFp.set(rec, fileFingerprint(rec.blob, PHOTO_HEAD));
+  return photoFp.get(rec);
+};
+
+/** The photo index's state, shared by every view of it. `ver` goes up whenever new vectors are ready. */
+export const photoIndex = { phase: 'idle', done: 0, total: 0, failed: 0, paused: false, stopped: false, consented: false, msg: '', ver: 0 };
+const photoListeners = new Set();
+/** Call `fn(photoIndex)` on every change. Returns the unsubscribe. */
+export function onPhotoIndex(fn) {
+  photoListeners.add(fn);
+  return () => photoListeners.delete(fn);
+}
+const tell = () => {
+  for (const fn of [...photoListeners]) {
+    try {
+      fn(photoIndex);
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+};
+/** The unit-length picture vector of a library photo record, when it has been looked at; else null. */
+export const photoVector = (rec) => (rec && photoDone.has(rec) ? photoDone.get(rec).vec : null);
+/** Cosine of a query vector against a photo record (null when the photo has no vector yet). */
+export const photoScore = (rec, q) => {
+  const v = photoVector(rec);
+  return v && q ? cosine(v, q) : null;
+};
+
+/** A small decoded copy of a photo (short side CLIP_SIDE) as ImageData. Never decodes at full size when the size is known. */
+async function photoPreview(rec) {
+  const w = rec.width || 0;
+  const hh = rec.height || 0;
+  const k = w && hh ? Math.min(1, CLIP_SIDE / Math.min(w, hh)) : 0;
+  let bmp;
+  try {
+    bmp = k ? await createImageBitmap(rec.blob, { resizeWidth: Math.max(1, Math.round(w * k)), resizeHeight: Math.max(1, Math.round(hh * k)), resizeQuality: 'medium' }) : await createImageBitmap(rec.blob);
+  } catch {
+    bmp = await createImageBitmap(rec.blob); // a browser without resize options
+  }
+  try {
+    const s = Math.min(1, CLIP_SIDE / Math.min(bmp.width, bmp.height));
+    const c = Object.assign(document.createElement('canvas'), { width: Math.max(1, Math.round(bmp.width * s)), height: Math.max(1, Math.round(bmp.height * s)) });
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(bmp, 0, 0, c.width, c.height);
+    return g.getImageData(0, 0, c.width, c.height);
+  } finally {
+    if (bmp.close) bmp.close();
+  }
+}
+
+const breathe = (ms) => new Promise((r) => setTimeout(r, ms));
+let want = null; // the latest records asked for (taken by the running loop)
+let last = []; // the records of the last call (for Resume after Stop)
+let running = null;
+let wake = null;
+let warned = false;
+
+async function photoRun() {
+  try {
+    while (want) {
+      const recs = want.filter((r) => r && r.blob);
+      want = null;
+      const have = await loadStored();
+      // photos looked at before (this browser): check their fingerprint, a few at a time
+      let n = 0;
+      for (const r of recs) {
+        if (photoIndex.stopped) return;
+        if (photoDone.has(r) || photoBad.has(r)) continue;
+        const e = have.get(r.id);
+        if (e && isFreshPhoto(e, photoCacheKey(r.id, await fpOf(r), SEARCH_MODEL))) photoDone.set(r, e);
+        if (++n % 40 === 0) await breathe(0);
+      }
+      const todo = photosToIndex(recs, (r) => photoDone.has(r) || photoBad.has(r));
+      const counts = [recs.length, recs.filter((r) => photoBad.has(r)).length, recs.length - todo.length];
+      const same = counts[0] === photoIndex.total && counts[1] === photoIndex.failed && counts[2] === photoIndex.done;
+      [photoIndex.total, photoIndex.failed, photoIndex.done] = counts;
+      if (!same) photoIndex.ver++; // only real changes count, or a redraw would start another round
+      if (!todo.length) {
+        if (!same || photoIndex.phase !== 'done') (photoIndex.phase = 'done'), tell();
+        continue;
+      }
+      photoIndex.phase = 'running';
+      photoIndex.msg = '';
+      tell();
+      const emb = await embedder({ consented: photoIndex.consented, onProgress: (f, t) => ((photoIndex.msg = t), tell()) });
+      photoIndex.msg = '';
+      for (const group of batches(todo, PHOTO_BATCH)) {
+        while (photoIndex.paused && !photoIndex.stopped) {
+          photoIndex.phase = 'paused';
+          tell();
+          await new Promise((r) => (wake = r));
+        }
+        if (photoIndex.stopped) return;
+        photoIndex.phase = 'running';
+        const ok = [];
+        const imgs = [];
+        for (const r of group) {
+          try {
+            imgs.push(await photoPreview(r));
+            ok.push(r);
+          } catch {
+            photoBad.add(r);
+            photoIndex.failed++;
+          }
+        }
+        if (ok.length) {
+          const vecs = await emb.images(imgs);
+          const at = Date.now();
+          const entries = await Promise.all(ok.map(async (r, i) => ({ id: r.id, key: photoCacheKey(r.id, await fpOf(r), SEARCH_MODEL), dim: vecs[i].length, vec: vecs[i], at })));
+          entries.forEach((e, i) => (photoDone.set(ok[i], e), have.set(e.id, e)));
+          await tx(['photos'], 'readwrite', (s) => entries.forEach((e) => s.put(e))).catch(() => {
+            if (!warned) (warned = true), reportSaveFail('the photo search index (it works until you reload)');
+          });
+        }
+        photoIndex.done += group.length;
+        photoIndex.ver++;
+        tell();
+        await breathe(24); // let the page draw and take clicks between batches
+        if (want) break; // photos were added or removed: start over (finished ones are skipped)
+      }
+      if (!want) photoIndex.phase = 'done';
+      tell();
+    }
+  } catch (e) {
+    photoIndex.phase = e && e.code === 'consent' ? 'consent' : 'error';
+    photoIndex.msg = (e && e.message) || 'The photos could not be looked at.';
+    tell();
+  }
+}
+
+/**
+ * Look at every photo record (library images with their file) in the background. Photos already looked at are
+ * skipped. Calling it again while it runs just updates the list (new photos are picked up). Does nothing after
+ * stopPhotoIndex() until startPhotoIndex(). Resolves when the run ends.
+ */
+export function indexPhotos(recs) {
+  last = recs;
+  if (photoIndex.stopped) return running || Promise.resolve();
+  want = recs;
+  if (!running) running = photoRun().finally(() => (running = null));
+  return running;
+}
+export function pausePhotoIndex(on = true) {
+  photoIndex.paused = on;
+  if (!on && wake) wake();
+  if (!on && photoIndex.phase === 'paused') photoIndex.phase = 'running';
+  tell();
+}
+/** Stop indexing (photos already done stay). It does not start again on its own until startPhotoIndex(). */
+export function stopPhotoIndex() {
+  photoIndex.stopped = true;
+  photoIndex.paused = false;
+  if (wake) wake();
+  photoIndex.phase = 'stopped';
+  tell();
+}
+/** Start (or resume after Stop) with the last records asked for, or `recs`. `consented` allows the model download. */
+export function startPhotoIndex(recs = last, { consented = false } = {}) {
+  if (consented) photoIndex.consented = true;
+  photoIndex.stopped = false;
+  photoIndex.paused = false;
+  if (photoIndex.phase === 'error' || photoIndex.phase === 'consent') photoIndex.phase = 'idle';
+  return indexPhotos(recs);
+}
+/** Delete every stored photo vector. Indexing stays stopped until startPhotoIndex(). */
+export async function clearPhotoIndex() {
+  stopPhotoIndex();
+  if (running) await running.catch(() => {});
+  photoDone = new WeakMap();
+  photoBad = new WeakSet();
+  stored = Promise.resolve(new Map());
+  await tx(['photos'], 'readwrite', (s) => s.clear()).catch(() => {});
+  Object.assign(photoIndex, { done: 0, failed: 0, phase: 'stopped', msg: '' });
+  photoIndex.ver++;
+  tell();
+}
+/** The text vector for a photo search (the model must be cached or agreed to). */
+export const photoQueryVector = (text) => textVector(text, { consented: photoIndex.consented });

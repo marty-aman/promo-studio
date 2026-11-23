@@ -244,3 +244,81 @@ export function evictIds(metas, keep) {
     .slice(keep)
     .map((m) => m.id);
 }
+
+// ---------------------------------------------------------------- photos (Manager → Photos: smart search)
+// A photo gets one picture vector (from a small decoded preview), cached per media id like a video's frames.
+
+export const PHOTO_V = 1; // bump when the photo entry shape or the preview size changes
+// Photos embedded per step; the page gets a breath between steps. The model call blocks the page while it runs
+// (WASM, one thread: about 0.1 s a photo, measured), so steps stay small.
+export const PHOTO_BATCH = 1;
+
+/** The cache key of a photo's vector: changes when the file, the model or the photo version changes. */
+export const photoCacheKey = (mediaId, fp, model) => `${mediaId}|${fp}|${model}|p${PHOTO_V}`;
+
+/** A stored photo entry is usable for this key. */
+export const isFreshPhoto = (entry, key) => !!entry && entry.key === key && !!entry.vec && entry.vec.length > 0 && entry.vec.length === entry.dim;
+
+/** Split a list into runs of `size` (the last one may be shorter). */
+export function batches(list, size = PHOTO_BATCH) {
+  const n = Math.max(1, Math.floor(size) || 1);
+  const out = [];
+  for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n));
+  return out;
+}
+
+/** Dot product of two unit vectors (their cosine); 0 when the lengths differ. */
+export function cosine(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += a[i] * b[i];
+  return s;
+}
+
+/**
+ * Where to cut weak visual matches. CLIP cosines sit in a narrow band and every photo gets some score, so a
+ * photo only counts when it stands out from the rest: at least `z` standard deviations above the mean of the
+ * photos searched. When nothing stands out (best − mean under `minLift`) nothing is kept: the words describe
+ * none of the photos. Returns { cut, best, mean } (cut = Infinity keeps nothing).
+ */
+export const VISUAL_Z = 1;
+export const VISUAL_MIN_LIFT = 0.015;
+export function visualCut(scores, { z = VISUAL_Z, minLift = VISUAL_MIN_LIFT } = {}) {
+  const xs = [...scores].filter(Number.isFinite);
+  if (!xs.length) return { cut: Infinity, best: 0, mean: 0 };
+  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const sd = Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / xs.length);
+  const best = Math.max(...xs);
+  if (best - mean < minLift) return { cut: Infinity, best, mean };
+  return { cut: Math.min(best, mean + z * sd), best, mean };
+}
+
+/**
+ * Mix text and visual matches. `text`: the photos the caption/tag/name search found, in its own order (it stays
+ * first and unchanged). `pool`: the photos visual results may come from (same folder scope and filters).
+ * `scoreOf(photo)` gives the cosine or null when the photo has no vector yet. Visual matches are pool photos not
+ * already found by text, at or above the cut, best first.
+ * Returns { items: [{ photo, visual: null | { score, pct } }], nText, nVisual, cut, best }.
+ */
+export function mixMatches(text, pool, scoreOf, opts = {}) {
+  const onText = new Set(text);
+  const scored = [];
+  for (const p of pool) {
+    const s = scoreOf(p);
+    if (s != null && Number.isFinite(s)) scored.push([p, s]);
+  }
+  const { cut, best } = visualCut(scored.map((x) => x[1]), opts);
+  const vis = scored.filter(([p, s]) => !onText.has(p) && s >= cut - 1e-9).sort((a, b) => b[1] - a[1]);
+  const floor = cut - 0.01;
+  const top = vis.length ? vis[0][1] : best; // the bar is relative to the best picture match shown
+  return {
+    items: [...text.map((photo) => ({ photo, visual: null })), ...vis.map(([photo, score]) => ({ photo, visual: { score, pct: relativeMatch(score, top, floor) } }))],
+    nText: text.length,
+    nVisual: vis.length,
+    cut,
+    best,
+  };
+}
+
+/** The photos still to look at: those with a file, not done and not failed, in the order given. */
+export const photosToIndex = (recs, isDone) => recs.filter((r) => r && r.blob && !isDone(r));
