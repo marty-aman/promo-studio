@@ -34,7 +34,26 @@ export const RELEASE_RULES = {
   'Music video edit locked': (s, { has }) => (there(s.files && s.files.video && s.files.video.mediaId, has) ? 'the music video is attached' : ['done', 'released'].includes(s.videoStatus) ? 'the music video is marked Complete' : ''),
   'Add the song to your press kit (EPK)': (s) => (filled(s.releaseDate) ? 'the press kit lists every song with a release date' : ''),
   'Premiere the music video': (s) => (s.videoStatus === 'released' ? 'the music video is marked Released' : ''),
+  // rollout steps (G2); the ones that read posts need the artist's data `m`
+  'First teaser: a studio or behind-the-scenes clip': (s, { m }) => {
+    const p = postsOf(s, m).find((x) => x.status === 'posted' && x.date && (!s.releaseDate || x.date < s.releaseDate));
+    return p ? `a post for this song went up on ${p.date}, before release` : '';
+  },
+  'Follow up with the blogs, radio and curators that haven’t replied': (s) => {
+    const sent = (s.pitches || []).filter((p) => p && p.status && p.status !== 'todo');
+    return sent.length && !sent.some((p) => p.status === 'sent' && !p.followedUp) ? 'every sent pitch is answered or followed up' : '';
+  },
+  'Set up the music video premiere (date announced, YouTube Premiere set)': (s) => (filled(s.links && s.links.youtube) ? 'the YouTube link is filled in' : s.videoStatus === 'released' ? 'the music video is marked Released' : ''),
+  'Post a behind-the-scenes clip from the shoot or studio': (s, { m }) => {
+    const p = postsOf(s, m).find((x) => x.status === 'posted' && x.format === 'bts' && (!s.releaseDate || (x.date && x.date >= s.releaseDate)));
+    return p ? `a behind-the-scenes post went up on ${p.date}` : '';
+  },
+  'Second playlist pitch round with the first-week numbers': (s) => {
+    const p = s.releaseDate && (s.pitches || []).find((x) => x && x.status !== 'todo' && typeof x.sent === 'string' && x.sent >= s.releaseDate);
+    return p ? `a pitch went out on ${p.sent}, after release` : '';
+  },
 };
+const postsOf = (s, m) => (m && Array.isArray(m.posts) ? m.posts.filter((p) => p && p.songId === s.id) : []);
 
 /** Show to-do text → (show, { has }) → the reason it is done, or ''. */
 export const SHOW_RULES = {
@@ -46,10 +65,12 @@ export const SHOW_RULES = {
 const releaseOf = (song, m) => (song && song.releaseId && m && Array.isArray(m.releases) ? m.releases.find((r) => r.id === song.releaseId) || null : null);
 
 /** Why a release task counts as done on its own ('' when it doesn't, or isn't one of the standard tasks). */
-export function releaseAutoReason(song, task, { has = env.has, release = null } = {}) {
+export function releaseAutoReason(song, task, { has = env.has, release = null, m = null } = {}) {
   const rule = task && RELEASE_RULES[task.text];
-  return rule ? rule(song, { has, release }) || '' : '';
+  return rule ? rule(song, { has, release, m }) || '' : '';
 }
+/** Is a media id in the library (as the app configured it)? For rules outside this file. */
+export const mediaHas = (id) => there(id, env.has);
 /** Why a show to-do counts as done on its own. */
 export function showAutoReason(show, task, { has = env.has } = {}) {
   const rule = task && SHOW_RULES[task.text];
@@ -64,7 +85,9 @@ const state = (task, auto) => {
   const off = task.autoOff === true;
   return { done: task.done === true || (!!auto && !off), manual: task.done === true, auto, off };
 };
-export const releaseTaskState = (song, task, m = null, opts = {}) => state(task, releaseAutoReason(song, task, { has: opts.has || env.has, release: releaseOf(song, m) }));
+export const releaseTaskState = (song, task, m = null, opts = {}) => state(task, releaseAutoReason(song, task, { has: opts.has || env.has, release: releaseOf(song, m), m }));
+/** The same { done, manual, auto, off } for a task kept elsewhere (an EP's rollout step), given its rule's reason. */
+export const taskStateFrom = state;
 export const showTaskState = (show, task, opts = {}) => state(task, showAutoReason(show, task, { has: opts.has || env.has }));
 export const releaseTaskDone = (song, task, m = null, opts) => releaseTaskState(song, task, m, opts).done;
 export const showTaskDone = (show, task, opts) => showTaskState(show, task, opts).done;

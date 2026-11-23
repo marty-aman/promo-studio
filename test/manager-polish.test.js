@@ -15,12 +15,15 @@ const TODAY = '2026-11-23';
 
 test('a released song puts only its after-release tasks in Overdue', () => {
   const m = newManager();
-  const s = { ...newSong('Glass Lungs'), status: 'released', releaseDate: addDays(TODAY, -40) };
+  // G2: after-release steps stay "late" for a week (LATE_WINDOW); older untouched ones are missed, not Home noise
+  const s = { ...newSong('Glass Lungs'), status: 'released', releaseDate: addDays(TODAY, -10) };
   m.songs.push(s);
   const late = overdueTasks(m, TODAY);
   assert.ok(late.length > 0);
   assert.ok(late.every((x) => x.task.offset > 0), 'only post-release tasks');
-  assert.equal(late.length, s.release.filter((t) => t.offset > 0 && addDays(s.releaseDate, t.offset) < TODAY).length);
+  assert.equal(late.length, s.release.filter((t) => t.offset > 0 && addDays(s.releaseDate, t.offset) < TODAY && addDays(s.releaseDate, t.offset) >= addDays(TODAY, -7)).length);
+  s.releaseDate = addDays(TODAY, -40);
+  assert.equal(overdueTasks(m, TODAY).length, 0, 'out 40 days, untouched: nothing on Home');
   // a task with its own date still counts, released or not
   s.release.push({ id: 'own', date: addDays(TODAY, -2), offset: 0, cat: 'other', text: 'Merch order', done: false });
   assert.ok(overdueTasks(m, TODAY).some((x) => x.task.id === 'own'));

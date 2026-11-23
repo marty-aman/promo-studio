@@ -248,6 +248,31 @@ note) for a venue you played before. Two reminders appear in Home and Calendar: 
 week before a Confirmed show until it's marked sent, and **Fill in the recap** the day after a Played show
 with no recap (for two weeks). Cancelled, past and not-played shows give no reminders.
 
+### Rollout, This week and what worked
+
+- **Release rollout.** The release checklist now runs from 8 weeks before release day to 30 days after: first
+  teaser, pre-save push, a follow-up round with blogs and curators, setting up the video premiere, a
+  behind-the-scenes post, thanking supporters, a second playlist pitch round, fan reposts and a release recap.
+  Some tick themselves (a posted post for the song, answered pitches, a YouTube link, a pitch sent after release).
+  On a song's **Release** tab, **Rollout by week** shows the steps week by week with progress, and the
+  current week is outlined. Songs made before this get an **Add N newer rollout steps** button (steps whose
+  date has already passed are left out). Once a song is marked Released, its run-up is skipped and an
+  after-release step stays on Home's Overdue list for one week only; after that it shows as *missed* on
+  the Rollout view instead.
+- **EP and album rollout.** An EP or album with songs on it gets its own plan on its page (tracklist,
+  singles first, cover, upload, announcement, pre-save, press, track-by-track posts, release day, listening
+  party, first-week check, recap), counted from the release date. Open steps show on the Calendar and Home.
+  Each track keeps its own checklist, listed underneath.
+- **Home → This week.** What to post (with the type of post that has done best so far and how many posts
+  that rests on), who to contact (follow-ups, pitches, press steps), shows and deadlines, anything late,
+  and one *Do this first* line. Move between weeks, print it with **Export PDF**, or see every artist with
+  **All artists**. It only uses what is in Band Manager and does not update by itself. Fans, contacts and
+  band members never go into the PDF.
+- **What worked.** Content → *What works best* can compare by **Song** and **Hashtag** (taken from a post's
+  title, hook or idea; a post with several hashtags counts once in each). **Best this month** lists the best post,
+  type, song and hashtag from this month's posts with stats, always with how many posts it is based on.
+  Home's *What works* card shows the same.
+
 ## How it's laid out
 
 The rail on the left has one **Start** tab for ideas, then a tab for each kind of thing you build:

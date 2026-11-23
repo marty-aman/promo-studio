@@ -121,18 +121,32 @@ export const GROUPINGS = {
   platform: { label: 'App', key: (p) => p.platform || 'Other' },
   weekday: { label: 'Day posted', key: (p) => (parseDate(p.date) ? WEEKDAYS[parseDate(p.date).getDay()] : null) },
   length: { label: 'Length', key: (p) => lengthBucket(p.stats && n(p.stats.length)) },
+  // a post of a deleted song keeps its title (deleteSong), so its stats still count for that song
+  song: { label: 'Song', key: (p, { songs = [] } = {}) => (songs.find((s) => s.id === p.songId) || {}).title || p.songTitle || null },
+  hashtag: { label: 'Hashtag', key: (p) => hashtags(p) },
 };
 
-/** Posts with stats grouped and ranked: [{ key, n, views, engagement, sharesPer1k, savesPer1k, watched, score }]. */
-export function compare(posts, by = 'format') {
+/** The #hashtags in a post's title, hook and idea, lower-cased and once each (a post can be in several groups). */
+export function hashtags(p) {
+  const text = [p && p.title, p && p.hook, p && p.idea].filter((x) => typeof x === 'string').join(' ');
+  return [...new Set([...text.matchAll(/(^|[^\p{L}\p{N}_&])#([\p{L}\p{N}_]{2,40})/gu)].map((x) => `#${x[2].toLowerCase()}`))];
+}
+
+/**
+ * Posts with stats grouped and ranked: [{ key, n, views, engagement, sharesPer1k, savesPer1k, watched, score }].
+ * `opts.songs` names the songs for the Song grouping. A grouping key may be a list (hashtags).
+ */
+export function compare(posts, by = 'format', opts = {}) {
   const g = GROUPINGS[by] || GROUPINGS.format;
   const groups = new Map();
   for (const p of posts) {
     const mt = postMetrics(p.stats);
-    const k = mt && g.key(p);
-    if (!k) continue;
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(mt);
+    const raw = mt && g.key(p, opts);
+    for (const k of Array.isArray(raw) ? raw : [raw]) {
+      if (!k) continue;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(mt);
+    }
   }
   return [...groups].map(([key, ms]) => ({
     key,
@@ -172,6 +186,37 @@ export function findings(posts) {
   const len = compare(withStats, 'length').filter((g) => g.n >= 2);
   if (len.length >= 2) lines.push({ kind: 'length', text: `${len[0].key} videos hold up best.` });
   return { ready: true, count: withStats.length, lines };
+}
+
+/** Fewer posts with stats than this in a month and the summary says it's only a hint. */
+export const SMALL_SAMPLE = 5;
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/**
+ * The best of the posts dated in today's calendar month (with stats): { month, label, n, small, top, type, song,
+ * tag, lines }. `type`/`song`/`tag` are the leading compare() group (with its own n) or null when there is
+ * nothing to compare (fewer than 2 groups). `lines` say it in words, always with how many posts it rests on.
+ */
+export function bestThisMonth(posts, today, songs = []) {
+  const month = String(today || '').slice(0, 7);
+  const label = /^\d{4}-\d{2}$/.test(month) ? `${MONTHS[+month.slice(5) - 1]} ${month.slice(0, 4)}` : '';
+  const inMonth = (posts || []).filter((p) => p && typeof p.date === 'string' && p.date.slice(0, 7) === month && postMetrics(p.stats));
+  const nPosts = inMonth.length;
+  const lead = (by) => {
+    const g = compare(inMonth, by, { songs });
+    return g.length >= 2 ? g[0] : null;
+  };
+  const top = nPosts ? [...inMonth].sort((a, b) => postMetrics(b.stats).score - postMetrics(a.stats).score || postMetrics(b.stats).views - postMetrics(a.stats).views)[0] : null;
+  const res = { month, label, n: nPosts, small: nPosts < SMALL_SAMPLE, top, type: lead('format'), song: lead('song'), tag: lead('hashtag'), lines: [] };
+  const of = (g) => `${g.n} post${g.n === 1 ? '' : 's'}`;
+  if (!nPosts) return res;
+  const name = top.title || formatLabel(top.format);
+  res.lines.push({ kind: 'top', text: `Best post: ${/^[“"]/.test(name) ? name : `“${name}”`} (${postMetrics(top.stats).views.toLocaleString()} views on ${top.platform || 'its app'}).`, postId: top.id });
+  if (res.type) res.lines.push({ kind: 'type', text: `${res.type.key} leads the types (${of(res.type)}).` });
+  if (res.song) res.lines.push({ kind: 'song', text: `“${res.song.key}” gets the most interaction per view (${of(res.song)}).` });
+  if (res.tag) res.lines.push({ kind: 'tag', text: `${res.tag.key} does best of your hashtags (${of(res.tag)}).` });
+  res.lines.push({ kind: 'n', text: res.small ? `Based on only ${nPosts} post${nPosts === 1 ? '' : 's'} with stats this month: a hint, not a rule.` : `Based on ${nPosts} posts with stats this month.` });
+  return res;
 }
 
 // ---- CSV import (TikTok Studio, Instagram / Meta Business Suite and similar exports)

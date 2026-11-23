@@ -73,23 +73,39 @@ export const RELEASE_TEMPLATE = [
   [-35, 'distro', 'Upload to your distributor with the release date'],
   [-30, 'distro', 'Pitch the song to Spotify editorial in Spotify for Artists'],
   [-28, 'video', 'Plan the music video and short-form shoot (Shoot tab)'],
+  [-28, 'content', 'First teaser: a studio or behind-the-scenes clip'],
   [-21, 'promo', 'Pre-save link live and in bio'],
   [-21, 'press', 'Pitch blogs, local radio and playlist curators'],
   [-21, 'content', 'Film 20–30 short clips in one session'],
   [-14, 'content', 'Announce the date and reveal the cover'],
+  [-14, 'promo', 'Pre-save push: share the pre-save link with a clip'],
+  [-14, 'press', 'Follow up with the blogs, radio and curators that haven’t replied'],
   [-10, 'video', 'Music video edit locked'],
   [-7, 'press', 'Add the song to your press kit (EPK)'],
   [-7, 'content', 'Teaser with the hook'],
+  [-7, 'video', 'Set up the music video premiere (date announced, YouTube Premiere set)'],
   [-3, 'content', 'Countdown post'],
   [-1, 'content', '“Out tomorrow” post, schedule release-day posts'],
   [0, 'content', 'Release day: post, stories, ask for shares, update link in bio'],
   [0, 'video', 'Premiere the music video'],
   [1, 'content', 'Thank fans, share reactions'],
   [3, 'press', 'Send the live link to playlist curators'],
+  [5, 'content', 'Post a behind-the-scenes clip from the shoot or studio'],
   [7, 'insights', 'Check first-week numbers; re-post the best clip'],
+  [10, 'press', 'Thank the blogs, radio and curators who shared the song'],
   [14, 'content', 'Lyric video, acoustic or live version'],
+  [14, 'distro', 'Second playlist pitch round with the first-week numbers'],
+  [21, 'content', 'Repost fan covers, duets and reactions'],
   [28, 'insights', 'Review which content worked (Content page)'],
+  [30, 'insights', 'Release recap: numbers, best post, what to change next time'],
 ];
+/** The rollout steps added after the first 22 (songs made before keep their list; the Release tab offers to add these). */
+export const ROLLOUT_ADDED = RELEASE_TEMPLATE.filter(([, , text]) => /^(First teaser|Pre-save push|Follow up with the blogs|Set up the music video premiere|Post a behind-the-scenes|Thank the blogs|Second playlist pitch|Repost fan covers|Release recap)/.test(text));
+/**
+ * A song marked Released keeps its after-release tasks in Overdue only while they are fresh (due in the last
+ * LATE_WINDOW days); older untouched ones are shown as missed on its Rollout view, not as noise on Home.
+ */
+export const LATE_WINDOW = 7;
 export const TASK_CATS = { music: 'Music', art: 'Art', admin: 'Admin', distro: 'Distribution', video: 'Video', promo: 'Promo', press: 'Press', content: 'Content', insights: 'Insights', other: 'Other' };
 
 export const releaseChecklist = () => RELEASE_TEMPLATE.map(([offset, cat, text]) => ({ id: mid('task'), offset, cat, text, done: false }));
@@ -365,6 +381,8 @@ export function overdueTasks(m, today) {
       // a song that's out no longer needs its run-up: only the after-release tasks can be late
       if (isPreReleaseMoot(song, t)) continue;
       const due = taskDue(song, t);
+      // out already: an untouched after-release step stops being "late" a week on (it is missed, see the Rollout view)
+      if (song.status === 'released' && !t.date && daysBetween(due, today) > LATE_WINDOW) continue;
       if (!releaseTaskDone(song, t, m) && due && due < today) out.push({ song, task: t, due });
     }
     for (const p of song.pitches || []) {

@@ -2,9 +2,12 @@
 import { h, icon, button } from '../dom.js';
 import { agenda, overdueTasks, nextUp, releaseProgress, daysBetween, niceDate, newSong, newShow, addDays } from './model.js';
 import { showTodo } from './planner.js';
-import { findings } from './content.js';
+import { findings, bestThisMonth } from './content.js';
 import { combinedAgenda, combinedNext, viewOf, photoStyle } from './artists.js';
 import { setTaskDone } from './todoauto.js';
+import { weekTab } from './page-week.js';
+
+const HOME_TABS = [['overview', 'Overview'], ['week', 'This week']];
 
 const KIND = { show: ['ticket', 'Show'], release: ['disc', 'Release'], shoot: ['film', 'Shoot'], post: ['share', 'Post'], task: ['check', 'Task'], event: ['calendar', 'Event'] };
 const kindOf = (k) => KIND[k] || KIND.task; // an unknown kind from an agenda source shows as a task
@@ -77,7 +80,9 @@ export function buildHome(ctx) {
   // the days ahead, grouped by day
   const fd = findings(m.posts);
   const best = fd.ready && fd.lines[0];
-  const bestCard = all ? null : card('chart', 'What works', best ? [h('strong', {}, best.text.split(':')[0]), h('span', { class: 'muted tiny' }, best.text.includes(':') ? best.text.slice(best.text.indexOf(':') + 1).trim() : `${fd.count} posts with stats`)] : [h('strong', {}, 'Not enough stats yet'), h('span', { class: 'muted tiny' }, `Add stats to 3 posts on the Content page (${fd.count} so far).`)], () => ctx.go('content'));
+  const month = bestThisMonth(m.posts, today, m.songs);
+  const monthLine = month.n ? h('span', { class: 'muted tiny mgr-plan-month', 'data-k': 'home-month' }, `Best this month: ${month.type ? month.type.key : `“${month.top.title || 'a post'}”`} (${month.n} post${month.n === 1 ? '' : 's'} with stats${month.small ? ', a hint only' : ''})`) : null;
+  const bestCard = all ? null : card('chart', 'What works', best ? [h('strong', {}, best.text.split(':')[0]), h('span', { class: 'muted tiny' }, best.text.includes(':') ? best.text.slice(best.text.indexOf(':') + 1).trim() : `${fd.count} posts with stats`), monthLine] : [h('strong', {}, 'Not enough stats yet'), h('span', { class: 'muted tiny' }, `Add stats to 3 posts on the Content page (${fd.count} so far).`), monthLine], () => ctx.go('content'));
 
   // the next two weeks, grouped by day
   const days = [];
@@ -142,11 +147,17 @@ export function buildHome(ctx) {
       )
     : null;
 
+  const tab = ctx.view.tab === 'week' ? 'week' : 'overview';
+  const tabs = h('div', { class: 'mgr-tabs', role: 'tablist' }, HOME_TABS.map(([k, label]) => h('button', { type: 'button', role: 'tab', 'aria-selected': k === tab ? 'true' : 'false', class: `mgr-tab${k === tab ? ' on' : ''}`, onclick: () => ctx.setTab(k) }, label)));
+  const head = h('header', { class: 'mgr-head' }, h('div', { class: 'mgr-head-who' }, all ? null : homeAvatar(ctx, m.band), h('div', {}, h('h1', {}, all ? 'All artists' : m.band.name || 'Your band'), h('p', { class: 'muted' }, all ? `${niceDate(today)} · ${ws.artists.length} artists` : `${niceDate(today)} · ${m.songs.length} song${m.songs.length === 1 ? '' : 's'} · ${m.shows.filter((s) => s.date >= today && s.status !== 'cancelled').length} upcoming show${m.shows.length === 1 ? '' : 's'}`), scopeChips(ctx))), all ? null : h('div', { class: 'row' }, button('New song', addSong, { iconName: 'plus', variant: 'sm' }), button('New show', addShow, { iconName: 'plus', variant: 'sm' })));
+  if (tab === 'week') return h('div', { class: 'mgr-page' }, head, backupNudge(ctx), tabs, h('div', { class: 'mgr-tabbody', role: 'tabpanel' }, weekTab(ctx, { openItem })));
+
   return h(
     'div',
     { class: 'mgr-page' },
-    h('header', { class: 'mgr-head' }, h('div', { class: 'mgr-head-who' }, all ? null : homeAvatar(ctx, m.band), h('div', {}, h('h1', {}, all ? 'All artists' : m.band.name || 'Your band'), h('p', { class: 'muted' }, all ? `${niceDate(today)} · ${ws.artists.length} artists` : `${niceDate(today)} · ${m.songs.length} song${m.songs.length === 1 ? '' : 's'} · ${m.shows.filter((s) => s.date >= today && s.status !== 'cancelled').length} upcoming show${m.shows.length === 1 ? '' : 's'}`), scopeChips(ctx))), all ? null : h('div', { class: 'row' }, button('New song', addSong, { iconName: 'plus', variant: 'sm' }), button('New show', addShow, { iconName: 'plus', variant: 'sm' }))),
+    head,
     backupNudge(ctx),
+    tabs,
     h('div', { class: 'mgr-cards' }, nextShow, nextRelease, bestCard),
     lateList,
     h('section', { class: 'mgr-sect' }, h('h2', {}, 'Next two weeks'), week),
