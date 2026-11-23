@@ -63,6 +63,19 @@ export function coverOf(song, releases = []) {
 }
 
 /**
+ * Put a song's cover on an edit's end card (a draft endCard), unless the cover was picked by hand.
+ * endCard.coverBy is 'auto' (set from the song), 'manual' (picked by the user) or '' (old saves: a cover already there counts as manual).
+ * `force` hands control back to the song ("Use the song's cover"). Does nothing without a cover. Returns true when it set one.
+ */
+export function autoCover(endCard, coverId, { force = false } = {}) {
+  if (!coverId || !endCard) return false;
+  if (!force && endCard.coverMediaId && endCard.coverBy !== 'auto') return false;
+  endCard.coverMediaId = coverId;
+  endCard.coverBy = 'auto';
+  return true;
+}
+
+/**
  * The cover art of the songs, EPs and albums on Songs & releases, for a cover picker:
  * [{ mediaId, label, songIds }], one per picture. The song in `firstSongId` (the edit's) comes first.
  * A release's cover lists the songs that use it ("EP: Static · Static Bloom, Undertow").

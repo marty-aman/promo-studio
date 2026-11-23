@@ -496,6 +496,11 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
   or album's cover names the songs on it), the song in the edit first, not every picture in the library.
   A cover set another way (Spotify's *Get info*, *Cover art* on a library picture) stays in the menu,
   marked as not a song's cover.
+- **The song's cover is picked for you.** Choosing a song in the Audio tab, **Make a promo**, **Spotify Canvas** and
+  the song templates put that song's cover (its own, else its EP's or album's) on the end card, marked
+  *automatic*. A song with no cover changes nothing. Picking a cover yourself (the menu, *Get info*, *Cover art*
+  on a library picture) makes it yours: later song changes leave it alone, and **Use the song's cover** hands
+  control back. Saves from before this count a cover that is already set as yours. Ctrl+Z undoes it.
 - CTA tokens: `{date}` → "NOV 21", `{countdown}` → "OUT IN 3 DAYS" / "OUT TOMORROW" / "OUT NOW".
 
 **Extras**

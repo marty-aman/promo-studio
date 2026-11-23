@@ -202,6 +202,7 @@ export function createPanels({ store, engine, ui }) {
     useCover(rec) {
       store.update((d) => {
         d.endCard.coverMediaId = rec.id;
+        d.endCard.coverBy = 'manual';
         d.endCard.enabled = true;
       });
       toast('Cover art set on the end card');
@@ -2385,8 +2386,16 @@ export function createPanels({ store, engine, ui }) {
       covers.map((c) => h('option', { value: c.mediaId }, c.label)),
       curRec ? h('option', { value: curRec.id }, `${curRec.name} (not a song’s cover)`) : null,
     );
-    coverSel.addEventListener('change', () => store.update((d) => (d.endCard.coverMediaId = coverSel.value || null)));
-    b._reg((p) => (coverSel.value = p.endCard.coverMediaId || ''));
+    coverSel.addEventListener('change', () => store.update((d) => ((d.endCard.coverMediaId = coverSel.value || null), (d.endCard.coverBy = 'manual'))));
+    const autoLbl = h('span', { class: 'muted tiny', 'data-k': 'ec-cover-auto' }, 'automatic');
+    const useBtn = button('Use the song’s cover', () => ui.useSongCover && ui.useSongCover(), { variant: 'sm ghost' });
+    useBtn.dataset.k = 'ec-cover-use';
+    b._reg((p) => {
+      coverSel.value = p.endCard.coverMediaId || '';
+      const sc = ui.songCover ? ui.songCover() : null;
+      autoLbl.hidden = !(p.endCard.coverBy === 'auto' && p.endCard.coverMediaId);
+      useBtn.hidden = !sc || (p.endCard.coverBy === 'auto' && p.endCard.coverMediaId === sc);
+    });
     const coverHint = covers.length
       ? 'The covers of your songs, EPs and albums in Songs & releases. Add or change one on a song’s Overview or an EP or album page.'
       : 'Cover art comes from your songs in Songs & releases: add one on a song’s Overview, or on an EP or album page. “Get info” from Spotify below also sets one.';
@@ -2418,7 +2427,7 @@ export function createPanels({ store, engine, ui }) {
         store.update((d) => {
           if (info.title) d.endCard.title = info.title;
           d.endCard.spotifyUrl = info.url;
-          if (coverRec) d.endCard.coverMediaId = coverRec.id;
+          if (coverRec) (d.endCard.coverMediaId = coverRec.id), (d.endCard.coverBy = 'manual');
           if (!d.endCard.platforms.includes('spotify')) d.endCard.platforms = ['spotify', ...d.endCard.platforms];
         });
         toast(`Got “${info.title}” from Spotify${coverRec ? ' with its cover art' : ''}. Add the artist name and your song file (Spotify doesn’t share audio).`, 'info', 6000);
@@ -2443,7 +2452,7 @@ export function createPanels({ store, engine, ui }) {
         'Call-to-action end card',
         b.toggle('Show end card', (p) => p.endCard.enabled, e((o, v) => (o.enabled = v))),
         b.range('Length', (p) => p.endCard.duration, e((o, v) => (o.duration = v)), { min: 1, max: 10, step: 0.1, fmt: (v) => `${v.toFixed(1)}s` }),
-        field('Cover art', coverSel, coverHint),
+        field('Cover art', h('div', { class: 'row wrap' }, coverSel, autoLbl, useBtn), coverHint),
         covers.length ? null : button('Upload cover art', async () => {
           const [f] = await pickFiles('image/*', false);
           if (!f) return;

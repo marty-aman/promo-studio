@@ -63,6 +63,7 @@ export function defaultEndCard() {
     enabled: true,
     duration: 4,
     coverMediaId: null,
+    coverBy: '', // 'auto' (from the song), 'manual' (picked by hand) or '' (old saves)
     title: 'Song Title',
     artist: 'Artist Name',
     cta: 'OUT NOW',

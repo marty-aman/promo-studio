@@ -25,7 +25,7 @@ import { initMobile } from './mobile.js';
 import { photoStyle } from './manager/artists.js';
 import { createPhotoStudio } from './photo/page.js';
 import { sectionsExport } from './panel-sections.js';
-import { coverOf, songCovers } from './manager/releases.js';
+import { coverOf, songCovers, autoCover } from './manager/releases.js';
 import { addPhotos as addArtistPhotos } from './manager/photos.js';
 import { makeLayer, makeOverlayClip } from './panel-layers.js';
 import { studioSongFiles, studioSongContext, addStems } from './manager/files.js';
@@ -983,8 +983,7 @@ manager = createManager({
           d.lyricsTimed = null;
         }
         d.managerSongId = song.id;
-        const cover = coverOf(song, manager.store.get().releases || []);
-        if (cover && media.get(cover)) d.endCard.coverMediaId = cover;
+        autoCover(d.endCard, songCoverOf(song));
       });
       const b = manager.artistBand(manager.currentArtist());
       if (b && (b.theme || b.logoId)) applyArtist(manager.currentArtist(), { quiet: true });
@@ -1230,6 +1229,21 @@ ui.songContext = () => {
   const p = store.get();
   return studioSongContext(manager.store.get(), { songId: p.managerSongId || '', audioId: p.song ? p.song.mediaId : '', info: (id) => media.get(id), findSong });
 };
+/** A song's cover (its own, else its EP's or album's) when the picture is in this library, else null. */
+const songCoverOf = (song) => {
+  const id = song && manager ? coverOf(song, manager.store.get().releases || []) : null;
+  return id && media.get(id) ? id : null;
+};
+/** The edit's song's cover for the End card tab, and "Use the song's cover": hand the cover back to the song. */
+ui.songCover = () => {
+  const l = linkedSong();
+  return l && l.open ? songCoverOf(l.song) : null;
+};
+ui.useSongCover = () => {
+  const id = ui.songCover();
+  if (id) store.update((d) => autoCover(d.endCard, id, { force: true }));
+  return !!id;
+};
 /** Put one of your songs in the edit: its song file, and the edit linked to it (stems, tabs, lyrics follow). */
 ui.chooseSong = (songId) => {
   const m = manager.store.get();
@@ -1240,6 +1254,7 @@ ui.chooseSong = (songId) => {
     d.managerSongId = s.id;
     if (!d.endCard.title || d.endCard.title === 'Song Title') d.endCard.title = s.title;
     if ((!d.endCard.artist || d.endCard.artist === 'Artist Name') && m.band.name) d.endCard.artist = m.band.name;
+    autoCover(d.endCard, songCoverOf(s));
   });
   panels.actions.useSong(rec);
 };
@@ -1279,7 +1294,7 @@ ui.songTemplateContext = () => {
     video: vrec && vrec.kind === 'video' ? { rec: vrec, offset: f.video.offset || 0 } : null,
     footage,
     parts: gameParts({ tabs, midis, stems }),
-    cover: coverOf(s, m.releases || []),
+    cover: songCoverOf(s),
     hasLyrics: p.lyrics.length > 0,
     today: new Date().toISOString().slice(0, 10),
   };
