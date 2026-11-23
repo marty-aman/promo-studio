@@ -611,6 +611,35 @@ Center for what is rising today. The trend list lives in `js/inspiration.js`.
 Export plays the project once in real time onto a full-resolution canvas while the browser records
 it (MediaRecorder), so a 20 s video takes about 20 s. Keep the tab in front while it runs.
 
+## Replace missing files
+
+A file goes missing when the browser drops its storage, when you remove an item from the media library, or
+when you restore a Manager backup in a browser that never had the files (a backup holds the data, not the
+media). Whatever used the file still holds its id, so it shows **Missing: name** (the timeline), “Missing” on
+song files and photos, and a **Replace missing files (n)** button appears:
+
+- Video Studio: in the top bar. Manager: in the side panel (every artist), at the top of a song's **Files**
+  tab (that song) and of **Photos**. Photo Studio: in the toolbar (its designs).
+- It opens a dialog listing what is missing (name and folder). **Choose a folder…**, **Choose files…** or drop
+  a folder or files on it.
+- Each missing file is replaced by the picked file with **the same name** (case and accent form ignored). When
+  several files share the name, the one in the same sub-folder wins (folders are compared from the file
+  outwards, so a moved or renamed parent folder is fine). If that does not settle it, or two different missing
+  files want the same picked file, nothing is guessed and the file stays missing with the reason shown.
+- The file comes back under the **same media id**, so every clip, layer, song file, stem, music video and
+  photo that used it works at once; duration, waveform, envelope and thumbnail are worked out again.
+- A file that is not missing is never touched, nothing is deleted, and picked files that match nothing are
+  left alone. A summary (and a toast) says what was replaced and what is still missing, by name. A picked file
+  of another kind than the one it replaces (an image named like a video) is refused.
+
+How it knows the names: `js/media.js` keeps a small index (`pvm.mediaNames.v1` in localStorage: id → name,
+relative folder path, kind) that is written whenever media is added and never shrinks when media is removed.
+A Manager **Back up** carries the names of the media it uses (`mediaNames`), and **Restore** merges them in, so
+a backup opened elsewhere can still ask for the right files. Media lost before this version, and files whose
+name was never saved, are listed as “a file whose name was not saved” and cannot be matched.
+Limit: if a record exists in IndexedDB but could not be opened, it counts as missing and a replacement
+overwrites it. Matching is in `js/mediamatch.js` (unit tested); the dialog is `js/relink.js`.
+
 ## Tests
 
 ```bash
@@ -623,7 +652,9 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 |---|---|
 | `js/core.js` | Pure logic: time math, lyrics/LRC, tap-sync, audio analysis (unit tested) |
 | `js/state.js` | Project model, undo/redo store, persistence |
-| `js/media.js` | Media library, element creation, waveform/energy analysis |
+| `js/media.js` | Media library, element creation, waveform/energy analysis, the name index and `restoreMissing` |
+| `js/mediamatch.js` | Finding missing media: which ids data points at, the name index, matching picked files by name and folder (unit tested) |
+| `js/relink.js` | The Replace missing files notice, button and dialog |
 | `js/renderer.js` | Draws a frame (video, transitions, effects, text, lyrics, end card) to a canvas |
 | `js/overlays.js` | Phantom TikTok / Reels / Shorts UI for the preview |
 | `js/templates.js` | App layouts and song templates |

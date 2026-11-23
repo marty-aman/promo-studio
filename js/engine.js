@@ -97,12 +97,12 @@ export class Engine {
     const rec = media.get(mediaId);
     if (!rec) return null;
     let entry = this.audioEls.get(key);
-    if (!entry || entry.mediaId !== mediaId) {
+    if (!entry || entry.mediaId !== mediaId || entry.url !== rec.url) {
       if (entry) entry.el.pause();
       const el = document.createElement(rec.kind === 'video' ? 'video' : 'audio');
       el.preload = 'auto';
       el.src = rec.url;
-      entry = { el, mediaId };
+      entry = { el, mediaId, url: rec.url };
       this.audioEls.set(key, entry);
     }
     return entry.el;

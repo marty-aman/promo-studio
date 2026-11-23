@@ -4,7 +4,9 @@ import { h, icon, button, toast, download, pickFiles, onDateCommit } from '../do
 import { createStore } from '../state.js';
 import { openDriveSetup } from '../gdrive.js';
 import { todayISO } from './model.js';
-import { loadWorkspace, saveWorkspace, viewOf, mergeView, addArtist, removeArtist, artistList, workspaceBackup, parseWorkspaceBackup } from './artists.js';
+import { loadWorkspace, saveWorkspace, viewOf, mergeView, addArtist, removeArtist, artistList, workspaceBackup, parseWorkspaceBackup, backupMediaNames } from './artists.js';
+import { relinkButton } from '../relink.js';
+import { referencedIds } from '../mediamatch.js';
 import { buildHome } from './page-home.js';
 import { buildSongs } from './page-songs.js';
 import { buildShows } from './page-shows.js';
@@ -80,21 +82,24 @@ export function createManager({ root, studio }) {
     'div',
     { class: 'mgr-tools' },
     status,
-    button('Back up', () => download(new Blob([workspaceBackup(current())], { type: 'application/json' }), `band-manager-${todayISO()}.json`), { iconName: 'download', variant: 'sm ghost', title: 'Download every artist in the manager as one file' }),
+    button('Back up', () => download(new Blob([workspaceBackup(current(), studio.mediaNames ? studio.mediaNames(referencedIds(current())) : null)], { type: 'application/json' }), `band-manager-${todayISO()}.json`), { iconName: 'download', variant: 'sm ghost', title: 'Download every artist in the manager as one file' }),
     button('Restore', async () => {
       const [f] = await pickFiles('.json,application/json', false);
       if (!f) return;
       try {
-        const next = parseWorkspaceBackup(await f.text());
+        const text = await f.text();
+        const next = parseWorkspaceBackup(text);
         const songs = next.artists.reduce((n, a) => n + a.songs.length, 0);
         if (!confirm(`Replace everything in the manager with this backup (${next.artists.length} artist${next.artists.length > 1 ? 's' : ''}, ${songs} songs)?`)) return;
         ws = next;
+        studio.learnNames && studio.learnNames(backupMediaNames(text)); // so files this browser doesn't have can be asked for by name
         store.replace(viewOf(ws));
         toast('Backup restored');
       } catch (e) {
         toast(e.message, 'error', 5000);
       }
     }, { iconName: 'upload', variant: 'sm ghost', title: 'Load a backup file' }),
+    relinkButton('manager'),
     button('Google Drive', () => openDriveSetup(), { iconName: 'cloud', variant: 'sm ghost', title: 'Connect Google Drive so you can pick files from it' }),
   );
   const switcher = h('div', { class: 'mgr-artist' });
@@ -269,6 +274,8 @@ export function createManager({ root, studio }) {
     songsWithAudio: (mediaId) => current().artists.flatMap((a) => (a.songs || []).filter((s) => s.audioId === mediaId).map((s) => ({ song: s, artistId: a.id, releases: a.releases || [] }))),
     artistBand: (id) => (current().artists.find((a) => a.id === id) || {}).band || null,
     switchArtist,
+    /** Every artist's data (for finding the media a backup or a song points at). */
+    workspace: () => current(),
     show: () => render(),
     go,
     undo: () => store.canUndo() && store.undo(),
