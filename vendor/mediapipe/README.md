@@ -21,3 +21,14 @@ getting users' consent for that. Promo Studio does not send it: the metrics logg
 `vision_bundle.mjs` was changed to discard its queue without any network request (search for
 `promo-studio patch`). The trailing `sourceMappingURL` comment was also removed because the map is not
 shipped. Nothing else was changed. `test/vendor.test.js` checks the patch is in place.
+
+## Auto-reframe models
+
+Used by **Auto-reframe** in a video clip's settings (`js/reframe.js`). Loaded with the same bundle and
+WASM as above, the first time someone reframes a clip. Both are unmodified, Apache License 2.0.
+`test/vendor-reframe.test.js` checks these hashes.
+
+| File | Source | SHA-256 |
+|---|---|---|
+| `blaze_face_short_range.tflite` | [MediaPipe Face Detector](https://ai.google.dev/edge/mediapipe/solutions/vision/face_detector) (float16), from `storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/` | `b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f` |
+| `efficientdet_lite0.tflite` | [MediaPipe Object Detector](https://ai.google.dev/edge/mediapipe/solutions/vision/object_detector) EfficientDet-Lite0 (int8), from `storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/latest/` | `0720bf247bd76e6594ea28fa9c6f7c5242be774818997dbbeffc4da460c723bb` |

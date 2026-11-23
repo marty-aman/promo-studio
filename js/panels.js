@@ -34,6 +34,7 @@ import { EXITS } from './exits.js';
 import { templateFromProject, applyMyTemplate, templateFile, parseTemplateFile, describeTemplate } from './mytemplates.js';
 import { bgRemoveSection } from './panel-bgremove.js';
 import { studioAutoSync } from './ai/panel-lyricsync.js';
+import { reframeSection } from './panel-reframe.js';
 import { buildSuggestPanel, hasNewSuggestions } from './panel-suggest.js';
 import { captionPicker } from './panel-captions.js';
 import { fetchSpotifyInfo } from './spotify.js';
@@ -2918,16 +2919,14 @@ export function createPanels({ store, engine, ui }) {
           b.segmented('Fit', () => G().fit, c((x, v) => (x.fit = v)), [['cover', 'Fill'], ['contain', 'Fit'], ['blurfill', 'Fit + blur']]),
           kf.range(b, sel, 'zoom'),
           h('div', { class: 'grid2' }, kf.range(b, sel, 'posX'), kf.range(b, sel, 'posY')),
-          h('div', { class: 'grid2' },
-            b.range('Pan inside X', () => G().panX, c((x, v) => (x.panX = v)), { min: -1, max: 1, step: 0.01, fmt: (v) => v.toFixed(2) }),
-            b.range('Pan inside Y', () => G().panY, c((x, v) => (x.panY = v)), { min: -1, max: 1, step: 0.01, fmt: (v) => v.toFixed(2) }),
-          ),
+          h('div', { class: 'grid2' }, kf.range(b, sel, 'panX'), kf.range(b, sel, 'panY')),
           kf.range(b, sel, 'rotate'),
           b.toggle('Mirror', () => G().flip, c((x, v) => (x.flip = v))),
           h('p', { class: 'muted tiny' }, 'Zoom below 1× or move the picture to show a blurred copy behind it (picture-in-picture look). “Pan inside” moves the image within the frame when it is zoomed in.'),
           button('Reset framing', () => store.update(c((x) => Object.assign(x, { zoom: 1, posX: 0, posY: 0, panX: 0, panY: 0, rotate: 0, flip: false }))), { variant: 'ghost sm' }),
         ),
-        kf.animateSection(b, sel, { skip: ['posX', 'posY', 'zoom', 'rotate', 'grade.exposure', 'grade.contrast', 'grade.saturation'], title: 'Animate (keyframes)' }),
+        isVideo && rec ? reframeSection({ store, media, G, rec }) : null,
+        kf.animateSection(b, sel, { skip: ['posX', 'posY', 'zoom', 'panX', 'panY', 'rotate', 'grade.exposure', 'grade.contrast', 'grade.saturation'], title: 'Animate (keyframes)' }),
         rec ? bgRemoveSection({ store, media, actions, b, c, G, rec }) : null,
         section(
           'Motion (keyframes)',
