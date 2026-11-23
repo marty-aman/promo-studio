@@ -2,7 +2,9 @@
 
 A band manager and a video editor for short promos (Reels, TikTok, Shorts), in one browser app.
 Switch between them at the top: **Manager** plans songs, releases, shows, tours and content; **Video Studio**
-makes the promos. The app opens on the Manager (a link ending in `#studio` opens the Video Studio). The
+makes the promos; **Photo Studio** makes images; **Tab Studio** writes and fixes Guitar Pro tabs. On a narrow
+window the inactive workspace buttons show only their icon. The app opens on the Manager (a link ending in
+`#studio` opens the Video Studio, `#photo` the Photo Studio, `#tabstudio` Tab Studio). The
 badge next to the switch shows the band and song you're working on; click it to open the song. Everything runs in your browser. Your files are not uploaded anywhere; projects and
 media are saved in the browser (localStorage + IndexedDB) and restored when you come back.
 
@@ -115,12 +117,12 @@ The rail on the left has one **Start** tab for ideas, then a tab for each kind o
 
 | Tab | What's in it |
 |---|---|
-| **Start** | Stacked, collapsible sections: *Suggested for you* (ideas from your lyrics and three ready-made edits), *Templates and themes*, *My templates*, and links to the full-screen *Inspiration*, *Tab Studio* and *Carousel* pages |
+| **Start** | Stacked, collapsible sections: *Suggested for you* (ideas from your lyrics and three ready-made edits), *Templates and themes*, *My templates*, *Project file and earlier projects*, and links to the full-screen *Inspiration* and *Carousel* pages (and the drum converter) |
 | **Video** | My clips (upload and arrange), Stock video, From your YouTube channel, Video layers |
 | **Audio** | Song and your own audio (beats, hook, voice-over, clip sound), Sound effects (Your sounds: your clips, the free pack and built-ins, starred, renamed and tagged; Freesound; Openverse; Add your own sounds) |
 | **Lyrics** | Lines, sync, display and style; select a line for its own look |
 | **Visualizer** | Visualizer layers and all 21 styles, including polyrhythm and polymeter |
-| **Guitar Pro** | Guitar, bass and drum layers, and Tab Studio |
+| **Guitar Pro** | Guitar, bass and drum layers, and a button that opens the Tab Studio workspace |
 | **Text**, **End card**, **Look**, **Export** | As before; Look also has the pop-up tips switch. Text has **Your fonts**: upload TTF, OTF, WOFF or WOFF2 files (saved in this browser), see each one in a sample, **Use everywhere** (lyrics, every text, the end card) or delete it (anything using it switches back to Bebas Neue). Every font menu also has an **Add a font** button that uploads one and picks it right away |
 
 Sections remember whether you left them open. API key boxes fold away once a key is saved. Every
@@ -285,7 +287,9 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
   - Reorder, duplicate or delete slides, with up to 20 per post.
   - Suggested captions written for carousels.
   - Downloads all 1080×1350 slides and the caption as one .zip, or shares them to the app from a phone.
-- **Tab Studio** (its own page, also opened from a tab layer's “Edit in Tab Studio”): open any Guitar Pro
+- **Tab Studio** (the fourth workspace in the top bar, full width with no rail, timeline or inspector; every
+  “Open / Edit / Send to Tab Studio” button, in the Video Studio and the Manager, switches to it, and an old
+  saved Video Studio tab of `tabstudio` opens it once): open any Guitar Pro
   file from your media, or start a new tab. All tracks (guitar, bass, 7-string, 5-string, drums) are
   stacked and scroll together.
   - Keyboard editing: arrows move, digits type frets (two quickly for 10–24), + / − change length,
@@ -294,7 +298,8 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
   - Drum rows you click or press Enter on, tunings (drop D, drop C, 7-string, 5-string bass…), tempo
     changes, time signatures, add and delete bars, undo, and playback with a simple synth.
   - Save writes a new Guitar Pro 7 file into your media. “Save & use in video” also points the video's
-    tab and drum layers at it.
+    tab and drum layers at it (that adds to the Video Studio edit; switch back with the **Video Studio** button and
+  press Ctrl+Z there to undo it).
 - **Tab from stems** (in Tab Studio): upload an isolated stem and pick the part.
   - Bass lines and lead riffs are pitch-tracked note by note and placed on strings and frets that keep
     the hand in one position.
@@ -616,6 +621,40 @@ Center for what is rising today. The trend list lives in `js/inspiration.js`.
   or press O. Preview only, never exported.
 - Style templates to reuse a look on the next release.
 - Undo/redo, autosave, keyboard shortcuts, PNG frame export, generated post caption with credits.
+- **Safe-area guide**: a dashed box in the preview (button under the preview or **G**; pick TikTok, Reels, Shorts
+  or the smallest area common to all in Look) showing where text stays clear of each app's buttons. Preview only.
+- **Level meter and limiter**: the bar under the preview shows the mix level (red at the top means the limiter is
+  working). A limiter (−2 dB, 20:1) keeps a loud song, clip sound and effects from clipping in the preview and in
+  the export; Export has a switch for it.
+
+### Editing keys (Video Studio)
+
+| Key | Does |
+|---|---|
+| Space, ← / →, Home, End | Play, step a frame (Shift = 1 s), go to the start or end |
+| **S** | Split under the playhead: the selected clip, text, lyric line (its words are shared out) or extra audio block, else the main-lane clip. The song runs under the whole video and says so instead |
+| **Ctrl+D** | Duplicate the selection right after itself (clip, text, lyric line, audio block, layer) |
+| **Ctrl+C**, **Ctrl+V** | Copy, then paste at the playhead |
+| Delete, Ctrl+Z, Ctrl+Shift+Z, G, O | Delete, undo, redo, safe-area guide, phone-app preview |
+
+While a video exports, the panels, timeline and top bar are locked (greyed, not clickable) and these keys do
+nothing, so the file can't freeze or change; the bar at the bottom has **Cancel export**.
+
+### Keeping your work safe
+
+- **New project** keeps the edit it replaces: **Start → Project file and earlier projects** lists the last 5, and
+  Ctrl+Z straight after also brings it back. Opening a project file does the same.
+- **Save project file** (Start, and Export) downloads the edit as `name.promo.json`: clips, texts, lyrics, layers
+  and the song with its settings, plus the names of the media it uses, but not the media. **Open project file…**
+  restores it (also on another computer); any media that isn't in that browser is listed in **Replace missing
+  files**, matched by name.
+- Edits are saved half a second after the last change and also when the tab is closed, reloaded or hidden, in the
+  Video Studio, the Manager and the Photo Studio.
+- If the browser has no room, a red banner stays up with **Download project file**, the biggest files and a link to the
+  media library. Saving settings or templates no longer throws, and a media file the browser refuses to store is
+  named (it works until a reload, then shows as missing). Persistent storage is requested when media is added.
+- An exported video is marked **Out of date** as soon as the edit changes after it, and can't be shared until you
+  export again (it can still be downloaded, labelled as the old version).
 
 ## Export
 
@@ -730,4 +769,6 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/timeline.js` | Multi-track timeline UI |
 | `js/panels.js` | Tool panels and inspector |
 | `js/stock.js` | Pexels / Pixabay / Wikimedia search and download |
-| `js/app.js` | Layout, wiring, shortcuts |
+| `js/app.js` | Layout, wiring, shortcuts, the four workspaces, save banner and export lock |
+| `js/studioedit.js` | Pure editing helpers: split, duplicate, copy and paste of timeline items, safe areas, level maths (unit tested) |
+| `js/projectfile.js` | Project files and the earlier-projects list (unit tested) |

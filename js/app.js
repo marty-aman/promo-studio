@@ -1,14 +1,16 @@
 // App shell: layout, wiring, keyboard shortcuts and autosave.
-import { ASPECTS, clipAt, splitClip, formatTime, clamp, linesFromText, timelineToSong, uid, detectBeats } from './core.js';
+import { ASPECTS, clipAt, layoutClips, splitClip, formatTime, clamp, linesFromText, timelineToSong, uid, detectBeats } from './core.js';
 import { gameParts, applySongTemplate } from './songtemplates.js';
 import { syncLayer } from './layersync.js';
-import { createStore, newProject, loadProject, saveProject, FONTS, findClip } from './state.js';
+import { createStore, newProject, loadProject, saveProject, FONTS, findClip, loadRecent, saveRecent, setSaveFailHandler } from './state.js';
+import { splitItem, splitClipAt, duplicateItem, copyItem, pasteItem, safeRect, meterFill, meterHold } from './studioedit.js';
+import { makeProjectFile, parseProjectFile, projectFileName, pushRecent, hasContent } from './projectfile.js';
 import { media, restoreMedia, restoreMissing, fileKind, addMedia, kindOf } from './media.js';
-import { configureRelink, refreshRelink, relinkButton } from './relink.js';
-import { Engine } from './engine.js';
+import { configureRelink, refreshRelink, relinkButton, openRelink, missingFor } from './relink.js';
+import { Engine, exportVideo } from './engine.js';
 import { createTimeline } from './timeline.js';
 import { createPanels } from './panels.js';
-import { h, icon, iconButton, button, toast, setFold, Binder } from './dom.js';
+import { h, icon, iconButton, button, toast, setFold, Binder, download } from './dom.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { buildInspirationPage } from './page-inspiration.js';
 import { buildTabStudio, openInTabStudio } from './page-tabstudio.js';
@@ -18,6 +20,7 @@ import { createPostCheck } from './panel-postcheck.js';
 import { createTips } from './panel-tips.js';
 import { kfTarget, kfSignature } from './panel-kf.js';
 import { createManager } from './manager/shell.js';
+import { photoStyle } from './manager/artists.js';
 import { createPhotoStudio } from './photo/page.js';
 import { sectionsExport } from './panel-sections.js';
 import { coverOf, songCovers } from './manager/releases.js';
@@ -32,6 +35,7 @@ import { findCover } from './manager/covers.js';
 const store = createStore(loadProject() || newProject());
 let manager = null; // the Manager workspace (created below)
 let photo = null; // the Photo Studio (created below)
+let tabPage = null; // Tab Studio, built each time its workspace opens
 
 // ------------------------------------------------------------ layout
 const app = document.getElementById('app');
@@ -58,6 +62,15 @@ const cycleOverlay = () => {
   store.update((d) => (d.look.overlay = next));
   toast(next === 'off' ? 'App buttons hidden' : `Showing ${PLATFORM_OVERLAYS.find(([k]) => k === next)[1]} buttons`);
 };
+const safeBtn = iconButton('layout', 'Safe area guide: where text stays clear of the apps’ buttons (G). Pick an app in the Look tab.', () => toggleSafe());
+const toggleSafe = () => {
+  const on = (store.get().look.safeGuide || 'off') !== 'off';
+  store.update((d) => (d.look.safeGuide = on ? 'off' : 'all'));
+  toast(on ? 'Safe area hidden' : 'Showing the safe area (preview only). Pick one app in the Look tab.');
+};
+// level meter: the mix before the limiter, so a red top means the limiter is working
+const meterFillEl = h('i', {});
+const meterEl = h('div', { class: 'meter', role: 'img', 'aria-label': 'Output level', title: 'Output level (the limiter holds the sound under 0 dB)' }, meterFillEl);
 const transport = h(
   'div',
   { class: 'transport' },
@@ -67,6 +80,8 @@ const transport = h(
   timeLabel,
   loopBtn,
   h('label', { class: 'overlay-pick' }, icon('eye', 16), overlaySel),
+  safeBtn,
+  meterEl,
 );
 const tabRail = h('nav', { class: 'rail', 'aria-label': 'Tools' });
 const leftPanel = h('aside', { class: 'panel left', 'aria-label': 'Tool settings' });
@@ -82,8 +97,8 @@ aspectSel.addEventListener('change', () => store.update((d) => (d.aspect = aspec
 const postSlot = h('span');
 // Manager | Video Studio: two workspaces in one app
 const MODE_KEY = 'pvm.mode.v1';
-const modeBtn = (id, label, ic) => h('button', { type: 'button', role: 'tab', class: 'mode-btn', 'data-mode': id, onclick: () => setMode(id) }, icon(ic, 16), h('span', {}, label));
-const modeSwitch = h('div', { class: 'mode-switch', role: 'tablist', 'aria-label': 'Workspace' }, modeBtn('manager', 'Manager', 'users'), modeBtn('studio', 'Video Studio', 'film'), modeBtn('photo', 'Photo Studio', 'image'));
+const modeBtn = (id, label, ic) => h('button', { type: 'button', role: 'tab', class: 'mode-btn', 'data-mode': id, title: label, onclick: () => setMode(id) }, icon(ic, 16), h('span', {}, label));
+const modeSwitch = h('div', { class: 'mode-switch', role: 'tablist', 'aria-label': 'Workspace' }, modeBtn('manager', 'Manager', 'users'), modeBtn('studio', 'Video Studio', 'film'), modeBtn('photo', 'Photo Studio', 'image'), modeBtn('tabstudio', 'Tab Studio', 'guitar'));
 const studioOnly = (...els) => h('div', { class: 'studio-only' }, ...els);
 // which artist this promo is for (from the Manager): its name, theme and logo go on the edit
 const artistSel = h('select', { class: 'artist-sel', 'aria-label': 'Artist for this promo', title: 'Artist: the promo takes their name, theme and logo (set them in Manager → Press kit)' });
@@ -100,12 +115,7 @@ const header = h(
   h('div', { class: 'spacer' }),
   studioOnly(
     postSlot,
-    button('New project', () => {
-      if (!confirm('Start a new project? Your media library is kept; the current edit is replaced.')) return;
-      store.replace(newProject());
-      ui.select(null);
-      engine.seek(0);
-    }, { variant: 'ghost' }),
+    button('New project', () => ui.newProject(), { variant: 'ghost', title: 'Start a blank edit. The current one is kept under Start → Earlier projects, and Ctrl+Z brings it back.' }),
     button('Export', () => ui.openTab('export'), { iconName: 'download', variant: 'primary' }),
   ),
 );
@@ -133,13 +143,19 @@ const pageEl = h('div', { class: 'page-overlay', hidden: true, role: 'region', '
 
 const managerRoot = h('div', { class: 'manager', role: 'region', 'aria-label': 'Band manager' });
 const photoRoot = h('div', { class: 'photo', role: 'region', 'aria-label': 'Photo Studio', hidden: true });
+const tabRoot = h('div', { class: 'tabws', role: 'region', 'aria-label': 'Tab Studio', hidden: true });
+// two bars that sit above everything: an export in progress (the editing controls are locked) and a failed save
+const exportBar = h('div', { class: 'export-bar', role: 'status', hidden: true });
+const saveBanner = h('div', { class: 'save-banner', role: 'alert', hidden: true });
 app.append(
   header,
   managerRoot,
   photoRoot,
+  tabRoot,
   h('main', { class: 'workspace' }, tabRail, leftPanel, h('div', { class: 'center' }, stage, transport), inspector, pageEl),
   timelineRoot,
 );
+document.body.append(exportBar, saveBanner);
 
 // ------------------------------------------------------------ engine + ui state
 const engine = new Engine(store, canvas);
@@ -150,7 +166,7 @@ const ui = {
   snap: true,
   follow: true,
   syncing: false,
-  tab: (localStorage.getItem('pvm.tab') || 'start').replace(/^guitar$/, 'guitarpro'),
+  tab: (localStorage.getItem('pvm.tab') || 'start').replace(/^guitar$/, 'guitarpro').replace(/^tabstudio$/, 'layers'),
   select(sel) {
     this.selection = sel;
     // jump to the panel that edits what was just selected (only now, not on every refresh)
@@ -178,7 +194,13 @@ const ui = {
     loopBtn.classList.toggle('on', engine.loop);
     loopBtn.setAttribute('aria-pressed', engine.loop ? 'true' : 'false');
   },
+  /** Switch to the Video Studio, on a tab. */
+  goStudio(tab = 'layers') {
+    setMode('studio');
+    ui.openTab(tab);
+  },
   openTab(req) {
+    if (req === 'tabstudio') return setMode('tabstudio'); // Tab Studio is its own workspace now
     // old ids (media, stock, sounds, layers, templates…) open the fold that now holds them
     const [id, foldId] = PAGES[req] ? [req] : panels.resolveTab(req);
     if (foldId) setFold(foldId, true);
@@ -210,26 +232,105 @@ const ui = {
   },
   split() {
     const p = store.get();
-    // an overlay clip that is selected and under the playhead is split first
-    const f = this.selection && this.selection.type === 'clip' ? findClip(p, this.selection.id) : null;
-    if (f && f.layer && engine.t > f.clip.start && engine.t < f.clip.start + f.clip.duration) {
-      const parts = splitClip(f.clip, engine.t - f.clip.start);
-      if (!parts) return toast('Too close to the clip edge to split.');
-      parts[1].start = +(f.clip.start + parts[0].duration).toFixed(3);
-      store.update((d) => {
-        const L = d.layers.find((l) => l.id === f.layer.id);
-        const i = L.clips.findIndex((c) => c.id === f.clip.id);
-        L.clips.splice(i, 1, ...parts);
-      });
-      ui.select({ type: 'clip', id: parts[1].id });
-      return;
+    const sel = this.selection;
+    let res = null;
+    let miss = '';
+    if (sel && sel.type === 'clip') {
+      // a selected clip under the playhead (main lane or overlay) first, else the main-lane clip under the playhead
+      const f = findClip(p, sel.id);
+      const laid = f.clip && !f.layer ? layoutClips(p.clips).find((l) => l.clip.id === sel.id) : null;
+      const under = f.clip && (f.layer ? engine.t > f.clip.start && engine.t < f.clip.start + f.clip.duration : laid && engine.t > laid.start && engine.t < laid.end);
+      if (under) res = applyEdit((d) => splitClipAt(d, sel.id, engine.t));
+    } else if (sel && sel.type !== 'layer') {
+      res = applyEdit((d) => splitItem(d, sel, engine.t));
+      // the selected block isn't under the playhead: the clip under it is split instead, as before
+      if (res.error && /playhead inside/.test(res.error)) (miss = res.error), (res = null);
     }
-    const hit = clipAt(p.clips, engine.t);
-    if (!hit) return toast('Move the playhead over a clip to split it.');
-    const parts = splitClip(hit.clip, hit.local);
-    if (!parts) return toast('Too close to the clip edge to split.');
-    store.update((d) => d.clips.splice(hit.index, 1, ...parts));
-    ui.select({ type: 'clip', id: parts[1].id });
+    if (!res) {
+      const hit = clipAt(p.clips, engine.t);
+      if (!hit) return toast(miss || 'Move the playhead over a clip to split it, or select a text, lyric line or audio block.');
+      res = applyEdit((d) => splitClipAt(d, hit.clip.id, engine.t));
+    }
+    if (res.error) return toast(res.error);
+    ui.select(res.sel);
+  },
+  /** Ctrl+D: a copy of the selection right after itself. */
+  duplicate() {
+    const r = applyEdit((d) => duplicateItem(d, this.selection));
+    if (r.error) return toast(r.error);
+    ui.select(r.sel);
+    toast('Duplicated. Ctrl+Z undoes it.');
+  },
+  /** Ctrl+C. */
+  copy() {
+    const c = copyItem(store.get(), this.selection);
+    if (!c) return toast('Select a clip, text, lyric line, audio block or layer to copy.');
+    this.clipboard = c;
+    toast('Copied. Move the playhead and press Ctrl+V to paste it there.');
+  },
+  /** Ctrl+V: paste what was copied at the playhead. */
+  paste() {
+    const r = applyEdit((d) => pasteItem(d, this.clipboard, { mode: 'at', t: engine.t }));
+    if (r.error) return toast(r.error);
+    ui.select(r.sel);
+  },
+  clipboard: null,
+  /** New project: the current edit goes to Earlier projects first, and Ctrl+Z brings it back. */
+  newProject() {
+    const cur = store.get();
+    const blank = !hasContent(cur);
+    if (!blank && !confirm('Start a new project? Your media library is kept. The current edit is saved under Start → Earlier projects, and Ctrl+Z brings it back.')) return;
+    const kept = rememberProject(cur);
+    replaceEdit(newProject());
+    ui.select(null);
+    engine.seek(0);
+    if (!blank) toast(kept ? 'New project. Your last edit is under Start → Earlier projects (or press Ctrl+Z).' : 'New project. The last edit could not be kept in the list (the browser’s storage is full), but Ctrl+Z still brings it back.', 'info', 6000);
+  },
+  /** Download the edit as a file. */
+  saveProjectFile() {
+    const p = store.get();
+    flushSave();
+    download(new Blob([makeProjectFile(p, media.names())], { type: 'application/json' }), projectFileName(p));
+    toast(`Saved ${projectFileName(p)}. It holds the edit, not the media: keep the media files with it.`, 'info', 5000);
+  },
+  /** Open a project file from the computer; the edit it replaces goes to Earlier projects. */
+  async openProjectFile(file) {
+    let parsed;
+    try {
+      parsed = parseProjectFile(await file.text());
+    } catch (e) {
+      return toast(e.message, 'error', 6000);
+    }
+    const cur = store.get();
+    if (hasContent(cur) && !confirm(`Open “${parsed.project.name}”? The current edit is saved under Start → Earlier projects, and Ctrl+Z brings it back.`)) return;
+    rememberProject(cur);
+    media.learnNames(parsed.names);
+    replaceEdit(parsed.project);
+    ui.select(null);
+    engine.seek(0);
+    refreshRelink();
+    ui.refreshPanels(true);
+    const missing = missingFor('studio');
+    toast(missing.length ? `Opened “${parsed.project.name}”. ${missing.length} file${missing.length === 1 ? ' is' : 's are'} not in this browser yet.` : `Opened “${parsed.project.name}”.`, 'info', 5000);
+    if (missing.length) openRelink('studio');
+  },
+  /** Earlier projects (newest first). */
+  recent: () => loadRecent(),
+  restoreRecent(id) {
+    const r = loadRecent().find((x) => x.id === id);
+    if (!r) return;
+    const cur = store.get();
+    rememberProject(cur);
+    replaceEdit(parseProjectFile(makeProjectFile(r.project)).project);
+    ui.select(null);
+    engine.seek(0);
+    refreshRelink();
+    ui.refreshPanels(true);
+    toast(`Restored “${r.name}”. The edit you had is in the list too.`);
+  },
+  forgetRecent(id) {
+    saveRecent(loadRecent().filter((x) => x.id !== id));
+    ui.refreshPanels(true);
   },
   deleteSelection() {
     const sel = this.selection;
@@ -247,6 +348,27 @@ const ui = {
     this.select(null);
   },
 };
+/** Run an edit on a copy first: an { error } leaves the project (and the undo history) untouched. */
+function applyEdit(fn) {
+  const probe = fn(structuredClone(store.get()));
+  if (probe.error) return probe;
+  let r;
+  store.update((d) => (r = fn(d)));
+  return r;
+}
+/** Swap the whole edit for `next` as one undo step. */
+function replaceEdit(next) {
+  store.update((d) => {
+    for (const k of Object.keys(d)) delete d[k];
+    Object.assign(d, structuredClone(next));
+  });
+}
+/** Keep a copy of an edit that is about to be replaced. Returns false when the browser had no room for it. */
+function rememberProject(p) {
+  if (!hasContent(p)) return true;
+  const list = saveRecent(pushRecent(loadRecent(), p));
+  return !!list.length && list[0].project === p;
+}
 zoom.value = ui.pxPerSec;
 zoom.addEventListener('input', () => ui.setZoom(parseFloat(zoom.value)));
 snapBtn.classList.add('on');
@@ -297,7 +419,6 @@ let page = null;
 // full-screen pages that cover the editor (their rail buttons sit above the panel tabs)
 const PAGES = {
   inspiration: { label: 'Inspiration', icon: 'wand', build: () => buildInspirationPage({ store, engine, ui, settings: loadSettings(), panels }) },
-  tabstudio: { label: 'Tab Studio', icon: 'guitar', build: () => buildTabStudio({ store, engine, ui, panels }) },
   carousel: { label: 'Carousel', icon: 'image', build: () => buildCarouselPage({ store, engine, ui, panels, settings: loadSettings() }) },
   drumconvert: { label: 'Drum MIDI converter', icon: 'activity', build: () => buildDrumConvertPage({ store, engine, ui, panels }) },
 };
@@ -324,6 +445,7 @@ function leftSignature() {
   if (ui.tab === 'text') parts.push(p.texts.map((t) => `${t.id}:${t.text}:${t.start}:${t.end}`).join('|'));
   if (ui.tab === 'export') parts.push(p.clips.length, !!p.song, p.endCard.coverMediaId, p.duration, p.endCard.enabled, p.name, p.endCard.title, p.endCard.artist, p.endCard.cta, p.endCard.subtext);
   if (has('video')) parts.push(p.clips.length);
+  if (has('start')) parts.push(loadRecent().map((r) => r.id).join(','));
   if (has('start')) parts.push(loadTemplatesCount(), p.clips.length, p.template, p.layout, p.lyrics.length, p.theme ? `${p.theme.id}:${p.theme.custom}` : '');
   if (has('start')) parts.push(media.all().map((m) => `${m.id}:${m.envelope ? 1 : 0}`).join(','), p.song && p.song.mediaId, p.lyrics.length, p.suggestion, p.endCard.coverMediaId, p.aspect);
   if (has('audio')) parts.push(p.audioTracks.length);
@@ -411,11 +533,63 @@ store.subscribe((p, meta) => {
   postcheck.refresh();
   if (manager && artistSel.value !== (p.artistId || '')) syncArtistSel();
   saveState.textContent = 'Saving…';
+  saveState.classList.remove('bad');
+  savePending = true;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    saveState.textContent = saveProject(store.get()) ? 'Saved in this browser' : 'Could not save (storage full?)';
-  }, 500);
+  saveTimer = setTimeout(writeProject, 500);
 });
+
+/** Write the edit to this browser now. A failure shows a banner that stays until a save works. */
+function writeProject() {
+  clearTimeout(saveTimer);
+  savePending = false;
+  const ok = saveProject(store.get());
+  saveState.textContent = ok ? 'Saved in this browser' : 'NOT saved: storage full';
+  saveState.classList.toggle('bad', !ok);
+  showSaveBanner(ok ? null : { what: 'your latest edits' });
+  return ok;
+}
+/** Save anything still waiting for its half second (closing the tab or switching away must not lose it). */
+function flushSave() {
+  if (savePending) writeProject();
+}
+let savePending = false;
+let mediaFailures = [];
+function showSaveBanner(problem) {
+  if (!problem && !mediaFailures.length) return (saveBanner.hidden = true);
+  const biggest = media
+    .all()
+    .filter((m) => m.blob)
+    .sort((a, b) => b.blob.size - a.blob.size)
+    .slice(0, 3)
+    .map((m) => `${m.name} (${(m.blob.size / 1048576).toFixed(0)} MB)`);
+  const mb = (n) => (n == null ? '?' : `${(n / 1048576).toFixed(0)} MB`);
+  const lines = [];
+  if (problem) lines.push(`This browser has no room left, so ${problem.what} are NOT being saved. Download a project file now, then free some space.`);
+  for (const f of mediaFailures.slice(-3)) lines.push(`“${f.name}” (${mb(f.bytes)}) could not be stored${f.space != null ? `; about ${mb(f.space)} is free` : ''}. It works until you reload, then it will show as missing.`);
+  saveBanner.replaceChildren(
+    icon('x', 16),
+    h('div', { class: 'save-banner-text' }, h('strong', {}, 'Storage is full. '), lines.join(' '), biggest.length ? h('span', { class: 'muted' }, ` Biggest files: ${biggest.join(', ')}.`) : null),
+    h('div', { class: 'row' }, button('Download project file', () => ui.saveProjectFile(), { iconName: 'download', variant: 'sm primary' }), button('Open the media library', () => (setMode('studio'), ui.openTab('video')), { variant: 'sm' }), button('Dismiss', () => ((mediaFailures = []), (saveBanner.hidden = true)), { variant: 'sm ghost' })),
+  );
+  saveBanner.hidden = false;
+}
+// settings and templates that did not fit, and media the browser refused to store
+setSaveFailHandler((what, detail = {}) => {
+  if (detail.media) {
+    mediaFailures.push(detail);
+    showSaveBanner(null);
+  }
+  toast(detail.media ? `Could not store “${detail.name}”: this browser is out of space. It works for now but will be missing after a reload.` : `Could not save ${what}: this browser is out of space.`, 'error', 7000);
+});
+// leaving, closing or hiding the tab: save what is waiting, in every workspace
+function flushAll() {
+  flushSave();
+  if (manager && manager.flush) manager.flush();
+  if (photo && photo.flush) photo.flush();
+}
+window.addEventListener('pagehide', flushAll);
+document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && flushAll());
 
 function syncHeader() {
   const p = store.get();
@@ -445,7 +619,7 @@ function syncNowOn() {
   }
   const a = manager.artists().find((x) => x.id === artistId) || { name: 'No band yet' };
   const ph = a.photoId && media.get(a.photoId);
-  const dot = ph && ph.url ? h('span', { class: 'now-dot photo', 'aria-hidden': 'true' }, h('img', { src: ph.url, alt: '' })) : h('span', { class: 'now-dot', 'aria-hidden': 'true' }, (a.name[0] || '?').toUpperCase());
+  const dot = ph && ph.url ? h('span', { class: 'now-dot photo', 'aria-hidden': 'true' }, h('img', { src: ph.url, alt: '', style: photoStyle(a.photoPos) })) : h('span', { class: 'now-dot', 'aria-hidden': 'true' }, (a.name[0] || '?').toUpperCase());
   nowOn.replaceChildren(dot, h('span', { class: 'now-band' }, a.name), h('span', { class: 'now-sep', 'aria-hidden': 'true' }, '·'), h('span', { class: `now-song${song ? '' : ' none'}` }, song ? song.title : 'No song selected'));
   nowOn.setAttribute('aria-label', `Working on ${a.name}${song ? `, song “${song.title}”` : ', no song selected'}. Open it in the Manager.`);
   nowOn.onclick = () => {
@@ -480,6 +654,42 @@ engine.on(() => {
 });
 playBtn.addEventListener('click', () => engine.toggle());
 
+// ------------------------------------------------------------ export lock and level meter
+let locked = false;
+function syncExportLock() {
+  const on = !!engine.exporting;
+  if (on === locked) return;
+  locked = on;
+  for (const el of [tabRail, leftPanel, inspector, timelineRoot, transport, header]) el.inert = on;
+  document.body.classList.toggle('exporting', on);
+  exportBar.hidden = !on;
+  if (on) {
+    exportLabel.textContent = 'Exporting…';
+    exportFill.style.width = '0%';
+  }
+}
+const exportLabel = h('strong', {});
+const exportFill = h('div', {});
+exportBar.append(exportLabel, h('div', { class: 'export-progress' }, exportFill), h('span', { class: 'muted small' }, 'Editing is locked until it finishes. Keep this tab in front.'), button('Cancel export', () => exportVideo.cancel && exportVideo.cancel(), { variant: 'sm' }));
+ui.exportProgress = (f) => {
+  const pct = Math.round(f * 100);
+  exportLabel.textContent = `Exporting… ${pct}%`;
+  exportFill.style.width = `${pct}%`;
+};
+engine.on(syncExportLock);
+let meterShown = 0;
+let meterAt = performance.now();
+let meterTick = null;
+function paintMeter() {
+  const now = performance.now();
+  meterShown = meterHold(meterShown, engine.playing || engine.exporting ? engine.level() : 0, (now - meterAt) / 1000);
+  meterAt = now;
+  meterFillEl.style.width = `${Math.round(meterFill(meterShown) * 100)}%`;
+  meterEl.classList.toggle('hot', meterShown >= 0.98);
+  meterTick = meterShown > 0.001 || engine.playing ? requestAnimationFrame(paintMeter) : null;
+}
+engine.on(() => !meterTick && (meterTick = requestAnimationFrame(paintMeter)));
+
 // ------------------------------------------------------------ preview sizing
 function fitStage() {
   const { w, h: hh } = ASPECTS[store.get().aspect];
@@ -496,6 +706,7 @@ new ResizeObserver(() => {
 // ------------------------------------------------------------ keyboard
 window.addEventListener('keydown', (e) => {
   if (mode === 'photo') return photo && photo.onKey(e);
+  if (mode === 'tabstudio') return; // Tab Studio has its own keys
   if (mode === 'manager') {
     // text fields keep the browser's own undo; a ticked checkbox or a picked option undoes in the Manager
     const t = (e.target.tagName || '').toUpperCase();
@@ -508,6 +719,11 @@ window.addEventListener('keydown', (e) => {
       e.preventDefault();
       manager.redo();
     }
+    return;
+  }
+  // while a video exports nothing may move the playhead or change the edit; the Cancel button is the way out
+  if (engine.exporting) {
+    if (!/^(F\d+|Tab|Shift|Control|Alt|Meta)$/.test(e.key) && !(e.ctrlKey || e.metaKey) && !(e.target.closest && e.target.closest('input,textarea,select'))) e.preventDefault();
     return;
   }
   const tag = (e.target.tagName || '').toUpperCase();
@@ -534,6 +750,20 @@ window.addEventListener('keydown', (e) => {
   if (mod && e.key.toLowerCase() === 'y') {
     e.preventDefault();
     store.redo();
+    return;
+  }
+  if (mod && !e.altKey) {
+    const k = e.key.toLowerCase();
+    if (k === 'd') {
+      e.preventDefault();
+      ui.duplicate();
+    } else if (k === 'c' && !String(window.getSelection()).length) {
+      e.preventDefault();
+      ui.copy();
+    } else if (k === 'v' && ui.clipboard) {
+      e.preventDefault();
+      ui.paste();
+    }
     return;
   }
   if (mod) return;
@@ -572,6 +802,10 @@ window.addEventListener('keydown', (e) => {
     case 'Escape':
       ui.select(null);
       break;
+    case 'g':
+    case 'G':
+      toggleSafe();
+      break;
     case 'o':
     case 'O':
       if (overlaySupported(store.get().aspect)) cycleOverlay();
@@ -594,6 +828,7 @@ window.addEventListener('drop', (e) => {
   if (!e.dataTransfer?.files?.length) return;
   e.preventDefault();
   document.body.classList.remove('dropping');
+  if (engine.exporting) return toast('Wait for the export to finish before adding files.');
   panels.importFiles([...e.dataTransfer.files]);
 });
 
@@ -665,7 +900,7 @@ manager = createManager({
       const rec = media.get(id);
       if (!rec) return toast('That file is no longer in the media library.', 'error');
       sendToEdit(rec, how);
-      if (open) {
+      if (open && how !== 'tabstudio') {
         setMode('studio');
         if (how === 'clip' || how === 'overlay') ui.openTab('video');
       }
@@ -1058,8 +1293,7 @@ function sendToEdit(rec, how) {
   if (how === 'tab') return panels.actions.useTab(rec);
   if (how === 'tabstudio') {
     openInTabStudio(rec, +timelineToSong(0, store.get().song).toFixed(3));
-    setMode('studio');
-    ui.openTab('tabstudio');
+    setMode('tabstudio');
     return;
   }
   if (how === 'audio') return panels.actions.addAudioTrack(rec);
@@ -1111,15 +1345,29 @@ function syncArtistSel() {
 }
 
 // The app always opens on the Manager. A link ending in #studio (or ?studio) opens the Video Studio, #photo the Photo Studio.
-let mode = location.hash === '#studio' || new URLSearchParams(location.search).has('studio') ? 'studio' : location.hash === '#photo' ? 'photo' : 'manager';
+const wantsTabs = location.hash === '#tabstudio' || new URLSearchParams(location.search).has('tabstudio');
+let mode = wantsTabs ? 'tabstudio' : location.hash === '#studio' || new URLSearchParams(location.search).has('studio') ? 'studio' : location.hash === '#photo' ? 'photo' : 'manager';
+// Tab Studio used to be a page inside the Video Studio. If that was the last thing open, it opens as its own workspace once.
+if (localStorage.getItem('pvm.tab') === 'tabstudio') {
+  localStorage.setItem('pvm.tab', 'layers');
+  if (!location.hash && !location.search) mode = 'tabstudio';
+}
 function setMode(m) {
   mode = m;
   localStorage.setItem(MODE_KEY, m);
   // the Photo Studio hides the video editor the same way the Manager does
-  document.body.classList.toggle('mode-manager', m === 'manager' || m === 'photo');
+  document.body.classList.toggle('mode-manager', m === 'manager' || m === 'photo' || m === 'tabstudio');
   document.body.classList.toggle('mode-photo', m === 'photo');
+  document.body.classList.toggle('mode-tabstudio', m === 'tabstudio');
   managerRoot.hidden = m !== 'manager';
   photoRoot.hidden = m !== 'photo';
+  tabRoot.hidden = m !== 'tabstudio';
+  if (tabPage) (tabPage.leave && tabPage.leave(), (tabPage = null));
+  if (m === 'tabstudio') {
+    tabPage = buildTabStudio({ store, engine, ui, panels });
+    tabRoot.replaceChildren(tabPage.el);
+    tabRoot.scrollTop = 0;
+  } else tabRoot.replaceChildren();
   for (const b of modeSwitch.children) {
     const on = b.dataset.mode === m;
     b.classList.toggle('on', on);

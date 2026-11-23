@@ -373,19 +373,34 @@ export function createManager({ root, studio }) {
       if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
       if (!readBackupInfo().firstEditAt) writeBackupInfo({ firstEditAt: Date.now() });
     }
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      const ok = saveWorkspace(current());
-      status.textContent = ok ? 'Saved in this browser' : 'Not saved: storage full';
-      status.classList.toggle('bad', !ok);
-      if (!ok && saveError.hidden) toast('Could not save your change in this browser. Back up now.', 'error', 8000);
-      saveError.hidden = ok;
-      studio.artistsChanged && studio.artistsChanged();
-    }, 400);
+    saveSoon();
   });
+  const writeNow = () => {
+    clearTimeout(saveTimer);
+    savePending = false;
+    let ok = saveWorkspace(current());
+    if (!ok && localStorage.getItem(BEFORE_RESTORE_KEY)) {
+      // the copy kept for "Undo restore" is the first thing to give up for room
+      localStorage.removeItem(BEFORE_RESTORE_KEY);
+      ok = saveWorkspace(current());
+    }
+    status.textContent = ok ? 'Saved in this browser' : 'Not saved: storage full';
+    status.classList.toggle('bad', !ok);
+    if (!ok && saveError.hidden) toast('Could not save your change in this browser. Back up now.', 'error', 8000);
+    saveError.hidden = ok;
+    studio.artistsChanged && studio.artistsChanged();
+  };
+  let savePending = false;
+  const saveSoon = () => {
+    savePending = true;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(writeNow, 400);
+  };
 
   return {
     store,
+    /** Save a change that is still waiting for its short delay (the page is closing or hiding). */
+    flush: () => savePending && writeNow(),
     /** For the video studio: every artist's id, name, theme and logo, and the open artist. */
     artists: () => artistList(current()),
     currentArtist: () => ws.current,

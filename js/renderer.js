@@ -13,6 +13,7 @@ import {
 } from './core.js';
 import { FILTER_PRESETS, PLATFORMS, isVisible, overlayClipAt } from './state.js';
 import { drawPlatformOverlay, overlaySupported } from './overlays.js';
+import { safeRect } from './studioedit.js';
 import { drawMidi } from './midiviz.js';
 import { drawGame, gameTheme } from './rhythmgame.js';
 import { drawTab } from './tab.js';
@@ -1493,6 +1494,18 @@ export function renderFrame(ctx, W, H, project, t, env) {
   const ov = project.look.overlay;
   if (env.preview && ov && ov !== 'off' && overlaySupported(project.aspect)) {
     drawPlatformOverlay(ctx, W, H, ov, { opacity: project.look.overlayOpacity ?? 0.6, clear: project.look.overlayClear !== false });
+  }
+  // the safe-area guide: a dashed box where nothing hides behind an app's buttons (preview only, never exported)
+  const safe = env.preview ? safeRect(project.look.safeGuide, project.aspect) : null;
+  if (safe) {
+    ctx.save();
+    ctx.setLineDash([W * 0.02, W * 0.012]);
+    ctx.lineWidth = Math.max(1.5, W * 0.004);
+    ctx.strokeStyle = 'rgba(255,212,0,0.95)';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = W * 0.01;
+    ctx.strokeRect(safe[0] * W, safe[1] * H, (safe[2] - safe[0]) * W, (safe[3] - safe[1]) * H);
+    ctx.restore();
   }
   ctx.restore();
 }

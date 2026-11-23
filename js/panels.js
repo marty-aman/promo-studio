@@ -46,6 +46,8 @@ import { syncPoint, autoLineUp, describeSyncPoint } from './clipsync.js';
 import { media, addMedia, removeMedia, tabTimeline } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
+import { SAFE_CHOICES } from './studioedit.js';
+import { describeProject } from './projectfile.js';
 import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS, MASK_SHAPES, GRADE_PRESETS, renderFrame } from './renderer.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate, tabIntoLayout, lyricsIntoLayout, tabSources, templateNeeds } from './templates.js';
@@ -113,6 +115,7 @@ const LYRIC_PRESETS = {
 
 export function createPanels({ store, engine, ui }) {
   const settings = loadSettings();
+  engine.limiterOn = settings.limiter !== false;
   const kf = createKeyframeUI({ store, engine });
   const sync = { active: false, cursor: 0 };
 
@@ -420,19 +423,53 @@ export function createPanels({ store, engine, ui }) {
       fold('start-suggested', 'Suggested for you', { badge: hasNewSuggestions(p) ? 'New' : null, hint: 'From your song, clips and lyrics' }, () => [buildLyricIdeas(), buildSuggestPanel({ store, engine, ui })]),
       fold('start-templates', 'Templates and themes', { hint: 'One click restyles everything' }, () => buildTemplates()),
       fold('start-mine', 'My templates', { open: false, hint: 'Save this edit to reuse' }, () => buildMyTemplates()),
+      fold('start-projects', 'Project file and earlier projects', { open: false, hint: 'Keep a copy, or go back' }, () => buildProjectFiles()),
       fold(
         'start-more',
-        'Inspiration, Tab Studio, Carousel and the drum converter',
+        'Inspiration, Carousel and the drum converter',
         { open: false },
         h(
           'div',
           { class: 'page-links' },
           page('inspiration', 'wand', 'Inspiration', 'Trends for your niche, the posting playbook, captions and hooks'),
-          page('tabstudio', 'guitar', 'Tab Studio', 'Write or fix Guitar Pro tabs, or make one from a stem'),
           page('carousel', 'image', 'Carousel', 'Photo carousels for Instagram and TikTok'),
           page('drumconvert', 'activity', 'Drum MIDI converter', 'Move drum MIDI between Superior Drummer, EZdrummer, Addictive Drums, GGD, GM and 150 more maps'),
         ),
       ),
+    );
+  }
+
+  // ---------------------------------------------------------------- PROJECT FILE AND EARLIER PROJECTS
+  /** Save or open the edit as a file, and the edits New project and Open replaced. */
+  function buildProjectFiles() {
+    const file = h('input', { type: 'file', accept: '.json,application/json', hidden: true, 'aria-label': 'Open a project file' });
+    file.addEventListener('change', async () => {
+      const f = file.files[0];
+      file.value = '';
+      if (f) await ui.openProjectFile(f);
+    });
+    const recent = ui.recent();
+    const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return h(
+      'div',
+      {},
+      h('p', { class: 'muted small' }, 'A project file holds the edit (clips, texts, lyrics, layers, the song and its settings), not the media. Open it on another computer and Replace missing files picks the media up by name.'),
+      h('div', { class: 'row' }, button('Save project file', () => ui.saveProjectFile(), { iconName: 'download', variant: 'sm primary' }), button('Open project file…', () => file.click(), { iconName: 'upload', variant: 'sm' }), file),
+      h('h4', { class: 'sub-head' }, 'Earlier projects'),
+      recent.length
+        ? h(
+            'ul',
+            { class: 'recent-list' },
+            recent.map((r) =>
+              h(
+                'li',
+                {},
+                h('span', { class: 'recent-info' }, h('strong', {}, r.name), h('span', { class: 'muted tiny' }, `${when(r.at)} · ${describeProject(r.project)}`)),
+                h('span', { class: 'row' }, button('Restore', () => ui.restoreRecent(r.id), { variant: 'sm' }), iconButton('trash', `Forget ${r.name}`, () => ui.forgetRecent(r.id), 'ghost danger')),
+              ),
+            ),
+          )
+        : h('p', { class: 'muted small' }, 'Nothing yet. When New project or Open project file replaces an edit, the old one is kept here (the last 5).'),
     );
   }
 
@@ -2440,6 +2477,7 @@ export function createPanels({ store, engine, ui }) {
         b.segmented('Show buttons from', (p) => p.look.overlay || 'off', l((o, v) => (o.overlay = v)), PLATFORM_OVERLAYS.map(([k, label]) => [k, label.replace('Instagram ', '').replace('YouTube ', '')])),
         b.range('Ghost opacity', (p) => p.look.overlayOpacity ?? 0.6, l((o, v) => (o.overlayOpacity = v)), { min: 0.15, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` }),
         b.toggle('Show the clear area for text', (p) => p.look.overlayClear !== false, l((o, v) => (o.overlayClear = v))),
+        b.select('Safe area guide (dashed box)', (p) => p.look.safeGuide || 'off', l((o, v) => (o.safeGuide = v)), SAFE_CHOICES),
         overlaySupported(store.get().aspect)
           ? h('p', { class: 'muted tiny' }, 'Ghost buttons show where each app puts its icons, caption and nav bar, so you can keep lyrics and text clear of them. Preview only, never exported. Shortcut: O cycles the apps.')
           : h('p', { class: 'warn-list' }, 'The phone preview is for 9:16 videos. Switch Format to 9:16 to see it.'),
@@ -2473,6 +2511,15 @@ export function createPanels({ store, engine, ui }) {
 
   // ---------------------------------------------------------------- EXPORT
   const exportState = { running: false, progress: 0, result: null, error: '' };
+  // an exported video describes the edit as it was: once the edit changes, the video is marked out of date
+  const stampOf = (p) => JSON.stringify(p);
+  const freshResult = () => (exportState.result && !exportState.result.stale && exportState.result.stamp === stampOf(store.get()) ? exportState.result : null);
+  store.subscribe((p) => {
+    const r = exportState.result;
+    if (!r || r.stale || exportState.running || stampOf(p) === r.stamp) return;
+    r.stale = true;
+    if (ui.tab === 'export') ui.refreshPanels(true);
+  });
   function buildExport(b) {
     const p = store.get();
     const mp4 = pickMimeType('mp4');
@@ -2481,6 +2528,15 @@ export function createPanels({ store, engine, ui }) {
     const fps = h('select', {}, h('option', { value: 30, selected: true }, '30 fps'), h('option', { value: 60 }, '60 fps'), h('option', { value: 24 }, '24 fps (film look)'));
     const monitor = h('input', { type: 'checkbox', checked: settings.monitorExport ?? true });
     monitor.addEventListener('change', () => ((settings.monitorExport = monitor.checked), saveSettings(settings)));
+    const limiterToggle = h('label', { class: 'toggle', title: 'Keeps a loud song, clip sound and sound effects from distorting. The meter under the preview shows the level.' }, (() => {
+      const cb = h('input', { type: 'checkbox', checked: settings.limiter !== false });
+      cb.addEventListener('change', () => {
+        settings.limiter = cb.checked;
+        saveSettings(settings);
+        engine.setLimiter(cb.checked);
+      });
+      return cb;
+    })(), h('span', {}, 'Protect the sound from clipping (limiter)'));
     const { w, hgt } = { w: ASPECTS[p.aspect].w, hgt: ASPECTS[p.aspect].h };
 
     const cv = isCanvas(p);
@@ -2494,6 +2550,7 @@ export function createPanels({ store, engine, ui }) {
     const start = async () => {
       exportState.running = true;
       exportState.progress = 0;
+      if (exportState.result) URL.revokeObjectURL(exportState.result.url); // the older file's address is not needed any more
       exportState.result = null;
       exportState.error = '';
       ui.refreshPanels(true);
@@ -2508,6 +2565,7 @@ export function createPanels({ store, engine, ui }) {
           audio: !cv, // a Canvas is silent: Spotify plays the track under it
           onProgress: (f) => {
             exportState.progress = f;
+            ui.exportProgress && ui.exportProgress(f);
             const bar = document.querySelector('.export-progress > div');
             if (bar) bar.style.width = `${Math.round(f * 100)}%`;
             const lbl = document.querySelector('.export-pct');
@@ -2515,7 +2573,7 @@ export function createPanels({ store, engine, ui }) {
           },
         });
         const ext = res.mime.includes('mp4') ? 'mp4' : 'webm';
-        exportState.result = { ...res, name: `${slug(p.name)}-${cv ? 'spotify-canvas' : p.aspect.replace(':', 'x')}.${ext}`, url: URL.createObjectURL(res.blob) };
+        exportState.result = { ...res, name: `${slug(p.name)}-${cv ? 'spotify-canvas' : p.aspect.replace(':', 'x')}.${ext}`, url: URL.createObjectURL(res.blob), stamp: stampOf(store.get()) };
         toast('Export finished');
       } catch (e) {
         if (e.message !== 'cancelled') exportState.error = e.message || 'Export failed';
@@ -2541,6 +2599,7 @@ export function createPanels({ store, engine, ui }) {
         field('Format', fmt),
         h('div', { class: 'grid2' }, field('Quality', quality), field('Frame rate', fps)),
         h('label', { class: 'toggle' }, monitor, h('span', {}, 'Play sound while exporting')),
+        limiterToggle,
         exportState.running
           ? h('div', {}, h('div', { class: 'export-progress' }, h('div', { style: { width: `${Math.round(exportState.progress * 100)}%` } })), h('div', { class: 'row' }, h('span', { class: 'export-pct' }, `${Math.round(exportState.progress * 100)}%`), button('Cancel', () => exportVideo.cancel && exportVideo.cancel(), { variant: 'ghost sm' })))
           : button('Export video', start, { iconName: 'download', variant: 'primary big wide' }),
@@ -2548,9 +2607,10 @@ export function createPanels({ store, engine, ui }) {
         exportState.result
           ? h(
               'div',
-              { class: 'result' },
+              { class: `result${freshResult() ? '' : ' stale'}` },
+              freshResult() ? null : h('p', { class: 'warn-list stale-note', role: 'status' }, 'Out of date. You changed the edit after exporting this video, so it does not match any more. Export again to get the new version.'),
               h('video', { src: exportState.result.url, controls: true, playsInline: true }),
-              h('a', { class: 'btn primary wide', href: exportState.result.url, download: exportState.result.name }, icon('download', 16), h('span', {}, `Download ${exportState.result.name} (${(exportState.result.blob.size / 1e6).toFixed(1)} MB)`)),
+              h('a', { class: `btn wide${freshResult() ? ' primary' : ' ghost'}`, href: exportState.result.url, download: exportState.result.name }, icon('download', 16), h('span', {}, `${freshResult() ? 'Download' : 'Download the old version of'} ${exportState.result.name} (${(exportState.result.blob.size / 1e6).toFixed(1)} MB)`)),
               !cv && videoCues(p).length
                 ? h('div', { class: 'row' }, h('span', { class: 'muted tiny' }, 'Closed captions for it:'), button('.srt', () => download(new Blob([toSRT(videoCues(store.get()))], { type: 'application/x-subrip' }), exportState.result.name.replace(/\.\w+$/, '.srt')), { iconName: 'download', variant: 'sm ghost', title: 'The lyrics and captions in this video, to upload with it (YouTube, Facebook, LinkedIn)' }), button('.vtt', () => download(new Blob([toVTT(videoCues(store.get()))], { type: 'text/vtt' }), exportState.result.name.replace(/\.\w+$/, '.vtt')), { variant: 'sm ghost' }))
                 : null,
@@ -2559,6 +2619,7 @@ export function createPanels({ store, engine, ui }) {
           : null,
       ),
       ui.sectionsPanel ? ui.sectionsPanel() : null,
+      section('Project file', h('p', { class: 'muted small' }, 'Keep the edit as a file, to move it to another computer or go back to it later.'), h('div', { class: 'row' }, button('Save project file', () => ui.saveProjectFile(), { iconName: 'download', variant: 'sm' }))),
       buildShare(p, () => capPicker.currentText()),
       section(
         'Stills',
@@ -2579,7 +2640,7 @@ export function createPanels({ store, engine, ui }) {
   const ytState = { uploading: false, progress: 0, videoId: null, error: '' };
   function buildShare(p, getCaption) {
     const caption = getCaption();
-    const res = exportState.result;
+    const res = freshResult();
     const file = res ? new File([res.blob], res.name, { type: res.blob.type }) : null;
     const shareOk = file && canShareFiles(file);
 
@@ -2597,7 +2658,7 @@ export function createPanels({ store, engine, ui }) {
           if (e.name !== 'AbortError') toast(`Sharing failed: ${e.message}`, 'error');
         }
       }, { iconName: 'share', variant: 'primary', disabled: !shareOk }),
-      !res ? h('p', { class: 'muted tiny' }, 'Export the video first.') : !shareOk ? h('p', { class: 'muted tiny' }, 'This browser cannot share files. Open the site on your phone (it must be on https, e.g. GitHub Pages), or download and upload in the app.') : null,
+      !res ? h('p', { class: 'muted tiny' }, exportState.result ? 'Export the video again first: the last one is out of date.' : 'Export the video first.') : !shareOk ? h('p', { class: 'muted tiny' }, 'This browser cannot share files. Open the site on your phone (it must be on https, e.g. GitHub Pages), or download and upload in the app.') : null,
     );
 
     // --- YouTube
@@ -3052,7 +3113,7 @@ export function createPanels({ store, engine, ui }) {
     }
     if (sel.type === 'layer') {
       const L = findLayer(store.get(), sel.id);
-      return h('div', {}, h('div', { class: 'insp-title' }, icon(L ? LAYER_TYPES[L.type].icon : 'layers', 16), h('span', {}, L ? L.name : 'Layer')), h('p', { class: 'small' }, 'This layer’s settings are in the panel on the left. Drag its block on the timeline to line it up with the song, or use the eye to hide it.'));
+      return h('div', {}, h('div', { class: 'insp-title' }, icon(L ? LAYER_TYPES[L.type].icon : 'layers', 16), h('span', {}, L ? L.name : 'Layer')), h('p', { class: 'small' }, 'This layer’s settings are in the panel on the left. Drag its block on the timeline to line it up with the song, or use the eye to hide it.'), button('Open settings', () => ui.openTab('layers'), { iconName: 'settings', variant: 'sm primary' }));
     }
     if (sel.type === 'endcard') {
       return h('div', {}, h('div', { class: 'insp-title' }, icon('disc', 16), h('span', {}, 'End card')), h('p', { class: 'small' }, 'Drag its left edge on the timeline to change its length. Everything else is in the End card tab.'));

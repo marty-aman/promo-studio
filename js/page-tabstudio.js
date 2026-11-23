@@ -670,7 +670,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
         if (L) Object.assign(L, { mediaId: rec.id, track: tr.index, visible: true, ...(offset != null ? { offset: ofs } : {}) });
       });
     });
-    toast('The video now uses this tab. Undo (Ctrl+Z) in the editor to go back.', 'info', 4500);
+    toast('The Video Studio edit now uses this tab. In the Video Studio, Ctrl+Z goes back.', 'info', 4500);
   }
 
   // ------------------------------------------------------------ transcription
@@ -869,7 +869,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       'header',
       { class: 'page-head' },
       h('div', {}, h('h2', {}, icon('guitar', 20), ' Tab Studio'), h('p', { class: 'muted small' }, 'Edit your Guitar Pro tabs, or make one from your stems. Save it and the video’s tab and drum layers can use it.')),
-      button('Back to editor', () => ui.openTab('layers'), { iconName: 'x', variant: 'ghost' }),
+      button('Video Studio', () => ui.goStudio('layers'), { iconName: 'film', variant: 'ghost', title: 'Back to the video editor' }),
     );
     const fileBar = h('div', { class: 'page-bar ts-files' },
       openSel,

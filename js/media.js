@@ -1,6 +1,6 @@
 // Media library: turns uploaded or downloaded blobs into playable elements.
 import { uid, computePeaks, energyEnvelope } from './core.js';
-import { mediaDB } from './state.js';
+import { mediaDB, reportSaveFail } from './state.js';
 import { TAB_EXTENSIONS, parseTabBytes, tabTracks, buildTabTimeline } from './tab.js';
 import { drumTracks, drumTimelineFromScore, drumHitsFromAudio, drumTimelineFromMidi } from './drums.js';
 import { analyseAudioBlob } from './viz.js';
@@ -341,10 +341,32 @@ export async function addMedia(blob, name, meta = {}, { persist = true, id = nul
   remember(nameIndex(), rec.id, { name, path: rec.path, kind });
   saveNames();
   if (persist) {
-    mediaDB.put({ id: rec.id, name, kind, blob, source: rec.source, attribution: rec.attribution, path: rec.path });
+    requestPersistence();
+    mediaDB.put({ id: rec.id, name, kind, blob, source: rec.source, attribution: rec.attribution, path: rec.path }).catch(async (e) => {
+      // the file works in this visit but would be gone after a reload: say so now, not later
+      rec.unsaved = true;
+      reportSaveFail(`the file “${name}”`, { media: true, name, bytes: blob.size, space: await spaceLeft(), error: e && e.name });
+    });
   }
   emit();
   return rec;
+}
+
+let askedPersist = false;
+/** Ask the browser not to clear this site's storage on its own (once; most browsers answer without a prompt). */
+function requestPersistence() {
+  if (askedPersist) return;
+  askedPersist = true;
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+}
+/** Bytes the browser says are still free for this site, or null when it can't tell. */
+async function spaceLeft() {
+  try {
+    const e = await navigator.storage.estimate();
+    return e && e.quota ? Math.max(0, e.quota - (e.usage || 0)) : null;
+  } catch {
+    return null;
+  }
 }
 
 const AUDIO_EXT = /\.(mp3|wav|m4a|aac|ogg|oga|opus|flac|aiff?)$/i;

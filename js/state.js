@@ -104,6 +104,7 @@ export function newProject() {
       overlay: 'tiktok', // preview only: off | tiktok | reels | shorts
       overlayOpacity: 0.6,
       overlayClear: true,
+      safeGuide: 'off', // preview only: off | all | tiktok | reels | shorts (a dashed box of where text stays clear of app buttons)
     },
     beats: null, // { bpm, period, beats:[song seconds] }
     layers: [], // stacked layers above the main video: video | tab | drums | viz (drawn in order)
@@ -240,33 +241,37 @@ export function loadProject() {
   try {
     const raw = localStorage.getItem(PROJECT_KEY);
     if (!raw) return null;
-    const p = JSON.parse(raw);
-    const base = newProject();
-    const look = p.look || {};
-    // v1 projects had a red safe-zone toggle; it maps to the TikTok phantom overlay
-    if ('safeZones' in look && !('overlay' in look)) look.overlay = look.safeZones ? 'tiktok' : 'off';
-    delete look.safeZones;
-    // v2 projects had one guitar tab (`tab`); it becomes the first layer
-    const layers = Array.isArray(p.layers) ? p.layers : [];
-    if (p.tab && p.tab.mediaId && !layers.some((l) => l.type === 'tab')) layers.push({ id: uid('lyr'), type: 'tab', name: 'Guitar tab', visible: true, ...p.tab });
-    delete p.tab;
-    return {
-      ...base,
-      ...p,
-      layers,
-      layerVis: p.layerVis || {},
-      lyricStyle: { ...base.lyricStyle, ...p.lyricStyle },
-      endCard: { ...base.endCard, ...p.endCard },
-      look: {
-        ...base.look,
-        ...look,
-        watermark: { ...base.look.watermark, ...look.watermark },
-        progress: { ...base.look.progress, ...look.progress },
-      },
-    };
+    return normalizeProject(JSON.parse(raw));
   } catch {
     return null;
   }
+}
+
+/** A saved project (this browser's, a project file, an earlier version) with every newer field filled in. */
+export function normalizeProject(p) {
+  const base = newProject();
+  const look = p.look || {};
+  // v1 projects had a red safe-zone toggle; it maps to the TikTok phantom overlay
+  if ('safeZones' in look && !('overlay' in look)) look.overlay = look.safeZones ? 'tiktok' : 'off';
+  delete look.safeZones;
+  // v2 projects had one guitar tab (`tab`); it becomes the first layer
+  const layers = Array.isArray(p.layers) ? p.layers : [];
+  if (p.tab && p.tab.mediaId && !layers.some((l) => l.type === 'tab')) layers.push({ id: uid('lyr'), type: 'tab', name: 'Guitar tab', visible: true, ...p.tab });
+  delete p.tab;
+  return {
+    ...base,
+    ...p,
+    layers,
+    layerVis: p.layerVis || {},
+    lyricStyle: { ...base.lyricStyle, ...p.lyricStyle },
+    endCard: { ...base.endCard, ...p.endCard },
+    look: {
+      ...base.look,
+      ...look,
+      watermark: { ...base.look.watermark, ...look.watermark },
+      progress: { ...base.look.progress, ...look.progress },
+    },
+  };
 }
 
 export function saveProject(p) {
@@ -278,6 +283,34 @@ export function saveProject(p) {
   }
 }
 
+// ------------------------------------------------------------ earlier projects
+// A few snapshots of edits that were replaced (New project, opening a project file), kept so nothing is lost for good.
+const RECENT_KEY = 'pvm.recent.v1';
+export const RECENT_CAP = 5;
+
+export function loadRecent() {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_KEY));
+    return Array.isArray(list) ? list.filter((r) => r && r.project && typeof r.at === 'number') : [];
+  } catch {
+    return [];
+  }
+}
+/** Keep `list`, dropping the oldest snapshots until the browser has room. Returns the list that was stored. */
+export function saveRecent(list) {
+  let keep = list.slice(0, RECENT_CAP);
+  for (;;) {
+    try {
+      if (keep.length) localStorage.setItem(RECENT_KEY, JSON.stringify(keep));
+      else localStorage.removeItem(RECENT_KEY);
+      return keep;
+    } catch {
+      if (!keep.length) return keep;
+      keep = keep.slice(0, -1);
+    }
+  }
+}
+
 export function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -285,8 +318,9 @@ export function loadSettings() {
     return {};
   }
 }
+/** Save the settings; false (and a message through `onFail`, when set) if the browser has no room. Never throws. */
 export function saveSettings(s) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  return safeSet(SETTINGS_KEY, s, 'your settings');
 }
 
 export function loadTemplates() {
@@ -297,7 +331,26 @@ export function loadTemplates() {
   }
 }
 export function saveTemplates(list) {
-  localStorage.setItem(TEMPLATES_KEY, JSON.stringify(list));
+  return safeSet(TEMPLATES_KEY, list, 'your templates');
+}
+
+let onSaveFail = null;
+/** The app registers one function to hear about a save that did not fit: fn(what, detail). */
+export function setSaveFailHandler(fn) {
+  onSaveFail = fn;
+}
+/** Tell the app that `what` could not be saved in this browser (storage full). */
+export function reportSaveFail(what, detail = {}) {
+  if (onSaveFail) onSaveFail(what, detail);
+}
+function safeSet(key, value, what) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    reportSaveFail(what);
+    return false;
+  }
 }
 
 // IndexedDB keeps the media blobs (videos, images, audio, fonts) between visits.
@@ -323,12 +376,14 @@ function tx(mode, fn) {
         const result = fn(t.objectStore('media'));
         t.oncomplete = () => resolve(result && 'result' in result ? result.result : undefined);
         t.onerror = () => reject(t.error);
+        t.onabort = () => reject(t.error || new Error('The browser could not store the file'));
       }),
   );
 }
 
 export const mediaDB = {
-  put: (rec) => tx('readwrite', (s) => s.put(rec)).catch(() => {}),
+  /** Resolves once the file is stored; REJECTS when the browser could not store it (storage full), so callers can tell the user. */
+  put: (rec) => tx('readwrite', (s) => s.put(rec)),
   delete: (id) => tx('readwrite', (s) => s.delete(id)).catch(() => {}),
   all: () => tx('readonly', (s) => s.getAll()).catch(() => []),
   clear: () => tx('readwrite', (s) => s.clear()).catch(() => {}),

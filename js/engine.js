@@ -5,6 +5,7 @@ import { midiNotesFor } from './midiviz.js';
 import { gameChart } from './gamechart.js';
 import { isVisible } from './state.js';
 import { renderFrame } from './renderer.js';
+import { peakOf } from './studioedit.js';
 import { matteFor, preparePerson, onMatteChange } from './bgremove.js';
 
 export class Engine {
@@ -66,16 +67,44 @@ export class Engine {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     this.audioCtx = new Ctx();
     this.master = this.audioCtx.createGain();
-    this.master.connect(this.audioCtx.destination);
+    // a brick-wall style limiter keeps a loud song plus clip sound and effects from clipping, in the preview and the export
+    this.limiter = this.audioCtx.createDynamicsCompressor();
+    this.setLimiter(this.limiterOn !== false);
+    this.meterIn = this.audioCtx.createAnalyser(); // what the mix is before the limiter
+    this.meterIn.fftSize = 1024;
+    this.meterBuf = new Float32Array(this.meterIn.fftSize);
+    this.master.connect(this.meterIn);
+    this.master.connect(this.limiter);
+    this.limiter.connect(this.audioCtx.destination);
     this.monitor = true;
+  }
+
+  /** The limiter on (threshold -2 dB, ratio 20, 3 ms attack) or flat (no change to the sound). */
+  setLimiter(on) {
+    this.limiterOn = on;
+    if (!this.limiter) return;
+    const t = this.audioCtx.currentTime;
+    const l = this.limiter;
+    l.threshold.setValueAtTime(on ? -2 : 0, t);
+    l.knee.setValueAtTime(0, t);
+    l.ratio.setValueAtTime(on ? 20 : 1, t);
+    l.attack.setValueAtTime(0.003, t);
+    l.release.setValueAtTime(0.12, t);
+  }
+
+  /** The loudest sample of the last moment in the mix before the limiter, 0..1+ (0 when nothing plays or no audio yet). */
+  level() {
+    if (!this.meterIn) return 0;
+    this.meterIn.getFloatTimeDomainData(this.meterBuf);
+    return peakOf(this.meterBuf);
   }
 
   setMonitor(on) {
     if (!this.master) return;
     if (on === this.monitor) return;
     this.monitor = on;
-    if (on) this.master.connect(this.audioCtx.destination);
-    else this.master.disconnect(this.audioCtx.destination);
+    if (on) this.limiter.connect(this.audioCtx.destination);
+    else this.limiter.disconnect(this.audioCtx.destination);
   }
 
   _node(el) {
@@ -110,8 +139,10 @@ export class Engine {
 
   // ------------------------------------------------------------ transport
 
-  play() {
+  /** `force` is for the export itself: while exporting, nothing else may start, stop or move the clock. */
+  play(force = false) {
     if (this.playing) return;
+    if (this.exporting && !force) return;
     this.ensureAudio();
     if (this.t >= this.project.duration - 0.01) this.t = 0;
     this.playing = true;
@@ -135,11 +166,13 @@ export class Engine {
   }
 
   toggle() {
+    if (this.exporting) return;
     if (this.playing) this.pause();
     else this.play();
   }
 
-  seek(t) {
+  seek(t, force = false) {
+    if (this.exporting && !force) return;
     this.t = clamp(t, 0, this.project.duration);
     if (this.playing) {
       this._startWall = performance.now();
@@ -513,9 +546,10 @@ export function exportVideo(engine, { format = 'mp4', fps = 30, bitrate = 10_000
     canvas.height = h;
     engine.exportCanvas = canvas;
     engine.exporting = true;
+    engine._emit(); // the app locks its editing controls while this is set
 
     const dest = engine.audioCtx.createMediaStreamDestination();
-    engine.master.connect(dest);
+    engine.limiter.connect(dest);
     engine.setMonitor(monitor);
     const stream = canvas.captureStream(fps);
     // audio: false makes a silent file (a Spotify Canvas plays over the track itself)
@@ -529,8 +563,9 @@ export function exportVideo(engine, { format = 'mp4', fps = 30, bitrate = 10_000
       engine.exportCanvas = null;
       engine.exporting = false;
       engine.onEnded = null;
+      engine._emit();
       try {
-        engine.master.disconnect(dest);
+        engine.limiter.disconnect(dest);
       } catch {
         /* already disconnected */
       }
@@ -565,10 +600,10 @@ export function exportVideo(engine, { format = 'mp4', fps = 30, bitrate = 10_000
     engine.onEnded = () => setTimeout(() => rec.state !== 'inactive' && rec.stop(), 150);
 
     // Prime: seek to the start and give elements a moment to land on their first frames.
-    engine.seek(from);
+    engine.seek(from, true);
     setTimeout(() => {
       rec.start(250);
-      engine.play();
+      engine.play(true);
     }, 400);
 
     exportVideo.cancel = () => {
