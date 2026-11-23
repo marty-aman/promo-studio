@@ -57,6 +57,8 @@ import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS, MA
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate, tabIntoLayout, lyricsIntoLayout, tabSources, templateNeeds } from './templates.js';
 import { SONG_TEMPLATES, songTemplateReady, applySongTemplate } from './songtemplates.js';
+import { speechCaptionsFor } from './ai/panel-speechcaptions.js';
+import { clipTarget } from './ai/captionsync.js';
 import { parseSubtitles, toSRT, toVTT, videoCues, CAPTION_STYLES, setCaptions, styleCaptions, shiftCaptions, captionY } from './subtitles.js';
 import { areaOf } from './templates.js';
 const AREAS_FOR = (layout) => {
@@ -2868,6 +2870,15 @@ export function createPanels({ store, engine, ui }) {
     );
   }
 
+  // the caption defaults the speech-captions box uses (the Captions section's style and place)
+  const speechEnv = (sel) => ({
+    media,
+    store,
+    target: () => clipTarget(store.get(), sel),
+    style: () => ((store.get().texts.find((t) => t.caption) || {}).captionStyle || captionUI.style),
+    y: () => captionY(store.get().layout && store.get().layout !== 'full' ? AREAS_FOR(store.get().layout) : null),
+  });
+
   function buildInspector(b) {
     const sel = ui.selection;
     const p = store.get();
@@ -2920,6 +2931,7 @@ export function createPanels({ store, engine, ui }) {
         ),
         isVideo && rec ? soundSyncSection(b, sel, rec, c) : null,
         isVideo && rec ? qualitySection({ rec, clip, setStart: (v) => store.update((d) => c((x, vv) => (x.in = Math.max(0, vv)))(d, v)) }) : null,
+        isVideo && rec ? section('Captions', speechCaptionsFor(sel, speechEnv(sel))) : null,
         section(
           'Frame',
           b.segmented('Fit', () => G().fit, c((x, v) => (x.fit = v)), [['cover', 'Fill'], ['contain', 'Fit'], ['blurfill', 'Fit + blur']]),
@@ -3141,6 +3153,7 @@ export function createPanels({ store, engine, ui }) {
         b.number('From (s into the file)', () => get().in, A((x, v) => (x.in = Math.min(v, Math.max(0, (rec?.duration || 0) - 0.2)))), { min: 0, step: 0.05 }),
         b.range('Volume', () => get().volume, A((x, v) => (x.volume = v)), { min: 0, max: 1.5, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
         h('div', { class: 'grid2' }, b.number('Fade in (s)', () => get().fadeIn, A((x, v) => (x.fadeIn = v)), { min: 0, step: 0.1 }), b.number('Fade out (s)', () => get().fadeOut, A((x, v) => (x.fadeOut = v)), { min: 0, step: 0.1 })),
+        rec ? section('Captions', speechCaptionsFor(sel, speechEnv(sel))) : null,
         button('Move to playhead', () => store.update(A((x) => (x.start = +engine.t.toFixed(2)))), { variant: 'sm' }),
         iconButton('trash', 'Delete audio track', () => ui.deleteSelection(), 'ghost danger'),
       );
