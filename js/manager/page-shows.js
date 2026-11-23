@@ -12,6 +12,8 @@ import { songsUI, autoNote } from './page-songs.js';
 import { showTaskState, showTaskDone, setTaskDone } from './todoauto.js';
 import { parseTime } from './releases.js';
 import { memberSplit, splitText } from './extras.js';
+import { showDaySection } from './page-showday.js';
+import { expenseTotal } from './showday.js';
 
 const BILLING = [['headline', 'Headliner'], ['support', 'Support'], ['opener', 'Opener'], ['festival', 'Festival'], ['other', 'Other']];
 const label = (list, k) => (list.find(([v]) => v === k) || [k, k])[1];
@@ -299,11 +301,13 @@ function showPage(ctx, show) {
         String(show.setlist || '').trim() ? h('div', { class: 'row' }, button('Print setlist', () => (exportPDF(stageSetlistHTML(show, m.band, setlistTimes(show.setlist, setlistSongs(m), dur, { gap: +show.setGap || 0 })), `Setlist ${show.venue || ''} ${show.date || ''}`.trim()), toast('Big type on one page, for the stage floor.')), { iconName: 'print', variant: 'sm', title: 'The setlist in big type on one page, to tape to the stage' })) : null,
         h('h2', {}, 'After the show'),
         h('div', { class: 'mgr-three' }, f.text(`spay-${show.id}`, 'We were paid', show.settlement.pay, S((s, v) => (s.settlement.pay = v)), { type: 'number', placeholder: '$' }), f.text(`smer-${show.id}`, 'Merch sales', show.settlement.merch, S((s, v) => (s.settlement.merch = v)), { type: 'number', placeholder: '$' }), f.text(`scost-${show.id}`, 'Costs', show.settlement.costs, S((s, v) => (s.settlement.costs = v)), { type: 'number', placeholder: 'gas, food…' })),
+        expenseTotal(show.recap) ? h('p', { class: 'muted tiny sd-exp-note', 'data-k': 'sd-exp-note' }, `Recap expense lines: $${expenseTotal(show.recap).toFixed(2).replace(/\.00$/, '')}. `, button('Use as Costs', () => ctx.update(S((s) => (s.settlement.costs = expenseTotal(s.recap)))), { variant: 'sm ghost', title: 'Copies the total into Costs, which Net and Money use' })) : null,
         show.settlement.pay !== '' || show.settlement.merch !== '' || show.settlement.costs !== '' ? h('p', { class: `mgr-net ${net >= 0 ? 'ok' : 'bad'}` }, `Net: ${net < 0 ? '−' : ''}$${Math.abs(net).toFixed(2)}`) : null,
         splitBox(ctx, show, S, net),
         h('h3', { class: 'mgr-h3' }, 'Summary for the band chat'),
         h('pre', { class: 'mgr-pre' }, showSummary(show, m.songs, m.band)),
       )),
     ),
+    showDaySection(ctx, show, { S, times: setlistTimes(show.setlist, setlistSongs(m), dur, { gap: +show.setGap || 0 }), members: (m.band.members || []).map((x) => x && x.name).filter(Boolean) }),
   );
 }

@@ -3,6 +3,8 @@
 import { esc, escBr, docHTML } from './pdf.js';
 import { niceDate } from './model.js';
 import { showTaskDone } from './todoauto.js';
+import { stagePlotSVG } from './showplan.js';
+import { normalizeGear, needsBackline } from './showday.js';
 
 const money = (v) => `${v < 0 ? '−' : ''}$${Math.abs(+v || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 const fmtT = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
@@ -72,4 +74,38 @@ export function calendarHTML({ title, monthName, items }) {
   const KIND = { show: 'Show', release: 'Release', shoot: 'Shoot', post: 'Post', task: 'To do', event: 'Event' };
   const rows = [...byDay].map(([d, list]) => `<tr><th style="width:150px">${esc(niceDate(d))}</th><td><ul>${list.map((x) => `<li><b>${esc(KIND[x.kind] || KIND.task)}</b> · ${esc(x.title || x.text || '')}${x.kind === 'event' && x.sub ? ` · ${esc(x.sub)}` : ''}${x.artist ? ` <span class="muted">(${esc(x.artist)})</span>` : ''}</li>`).join('')}</ul></td></tr>`).join('');
   return docHTML(title, rows ? `<table>${rows}</table>` : '<p class="muted">Nothing planned this month.</p>', { subtitle: monthName });
+}
+
+/**
+ * The advance sheet: one page for the venue and its sound engineer. `model` is advanceModel() (showday.js),
+ * the allow-listed fields, so nothing else on the show can reach this page.
+ */
+export function advanceHTML(model) {
+  const rows = model.rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${escBr(v)}</td></tr>`).join('');
+  const lineup = model.lineup.length ? `<h2>Lineup</h2><ol>${model.lineup.map((b) => `<li>${esc(b.name)}${b.time ? ` · ${esc(b.time)}` : ''}</li>`).join('')}</ol>` : '';
+  const contacts = model.contacts.length ? `<h2>Contact on the day</h2><table>${model.contacts.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</table>` : '';
+  const st = model.stage;
+  const inputs = st && st.inputs.length ? `<h2>Input list · ${st.inputs.length} channels</h2><table class="small"><tr><th class="n">Ch</th><th>Input</th><th>Mic / DI</th></tr>${st.inputs.map((r) => `<tr><td class="n">${r.ch}</td><td>${esc(r.name)}</td><td>${esc(r.mic)}</td></tr>`).join('')}</table>` : '';
+  const mixes = st && st.mixes.length ? `<p class="small"><b>Monitor mixes:</b> ${st.mixes.map((x) => `${x.mix} ${esc(x.name)} (${esc(x.type)})`).join(', ')}</p>` : '';
+  const body = `<div class="two"><div>
+${rows ? `<h2>The day</h2><table>${rows}</table>` : '<p class="muted">No times filled in yet.</p>'}
+${lineup}${contacts}
+${model.needs.length ? `<h2>Backline we need</h2><ul>${model.needs.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+${model.rider ? `<h2>Rider</h2><p>${escBr(model.rider)}</p>` : ''}
+</div><div>
+${st ? `<h2>Stage plot</h2><div class="box">${stagePlotSVG(st.plot, { title: `${model.bandName || 'Band'} stage plot` })}</div>${st.backline ? `<p class="small"><b>Backline:</b> ${escBr(st.backline)}</p>` : ''}${st.notes ? `<p class="small"><b>For the engineer:</b> ${escBr(st.notes)}</p>` : ''}${mixes}${inputs}` : ''}
+${model.bandContact.length ? `<h2>Band contact</h2><p>${esc(model.bandContact.join(' · '))}</p>` : ''}
+</div></div>`;
+  return docHTML(model.title, body, { subtitle: model.subtitle, css: '.sp-svg{width:100%;max-height:230px;display:block}' });
+}
+
+/** The gear and load-in list as a printable checklist (what's packed shows ticked). */
+export function gearListHTML(show, band = {}, gear = []) {
+  const list = normalizeGear(gear);
+  const bringing = list.filter((g) => !needsBackline(g));
+  const need = list.filter(needsBackline);
+  const row = (g) => `<tr><td style="width:24px">${g.packed ? '☑' : '☐'}</td><td>${esc(g.label)}${g.borrowed ? ' <span class="muted">(borrowed)</span>' : ''}</td><td>${esc(g.owner)}</td></tr>`;
+  const body = `<h2>Packing list · ${bringing.filter((g) => g.packed).length}/${bringing.length} packed</h2>${bringing.length ? `<table><tr><th></th><th>Item</th><th>Whose</th></tr>${bringing.map(row).join('')}</table>` : '<p class="muted">Nothing on the list yet.</p>'}
+${need.length ? `<h2>Needs backline (not confirmed)</h2><ul>${need.map((g) => `<li>${esc(g.label)}</li>`).join('')}</ul>` : ''}`;
+  return docHTML(`${band.name ? `${band.name} · ` : ''}Gear: ${show.venue || 'Show'}`, body, { subtitle: [show.date ? niceDate(show.date) : '', show.loadIn && `Load-in ${show.loadIn}`].filter(Boolean).join(' · ') });
 }
