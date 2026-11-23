@@ -5,13 +5,27 @@ import { niceDate, mid } from './model.js';
 import { planPosts } from './ideas.js';
 import { POST_STATUSES } from './page-songs.js';
 import { FORMATS, PLATFORMS, GROUPINGS, formatLabel, parseLink, isYouTube, fetchYouTubeStats, postMetrics, compare, findings, importRows, matchImport } from './content.js';
+import { buildOutreach } from './page-outreach.js'; // also registers the outreach follow-ups in the agenda
 
 export const contentUI = { song: '', status: '', by: 'format', open: null, busy: false };
 const pct = (x) => (x == null ? '—' : `${(x * 100).toFixed(x < 0.1 ? 1 : 0)}%`);
 const fix1 = (x) => (x == null ? '—' : x.toFixed(1));
 const big = (x) => (x == null ? '—' : x >= 1e6 ? `${(x / 1e6).toFixed(1)}M` : x >= 1e4 ? `${Math.round(x / 1e3)}k` : x.toLocaleString());
 
+const TABS = [['overview', 'Schedule & stats'], ['outreach', 'Outreach']];
+const tabBar = (ctx, tab) => h('div', { class: 'mgr-tabs', role: 'tablist' }, TABS.map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': k === tab ? 'true' : 'false', class: `mgr-tab${k === tab ? ' on' : ''}`, onclick: () => ctx.go('content', null, k) }, l)));
+
 export function buildContent(ctx) {
+  const tab = ctx.view.tab === 'outreach' ? 'outreach' : 'overview';
+  if (tab === 'outreach') {
+    return h(
+      'div',
+      { class: 'mgr-page wide' },
+      h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, 'Content'), h('p', { class: 'muted' }, 'Blogs, curators, radio, podcasts and press you pitch, and when to follow up.'))),
+      tabBar(ctx, tab),
+      buildOutreach(ctx),
+    );
+  }
   const m = ctx.store.get();
   const f = ctx.form;
   const ui = contentUI;
@@ -193,6 +207,7 @@ export function buildContent(ctx) {
       h('div', {}, h('h1', {}, 'Content'), h('p', { class: 'muted' }, 'Every planned and posted short across your songs, with its stats.')),
       h('div', { class: 'row' }, button('Import stats (CSV)', importCSV, { iconName: 'upload', variant: 'sm', title: 'TikTok Studio or Instagram / Meta Business Suite content export' }), button(ui.busy ? 'Fetching…' : `Fetch YouTube stats${ytPosts.length ? ` (${ytPosts.length})` : ''}`, () => fetchYT(), { iconName: 'download', variant: 'sm', disabled: ui.busy }), button('Add a post', add, { iconName: 'plus', variant: 'sm primary' })),
     ),
+    tabBar(ctx, tab),
     keyBox('YouTube Data API key', keyIn, {
       saved: !!settings.youtubeKey,
       help: h('span', {}, 'Free. In ', h('a', { href: 'https://console.cloud.google.com/apis/library/youtube.googleapis.com', target: '_blank', rel: 'noopener noreferrer' }, 'Google Cloud'), ', enable “YouTube Data API v3”, then Credentials → Create API key. It reads public numbers (views, likes, comments) for any YouTube or Shorts link. Stored in this browser only.'),
