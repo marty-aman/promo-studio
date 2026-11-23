@@ -47,10 +47,17 @@ export function makeLayer(p, type, t = 0) {
   return th ? themeLayer(L, th, p.theme.colors) : L;
 }
 
+// The edit's song's Guitar Pro files, main one first (the app sets this), so new tab layers start on them.
+let songTabIds = () => [];
+export const setSongTabs = (fn) => (songTabIds = fn);
+
 function makeLayerRaw(p, type, t = 0) {
   const n = (p.layers || []).filter((l) => l.type === type).length + 1;
   const base = { id: uid('lyr'), type, name: `${LAYER_TYPES[type].label}${n > 1 ? ` ${n}` : ''}`, visible: true };
-  const all = media.all();
+  const lib = media.all();
+  // the song's tabs first, then the rest of the library as before
+  const own = songTabIds().map((id) => media.get(id)).filter(Boolean);
+  const all = [...own, ...lib.filter((m) => !own.includes(m))];
   if (type === 'video') return { ...base, opacity: 1, blend: 'source-over', clips: [] };
   if (type === 'tab') {
     const rec = all.find((m) => m.kind === 'tab' && m.tracks && m.tracks.length);

@@ -520,6 +520,16 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
   saved Video Studio tab of `tabstudio` opens it once): open any Guitar Pro
   file from your media, or start a new tab. All tracks (guitar, bass, 7-string, 5-string, drums) are
   stacked and scroll together.
+  - **The selected song's tab opens by default.** With nothing open, Tab Studio loads the Guitar Pro file on
+    the selected song's Files tab: the edit's song when you came from the Video Studio, otherwise the song
+    open in the Manager (the one named in the top bar). The main file is the first one you added (drafts
+    made from a stem come last); if the video already uses one of the song's files, that one opens. A line
+    under the file bar says **From “song”**, with a picker when the song has several tabs. When the song
+    changes, the tab moves to the new song's tab, but only if it was opened this way and not edited. A
+    tab you opened yourself (the file menu, Upload, New tab, Make tab from stems, Open in Tab Studio) or
+    edited stays, and the line offers **Back to the song's tab**. A song with no tab shows a hint and
+    **Open its Files tab**. A file that is gone from this browser is named, with **Replace missing files**.
+    In the Video Studio, a new Guitar Pro, drum chart or rhythm game layer starts on the edit's song's file.
   - Keyboard editing: arrows move, digits type frets (two quickly for 10–24), + / − change length,
     `.` dots, R rests, I inserts a beat. Techniques: H hammer-on, S slide, B bend, V vibrato, P palm mute,
     X dead note, G ghost.

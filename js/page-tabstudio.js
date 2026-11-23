@@ -12,6 +12,8 @@ import { TRANSCRIBE_KINDS, decodeStem, gridFromSamples, transcribeSamples, drums
 import { transcribeStem } from './ai/basicpitch.js';
 import * as ST from './stemtab.js';
 import { wrapBars, clampZoom, nextSpeed, loopPosition, readGesture } from './tablayout.js';
+import { songTabChoices, tabToFollow } from './manager/files.js';
+import { relinkButton } from './relink.js';
 
 // Phones and tablets (and any touch screen) get the touch layout: bars wrap to the screen, a playback bar at
 // the bottom, an on-screen edit pad and a tracks sheet. A desktop window wider than this keeps the classic layout.
@@ -31,6 +33,7 @@ const S = {
   model: null,
   sourceId: null, // media id the model was opened from
   savedId: null, // media id of the last save
+  auto: null, // { songId, mediaId }: opened for the selected song (not by hand), so it follows the song until you edit it
   sel: { track: 0, bar: 0, beat: 0, key: 1 }, // key: string (fretted) or GM drum number
   undo: [],
   redo: [],
@@ -187,6 +190,7 @@ export function openInTabStudio(rec, offset = 0) {
   E.alignTracks(S.model);
   S.model.offset = offset;
   S.sourceId = rec.id;
+  S.auto = null;
   S.sel = { track: 0, bar: 0, beat: 0, key: 1 };
   S.undo = [];
   S.redo = [];
@@ -220,6 +224,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
     E.alignTracks(S.model);
     S.sourceId = rec.id;
     S.savedId = null;
+    S.auto = null; // opened by hand: it stays when the selected song changes
     S.undo = [];
     S.redo = [];
     S.dirty = false;
@@ -232,11 +237,86 @@ export function buildTabStudio({ store, engine, ui, panels }) {
     S.model = E.newSong({ title: p.endCard.title && p.endCard.title !== 'Song Title' ? p.endCard.title : 'New tab', tempo: p.beats ? Math.round(p.beats.bpm) : 120 });
     S.sourceId = null;
     S.savedId = null;
+    S.auto = null;
     S.undo = [];
     S.redo = [];
     S.dirty = false;
     S.sel = { track: 0, bar: 0, beat: 0, key: 1 };
     render();
+  }
+
+  // ------------------------------------------------------------ the selected song's tab
+  // Tab Studio opens the Guitar Pro file attached to the selected song, and moves to the next song's file when the
+  // song changes, as long as that tab was opened for the song and not edited. A tab you opened yourself stays.
+  const curSong = () => (ui.tabSong ? ui.tabSong() : null);
+  const choicesFor = (song) => (song ? songTabChoices(song, (id) => media.get(id), (id) => media.missingLabel(id, 'Guitar Pro file').replace(/^Missing:? ?/, '')) : []);
+  const inVideo = () => (store.get().layers || []).map((l) => l.mediaId).filter(Boolean);
+  const mainTab = (song) => tabToFollow({ model: null }, song, choicesFor(song), inVideo());
+  function openForSong(id, song) {
+    const rec = media.get(id);
+    if (!rec || !rec.score) return false;
+    const L = (store.get().layers || []).find((l) => l.mediaId === id && (l.type === 'tab' || (l.type === 'drums' && l.source === 'gp')));
+    S.model = E.fromScore(rec.score);
+    E.alignTracks(S.model);
+    if (L && L.offset != null) S.model.offset = L.offset;
+    S.sourceId = id;
+    S.savedId = null;
+    S.auto = { songId: song.id, mediaId: id };
+    S.undo = [];
+    S.redo = [];
+    S.dirty = false;
+    const ti = L && L.type === 'tab' ? Math.max(0, Math.min(L.track || 0, S.model.tracks.length - 1)) : 0;
+    S.sel = { track: ti, bar: 0, beat: 0, key: S.model.tracks[ti] && S.model.tracks[ti].kind === 'drums' ? 36 : 1 };
+    return true;
+  }
+  /** Open (or close) the tab the selected song calls for. Returns true when something changed. */
+  function followSong() {
+    const song = curSong();
+    const edited = S.dirty || !!S.savedId || S.undo.length > 0;
+    const want = tabToFollow({ model: S.model, auto: S.auto, edited, sourceId: S.sourceId }, song, choicesFor(song), inVideo());
+    if (want === null) return false;
+    if (want) return openForSong(want, song);
+    // it followed the last song, and this one has no tab yet
+    stopPlayQuiet();
+    Object.assign(S, { model: null, sourceId: null, auto: null, undo: [], redo: [] });
+    return true;
+  }
+  /** "From <song>", a picker for a song with several tabs, a way back to the song's tab, or why there is none. */
+  function songLine() {
+    const song = curSong();
+    if (!song) return null;
+    const choices = choicesFor(song);
+    const ok = choices.filter((c) => c.state === 'ok');
+    const mine = S.model && S.auto && S.auto.songId === song.id;
+    const openSong = (id) => {
+      if (S.dirty && !confirm('Open the song’s tab? Unsaved changes here will be lost.')) return render();
+      stopPlayQuiet();
+      if (openForSong(id, song)) render();
+    };
+    const parts = [];
+    if (mine) {
+      parts.push(h('span', { class: 'ts-from' }, icon('music', 14), ` From “${song.title}”`));
+      if (ok.length > 1) {
+        const pick = h('select', { 'aria-label': `${song.title}: its Guitar Pro files` }, ok.map((c) => h('option', { value: c.mediaId, selected: c.mediaId === S.sourceId }, `${c.name}${c.draft ? ' (draft from a stem)' : ''}`)));
+        pick.addEventListener('change', () => openSong(pick.value));
+        parts.push(pick);
+      }
+    } else if (ok.length) {
+      parts.push(
+        h('span', { class: 'muted small' }, S.model ? `“${song.title}” has its own tab.` : `“${song.title}” has a Guitar Pro file.`),
+        button(S.model ? 'Back to the song’s tab' : `Open “${ok[0].name}”`, () => openSong(mainTab(song)), { iconName: 'guitar', variant: 'ghost sm ts-songback' }),
+      );
+    } else if (!choices.length) {
+      parts.push(
+        h('span', { class: 'muted small ts-nosongtab' }, `“${song.title}” has no Guitar Pro file yet. Attach one on its Files tab in Songs & releases.`),
+        ui.openSongFiles ? button('Open its Files tab', () => ui.openSongFiles(song.id), { iconName: 'file', variant: 'ghost sm' }) : null,
+      );
+    }
+    for (const c of choices.filter((x) => x.state !== 'ok')) {
+      parts.push(h('span', { class: 'small ts-missing' }, c.state === 'missing' ? `“${c.name}” (on “${song.title}”) can’t be found: the file is no longer in this browser.` : `“${c.name}” (on “${song.title}”) couldn’t be read as a Guitar Pro file.`));
+    }
+    if (choices.some((c) => c.state === 'missing')) parts.push(relinkButton('manager', { roots: () => [song] }));
+    return h('div', { class: 'page-bar ts-songtab' }, parts.filter(Boolean));
   }
 
   // ------------------------------------------------------------ editing
@@ -1471,7 +1551,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       transportEl.remove();
       padEl.remove();
       closeSheet();
-      root.replaceChildren(...[head, fileBar, S.showTx ? txPanel() : null,
+      root.replaceChildren(...[head, fileBar, songLine(), S.showTx ? txPanel() : null,
         h('div', { class: 'ts-empty' },
           h('p', {}, 'Open a Guitar Pro file from your media, start a new tab, or make one from your stems.'),
           h('div', { class: 'row' }, files.length ? button(`Open “${files[0].name}”`, () => open(files[0]), { variant: 'primary' }) : null, button('New tab', fresh, { iconName: 'plus' }), button('Make tab from stems…', () => ((S.showTx = true), render()), { iconName: 'wand' })))].filter(Boolean));
@@ -1510,7 +1590,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       const pickTrack = oneTrack() ? h('button', { type: 'button', class: 'btn ts-trackpick', onclick: openSheet, title: 'Pick a track' }, icon('layers', 18), h('span', {}, `${track().name} · ${S.sel.track + 1} of ${m.tracks.length}`)) : null;
       padEl.hidden = !padOpen();
       root.classList.toggle('ts-pad-open', padOpen());
-      root.replaceChildren(...[head, fold, S.showTx ? txPanel() : null, pickTrack, status, tracksEl, issuesEl, keys, padEl, transportEl].filter(Boolean));
+      root.replaceChildren(...[head, songLine(), fold, S.showTx ? txPanel() : null, pickTrack, status, tracksEl, issuesEl, keys, padEl, transportEl].filter(Boolean));
       if (sheetEl) {
         sheetEl = null;
         sheetBack = null;
@@ -1525,6 +1605,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       root.replaceChildren(...[
         head,
         fileBar,
+        songLine(),
         S.showTx ? txPanel() : null,
         songBar,
         tools,
@@ -1581,8 +1662,8 @@ export function buildTabStudio({ store, engine, ui, panels }) {
   // browsers differ in which of these counts as the tap that allows sound (iOS: touchend), so listen to all three
   const TAP_EVENTS = ['pointerup', 'touchend', 'click'];
   for (const t of TAP_EVENTS) root.addEventListener(t, onFirstTap);
-  // open the tab the video uses, if nothing is open yet
-  if (!S.model) {
+  // open the selected song's tab (or the next song's, see followSong); with no song selected, the tab the video uses
+  if (!followSong() && !S.model && !curSong()) {
     const p = store.get();
     const L = (p.layers || []).find((l) => l.type === 'tab' && l.mediaId && media.get(l.mediaId) && media.get(l.mediaId).score);
     if (L) {
@@ -1593,10 +1674,19 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       S.sel = { track: Math.min(L.track || 0, S.model.tracks.length - 1), bar: 0, beat: 0, key: 1 };
     }
   }
+  let shownSong = curSong() ? curSong().id : '';
   render();
   return {
     el: root,
     render,
+    /** The selected song changed while the page is open. */
+    songChanged() {
+      const s = curSong();
+      if ((s ? s.id : '') === shownSong) return;
+      shownSong = s ? s.id : '';
+      followSong();
+      render();
+    },
     leave() {
       stopPlayQuiet();
       window.removeEventListener('resize', onResize);

@@ -167,6 +167,43 @@ export function studioSongContext(m, { songId = '', audioId = '', info = () => n
   const stems = f
     ? groupStems(f.stems).flatMap((g) => g.stems).filter((st) => info(st.mediaId)).map((st) => ({ mediaId: st.mediaId, role: st.role, label: `${stemRoleLabel(st.role)}: ${stemName(st, info(st.mediaId).name)}` }))
     : [];
-  const tabs = f ? (f.tabs || []).map((t) => t.mediaId).filter((id) => info(id)) : [];
+  const tabs = song ? songTabsMainFirst(song).map((t) => t.mediaId).filter((id) => info(id)) : [];
   return { song, songs, stems, tabs };
+}
+
+/** A song's Guitar Pro files, the main one first: files you added come before drafts made from a stem. */
+export function songTabsMainFirst(song) {
+  const t = (song && song.files && song.files.tabs) || [];
+  return [...t.filter((x) => !x.draft), ...t.filter((x) => x.draft)];
+}
+
+/**
+ * The Guitar Pro files Tab Studio offers for a song, main one first: [{ mediaId, name, draft, state }], state
+ * 'ok', 'missing' (no longer in the media library) or 'unreadable' (in the library, but it could not be read
+ * as a tab). `info(id)` is the media record or null; `missingName(id)` is the name a missing file had.
+ */
+export function songTabChoices(song, info, missingName = () => 'Guitar Pro file') {
+  return songTabsMainFirst(song).map((t) => {
+    const rec = info(t.mediaId);
+    const state = !rec ? 'missing' : rec.score ? 'ok' : 'unreadable';
+    return { mediaId: t.mediaId, name: rec ? rec.name : missingName(t.mediaId), draft: !!t.draft, state };
+  });
+}
+
+/**
+ * Which tab Tab Studio should open for the selected `song`: a media id to open, '' to close the open tab, or null
+ * to keep what is open. `open` describes the open tab: { model (truthy when a tab is open), auto ({ songId, mediaId }
+ * when it was opened for a song rather than by hand), edited, sourceId }. A tab opened by hand or edited is kept.
+ * `inVideo` lists the tab files the video's layers use; one of the song's files among them is picked first.
+ */
+export function tabToFollow(open, song, choices, inVideo = []) {
+  if (!song) return null;
+  if (open.model) {
+    const following = open.auto && !open.edited && open.sourceId === open.auto.mediaId;
+    if (!following || open.auto.songId === song.id) return null;
+  }
+  const ok = choices.filter((c) => c.state === 'ok');
+  const pick = ok.find((c) => inVideo.includes(c.mediaId)) || ok[0];
+  if (pick) return pick.mediaId;
+  return open.model ? '' : null;
 }
