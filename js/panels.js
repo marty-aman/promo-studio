@@ -35,6 +35,7 @@ import { templateFromProject, applyMyTemplate, templateFile, parseTemplateFile, 
 import { bgRemoveSection } from './panel-bgremove.js';
 import { studioAutoSync } from './ai/panel-lyricsync.js';
 import { reframeSection } from './panel-reframe.js';
+import { qualityBadges, weakToggle, qualitySection } from './panel-quality.js';
 import { buildSuggestPanel, hasNewSuggestions } from './panel-suggest.js';
 import { captionPicker } from './panel-captions.js';
 import { lyricIdeasAssistant } from './ai/panel-assistant.js';
@@ -1459,6 +1460,7 @@ export function createPanels({ store, engine, ui }) {
     const items = media.all();
     const grid = h('div', { class: 'media-grid' });
     if (!items.length) grid.append(h('p', { class: 'muted small' }, 'Nothing here yet.'));
+    const weakBox = items.some((m) => m.kind === 'video') ? weakToggle() : null;
     for (const rec of items) {
       const acts = [];
       if (rec.kind === 'video' || rec.kind === 'image') acts.push(button('Add to video', () => actions.addClip(rec), { iconName: 'plus', variant: 'sm' }));
@@ -1479,6 +1481,7 @@ export function createPanels({ store, engine, ui }) {
             { class: `thumb kind-${rec.kind}` },
             rec.thumb ? h('img', { src: rec.thumb, alt: '' }) : icon(rec.kind === 'audio' || rec.kind === 'midi' ? 'music' : rec.kind === 'font' ? 'type' : rec.kind === 'tab' ? 'guitar' : 'file', 26),
             h('span', { class: 'badge' }, rec.kind === 'font' ? 'font' : isFinite(rec.duration) && rec.duration ? formatTime(rec.duration, false) : rec.kind),
+            qualityBadges(rec),
           ),
           h('div', { class: 'media-name', title: rec.name }, rec.name),
           rec.attribution ? h('div', { class: 'muted tiny' }, `${rec.attribution.providerLabel || PROVIDERS[rec.attribution.provider]?.label || 'Openverse'} · ${rec.attribution.author}`) : null,
@@ -1541,7 +1544,7 @@ export function createPanels({ store, engine, ui }) {
       'div',
       {},
       section('Upload', drop, h('div', { class: 'row gdrive-row' }, fromDrive)),
-      section('Library', grid),
+      section('Library', weakBox, grid),
       visual.length
         ? section(
             'Auto-edit to the beat',
@@ -2916,6 +2919,7 @@ export function createPanels({ store, engine, ui }) {
           h('p', { class: 'muted tiny' }, isVideo ? `Up to ${maxDur.toFixed(1)}s available at this speed. Drag clip edges on the timeline to trim.` : 'Images can be any length.'),
         ),
         isVideo && rec ? soundSyncSection(b, sel, rec, c) : null,
+        isVideo && rec ? qualitySection({ rec, clip, setStart: (v) => store.update((d) => c((x, vv) => (x.in = Math.max(0, vv)))(d, v)) }) : null,
         section(
           'Frame',
           b.segmented('Fit', () => G().fit, c((x, v) => (x.fit = v)), [['cover', 'Fill'], ['contain', 'Fit'], ['blurfill', 'Fit + blur']]),

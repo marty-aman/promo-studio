@@ -1547,3 +1547,26 @@ body.exporting .workspace .stage { opacity: 1; }
 .ai-sent pre { margin: 6px 0 0; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 11px; color: var(--muted); }
 .ai-draft { display: flex; flex-direction: column; gap: 4px; }
 .ai-draft textarea { width: 100%; font: inherit; font-size: 13px; }
+
+/* == ai-moments == */
+.q-badges { position: absolute; left: 3px; bottom: 3px; display: flex; gap: 3px; flex-wrap: wrap; pointer-events: none; }
+.q-badge { font-size: 10px; line-height: 1; padding: 2px 5px; border-radius: 8px; color: #fff; background: #555; margin-right: 3px; display: inline-block; }
+.q-badge.q-blurry { background: #b45309; }
+.q-badge.q-shaky { background: #b91c1c; }
+.q-badge.q-dark { background: #374151; }
+.q-badge.q-bright { background: #a16207; }
+.q-badge.q-wait { background: rgba(0,0,0,.5); }
+.media-item[hidden], .mgr-clip[hidden] { display: none !important; }
+.mgr-clip-thumb, .media-item .thumb { position: relative; }
+.q-hide { margin: 4px 0 8px; }
+.q-marks { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.q-marks .q-strip { position: absolute; bottom: 0; height: 4px; opacity: .95; }
+.q-marks .q-chips { position: absolute; right: 14px; top: 1px; }
+.q-strip.q-blurry { background: #f59e0b; }
+.q-strip.q-shaky { background: #ef4444; }
+.q-strip.q-dark { background: #6b7280; }
+.q-strip.q-bright { background: #fde047; }
+.q-timeline { position: relative; height: 12px; background: rgba(255,255,255,.08); border-radius: 3px; margin: 6px 0; }
+.q-timeline .q-strip { position: absolute; top: 0; bottom: 0; }
+.q-timeline .q-used { position: absolute; top: -2px; bottom: -2px; border: 1px solid #fff; border-radius: 2px; }
+.q-list { margin: 4px 0 6px 16px; padding: 0; }

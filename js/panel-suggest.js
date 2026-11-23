@@ -8,6 +8,10 @@ import { inventory, inventorySignature, canSuggest, planTakes, applyTake } from 
 import { coverPalette } from './backgrounds.js';
 import { loadScan, hotTemplates, ago } from './trendscan.js';
 import { TRENDS } from './inspiration.js';
+import { analyseAll } from './framequality.js';
+
+let uiRef = null;
+const refreshSuggest = () => uiRef && uiRef.refreshPanels(true); // stable, so waiting on the same clip twice adds it once
 
 export const suggestState = { seed: 0, seen: '' };
 
@@ -97,6 +101,8 @@ export function buildSuggestPanel({ store, engine, ui }) {
     );
   }
   suggestState.seen = signature(inv);
+  uiRef = ui;
+  analyseAll(inv.clips, refreshSuggest); // flags and best moments; the cards redraw when a clip is done
   const scan = loadScan();
   const cover = p.endCard.coverMediaId && media.get(p.endCard.coverMediaId);
   const palette = cover && cover.el ? coverPalette(cover.el) : null;
