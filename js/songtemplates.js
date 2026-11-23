@@ -3,6 +3,7 @@
 // lyrics on top, and a promo of its raw footage cut on the beat with the lyrics on top. Each ends on the
 // song's end card. Pure apart from the project draft it changes; unit tested.
 import { uid, findHook, linesFromText } from './core.js';
+import { lyricsFromTiming, markTimed, timingStale } from './manager/lyrictiming.js';
 import { applyTemplate } from './templates.js';
 import { applyTake } from './suggest.js';
 import { defaultGameLayer } from './rhythmgame.js';
@@ -83,7 +84,7 @@ export function songTemplateReady(id, ctx) {
   if (id === 'st-footage') return (ctx.footage || []).length ? { ok: true, uses: [`${ctx.footage.length} footage clip${ctx.footage.length === 1 ? '' : 's'}`, lyricsUse(ctx)], missing: '' } : { ok: false, uses: [], missing: `Add raw footage to “${ctx.song.title}” (its Files tab).` };
   return { ok: false, uses: [], missing: 'Unknown template.' };
 }
-const lyricsUse = (ctx) => (ctx.song.instrumental ? 'No lyrics (instrumental)' : ctx.hasLyrics ? 'The lyrics in the edit' : ctx.song.lyrics && ctx.song.lyrics.trim() ? 'The song’s lyrics (tap-sync them, or find timed ones)' : 'No lyrics yet: add them on the Lyrics tab');
+const lyricsUse = (ctx) => (ctx.song.instrumental ? 'No lyrics (instrumental)' : ctx.hasLyrics ? 'The lyrics in the edit' : ctx.song.lyricTiming ? 'The song’s timed lyrics' : ctx.song.lyrics && ctx.song.lyrics.trim() ? 'The song’s lyrics (tap-sync them, or find timed ones)' : 'No lyrics yet: add them on the Lyrics tab');
 
 /** Put the song in and pick its hook: `len` seconds from the loudest part. Returns the hook start (song seconds). */
 function setSong(d, audio, len) {
@@ -113,7 +114,13 @@ function lyricsOn(d, ctx, facts) {
     facts.push('No lyrics: the song is instrumental');
     return;
   }
-  if (!d.lyrics.length && ctx.song.lyrics && ctx.song.lyrics.trim()) {
+  const timed = !d.lyrics.length && lyricsFromTiming(ctx.song.lyricTiming);
+  if (timed && timed.length) {
+    d.lyrics = timed;
+    d.lyricsFrom = { mediaId: ctx.audio.id, source: 'timing', title: ctx.song.title, timed: true };
+    d.lyricsTimed = markTimed(null, 'song', ctx.song.lyricTiming.savedAt);
+    facts.push(timingStale(ctx.song) ? 'The song’s saved timing is on, but its lyrics changed since: re-time or keep it on the Lyrics tab' : 'The song’s timed lyrics are on, already in time');
+  } else if (!d.lyrics.length && ctx.song.lyrics && ctx.song.lyrics.trim()) {
     d.lyrics = linesFromText(ctx.song.lyrics, +(d.song.offset + 0.5).toFixed(2), 2.5);
     d.lyricsFrom = { mediaId: ctx.audio.id, source: 'manager', title: ctx.song.title };
     facts.push('The song’s lyrics are on, 2.5 s a line: tap-sync them on the Lyrics tab (or find timed ones there)');

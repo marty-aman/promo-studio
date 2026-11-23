@@ -1,6 +1,7 @@
 // Songs: one page per song with tabs for the overview, lyrics, video shoot, release checklist, its
 // content plan, suggested playlists, the press release and playlist pitching. "Make a promo" hands the song to the video studio.
-import { h, icon, button, iconButton, toast, pickFiles } from '../dom.js';
+import { h, icon, button, iconButton, toast, pickFiles, download } from '../dom.js';
+import { timingSummary, timingStale, keepTiming, setSongTiming, timingFromLRC, timingToLRC, timingToSRT, SOURCE_LABELS } from './lyrictiming.js';
 import { driveButton } from '../gdrive.js';
 import { SONG_STATUSES, TASK_CATS, newSong, taskDue, releaseProgress, releaseChecklist, niceDate, daysBetween, mid, deleteSong, markPreReleaseDone, isPreReleaseMoot } from './model.js';
 import { hookLines, planPosts } from './ideas.js';
@@ -247,7 +248,7 @@ function overviewTab(ctx, song, S) {
         h('li', {}, h('span', {}, 'Tab, stems, video and footage'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('files') }, (({ tabs, stems, video, footage, total }) => (total ? [tabs && `${tabs} tab${tabs === 1 ? '' : 's'}`, stems && `${stems} stem${stems === 1 ? '' : 's'}`, video && 'music video', footage && `${footage} clip${footage === 1 ? '' : 's'}`].filter(Boolean).join(' · ') : 'None yet'))(fileCounts(song)))),
         h('li', {}, h('span', {}, 'Playlist pitches'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('pitch') }, (({ total, sent, added }) => (total ? `${sent} sent · ${added} added` : 'None yet'))(pitchStats(song)))),
         h('li', {}, h('span', {}, 'Sections'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('sections') }, song.sections.length ? sectionSpans(song.sections).map((x) => x.label).slice(0, 4).join(' · ') + (song.sections.length > 4 ? '…' : '') : 'None yet')),
-        h('li', {}, h('span', {}, 'Lyrics'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('lyrics') }, song.instrumental ? 'Instrumental' : song.lyrics.trim() ? `${song.lyrics.trim().split(/\n+/).length} lines` : 'None yet')),
+        h('li', {}, h('span', {}, 'Lyrics'), h('button', { type: 'button', class: 'link', onclick: () => ctx.setTab('lyrics') }, song.instrumental ? 'Instrumental' : song.lyrics.trim() ? `${song.lyrics.trim().split(/\n+/).length} lines${song.lyricTiming ? ', timed' : ''}` : 'None yet')),
       ),
       (() => {
         const m = ctx.store.get();
@@ -320,6 +321,40 @@ function lyricsTab(ctx, song, S) {
       hooks.length ? h('ol', { class: 'mgr-hooks' }, hooks.map((l) => h('li', {}, l))) : h('p', { class: 'muted small' }, 'Add lyrics to see the short, repeated or shouted lines that make the best on-screen hooks.'),
       h('p', { class: 'muted tiny' }, 'Use them as the first line of a short video, a caption, or the end card. The Video shoot tab suggests concepts from these words.'),
       button('Send lyrics to the video editor', () => ctx.studio.openPromo(song), { iconName: 'film', variant: 'sm' }),
+      timingSection(ctx, song, S),
+    ),
+  );
+}
+
+/** The lyric timing saved from the Video Studio: what it is, export it, import an .lrc, clear it. */
+function timingSection(ctx, song, S) {
+  const t = song.lyricTiming;
+  const file = (ext) => `${(song.title || 'song').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').toLowerCase() || 'song'}.${ext}`;
+  const band = ctx.store.get().band.name || '';
+  const importLRC = async () => {
+    const [f] = await pickFiles('.lrc,.txt', false);
+    if (!f) return;
+    const timing = timingFromLRC(await f.text());
+    if (!timing) return toast('No time stamps in that file, so there is nothing to time the lyrics with. Use an .lrc file, or tap-sync in the Video Studio.', 'error', 6000);
+    if (t && !confirm(`Replace the saved timing of “${song.title}” with the ${timing.lines.length} lines in ${f.name}?`)) return;
+    ctx.update(S((s) => setSongTiming(s, timing)));
+    toast(`${timing.lines.length} timed lines saved on “${song.title}”.`);
+  };
+  const stale = timingStale(song);
+  return h(
+    'div',
+    { class: 'mgr-timing', 'data-k': 'lyric-timing' },
+    h('h3', { class: 'mgr-h3' }, 'Timing'),
+    h('p', { class: 'small', 'data-k': 'timing-summary' }, timingSummary(t), t ? h('span', { class: 'muted' }, ` · ${SOURCE_LABELS[t.source] || ''}`) : null),
+    stale ? h('p', { class: 'warn-note small', 'data-k': 'timing-stale' }, 'The lyrics changed since they were timed. Send them to the video editor to re-time the new lines, or keep the timing as it is.', ' ', button('Keep the timing', () => ctx.update(S((s) => keepTiming(s))), { variant: 'sm ghost' })) : null,
+    t ? null : h('p', { class: 'muted tiny' }, 'Tap-sync the lyrics on the Video Studio’s Lyrics tab (or find timed ones there) and the timing is saved here, so every edit of this song starts in time.'),
+    h(
+      'div',
+      { class: 'row wrap' },
+      t ? button('Export .lrc', () => download(new Blob([timingToLRC(t, { title: song.title, artist: band })], { type: 'text/plain' }), file('lrc')), { iconName: 'download', variant: 'sm ghost' }) : null,
+      t ? button('Export .srt', () => download(new Blob([timingToSRT(t)], { type: 'application/x-subrip' }), file('srt')), { iconName: 'download', variant: 'sm ghost' }) : null,
+      button('Import .lrc', importLRC, { iconName: 'upload', variant: 'sm ghost' }),
+      t ? button('Clear timing', () => confirm(`Clear the saved lyric timing of “${song.title}”? The lyrics stay.`) && ctx.update(S((s) => (s.lyricTiming = null))), { iconName: 'trash', variant: 'sm ghost' }) : null,
     ),
   );
 }

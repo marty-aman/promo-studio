@@ -5,6 +5,7 @@ import { isVisible } from './state.js';
 import { h, icon } from './dom.js';
 import { kfTarget } from './panel-kf.js';
 import { allKeys, moveKey, removeKey, EASES, KEY_EPS, snapToBeat, propInfo } from './keyframes.js';
+import { markTimed } from './manager/lyrictiming.js';
 
 const HEAD_W = 112;
 
@@ -615,6 +616,7 @@ export function createTimeline({ root, store, engine, ui }) {
           if (!l) return;
           l.start = +Math.max(0, timelineToSong(a, d.song)).toFixed(3);
           l.end = +timelineToSong(b, d.song).toFixed(3);
+          d.lyricsTimed = markTimed(d.lyricsTimed, 'manual');
         } else {
           const tx = d.texts.find((x) => x.id === drag.id);
           if (!tx) return;

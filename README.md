@@ -225,6 +225,23 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
   - The Lyrics tab's **Lyrics for this song** box says where they came from, has *Use the lyrics from
     “…”* and *Find timed lyrics online*, and switches for both automatic steps.
 - Lyric times are stored in *song time*, so choosing a different section of the song keeps them in sync.
+- **Timing kept on the song.** When the edit is one of your songs (picked in the Audio tab, *Make a promo*,
+  a song template or Spotify Canvas), its line times are saved on the song in Songs & releases by
+  themselves after a tap-sync, timed lyrics from LRCLIB, an imported `.lrc`, a shift, a time typed in the
+  list or a dragged lyric block. *Save timing to the song* on the Lyrics tab does it by hand.
+  - Every later edit of that song starts with the saved timing, before the song's plain lyrics (2.5 s a
+    line) and before any LRCLIB lookup.
+  - An automatic save never overwrites a *different* timing the song already has (saved from another edit
+    or imported in the Manager): the Lyrics tab says so and offers *Replace the song's timing*.
+  - If the song's lyrics are edited after they were timed, both the studio and the Manager say
+    "Lyrics changed since they were timed": *Re-time with the new lyrics* (each line keeps its old line's
+    time, then tap-sync) or *Keep the timing*.
+  - The song's **Lyrics** tab in the Manager shows *Timed (n lines, saved date)* and how it was timed, with
+    *Export .lrc*, *Export .srt*, *Import .lrc* and *Clear timing*. Backups carry it.
+  - Only the lines are kept (`song.lyricTiming = { lines: [{ t, end?, text }], offset, source, savedAt,
+    songLength?, lyricsKey? }`), so it stays small. It's separate from the music video's sync point.
+  - Saving from the studio works for the open artist's songs; for another artist's song, open that artist
+    in the Manager first.
 - Styles: 10 fonts (or upload your own), size, position, width, alignment, colors, outline, shadow,
   background box, ALL CAPS, per-line height override. 17 animations including pop, words rise,
   drop & bounce, zoom, blur, spin, flip, typewriter, karaoke, word by word, wave, neon flicker, glitch
@@ -726,6 +743,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/rhythmgame.js`, `js/gamechart.js` | Rhythm game layer: charts from tabs, MIDI or stems, drawing, themes (unit tested) |
 | `js/songtemplates.js` | Templates from a song's files: rhythm game, music video + lyrics, raw footage + lyrics (unit tested) |
 | `js/lyricsfetch.js` | Lyrics for the chosen song: Songs & releases or LRCLIB, LRC parsing (unit tested) |
+| `js/manager/lyrictiming.js` | Lyric timing kept on the song: normalize, save rules, stale check, .lrc/.srt (unit tested) |
 | `js/drumkit.js` | The drum kit's layout (single or double bass), the Stage and metal finishes, shell wraps and effects (unit tested) |
 | `js/viz.js` | Audio visualizers: FFT analysis and the styles |
 | `js/vizreal.js` | Realistic visualizers: VU meters, LED rack, oscilloscope, speaker, fire, spectrogram |

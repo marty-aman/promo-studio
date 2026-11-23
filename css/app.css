@@ -647,6 +647,7 @@ body.mode-manager .workspace, body.mode-manager .timeline { display: none; }
 .mgr-sect h2 + h2, .mgr-sect * + h2 { margin-top: 18px; }
 .mgr-sect.warn { border-color: rgba(251, 146, 60, 0.5); background: rgba(251, 146, 60, 0.06); }
 .mgr-h3 { font-size: 12px; font-weight: 700; margin: 14px 0 6px; color: var(--text); }
+.mgr-timing { margin-top: 16px; padding-top: 4px; border-top: 1px solid var(--border); }
 .mgr-cols { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .mgr-cols > .mgr-sect { margin-bottom: 0; }
 .mgr-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
