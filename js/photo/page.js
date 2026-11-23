@@ -10,6 +10,7 @@ import { relinkButton } from '../relink.js';
 import { SIZES, sizeById, BLENDS, MASKS, SHAPES, LOOKS, defaultAdjust, newDoc, newLayer, normalizeDoc, hitTest, moveLayer, duplicateLayer, resizeBox, loadDesigns, saveDesigns, docMedia, slidesForImage } from './model.js';
 import { drawDoc, renderDoc, renderSlides, canvasBlob, layoutText } from './render.js';
 import { TEMPLATES, templateById, countdownSet, carouselSlides } from './templates.js';
+import { dist, mid, pinchScale, scrollDelta, keyboardInset, dropAfter, previewSize, isDoubleTap, cropShift } from './gesture.js';
 import { PAGE_SIZES, loadPageSize, savePageSize, paginate, folderPath, folderTree } from '../manager/photos.js';
 
 const IMAGE_ACCEPT = 'image/*,.jpg,.jpeg,.png,.webp,.gif';
@@ -87,6 +88,25 @@ export function createPhotoStudio({ root, studio }) {
     const r = studio.get(id);
     return r && r.el ? r.el : null;
   };
+  // Editing copies: a photo much bigger than the screen needs is drawn from a smaller canvas while editing
+  // (the export always uses the original). Keeps a phone from re-scaling a 12 MP photo on every frame.
+  const previews = new Map(); // mediaId → { src, cv }
+  const getPreview = (id) => {
+    const el = getImage(id);
+    if (!el) return null;
+    const w = el.naturalWidth || el.width;
+    const hh = el.naturalHeight || el.height;
+    const sz = previewSize(w, hh);
+    if (!sz) return el;
+    const hit = previews.get(id);
+    if (hit && hit.src === el) return hit.cv;
+    const cv = document.createElement('canvas');
+    cv.width = sz.w;
+    cv.height = sz.h;
+    cv.getContext('2d').drawImage(el, 0, 0, sz.w, sz.h);
+    previews.set(id, { src: el, cv });
+    return cv;
+  };
   const getMatte = (id) => {
     const m = mattes.get(id);
     return m instanceof HTMLCanvasElement ? m : null;
@@ -117,7 +137,61 @@ export function createPhotoStudio({ root, studio }) {
   const stage = h('div', { class: 'ph-stage' }, stageBox);
   const bar = h('div', { class: 'ph-bar' });
   const center = h('section', { class: 'ph-center' }, bar, stage);
-  root.replaceChildren(left, center, right);
+  // Phones and tablets (css/mobile-photo.css): the side panels become sheets reached from a bottom toolbar.
+  const toolbar = h('nav', { class: 'ph-toolbar', 'aria-label': 'Photo Studio tools' });
+  const sheetHead = h('div', { class: 'ph-sheet-head' });
+  const exportSheet = h('section', { class: 'ph-export', 'aria-label': 'Save or download' });
+  const quick = h('div', { class: 'ph-quick', role: 'toolbar', 'aria-label': 'Selected layer' });
+  center.append(quick);
+  root.replaceChildren(left, center, right, sheetHead, exportSheet, toolbar);
+  const SHEETS = [['add', 'Add', 'plus', 'left'], ['layers', 'Layers', 'layers', 'right'], ['style', 'Style', 'palette', 'right'], ['templates', 'Templates', 'layout', 'left'], ['export', 'Export', 'download', 'export']];
+  const narrow = window.matchMedia('(max-width: 1100px)');
+  const coarse = window.matchMedia('(pointer: coarse)');
+  const syncTouch = () => root.classList.toggle('ph-touch', ui.touched || narrow.matches || coarse.matches);
+  narrow.addEventListener && narrow.addEventListener('change', () => (syncTouch(), draw()));
+  syncTouch();
+  function setSheet(name, { scrollTo = null } = {}) {
+    ui.sheet = name && ui.sheet === name && !scrollTo ? null : name;
+    if (ui.sheet === 'templates') ui.tab = 'templates';
+    if (ui.sheet === 'add' && ui.tab === 'templates') ui.tab = 'photos';
+    root.classList.remove('sheet-left', 'sheet-right', 'sheet-export', 'sheet-big');
+    const kind = ui.sheet ? SHEETS.find((s) => s[0] === ui.sheet)[3] : null;
+    if (kind) root.classList.add(`sheet-${kind}`);
+    if (kind && ui.sheetBig) root.classList.add('sheet-big');
+    if (kind === 'left') renderLeft();
+    renderSheetChrome();
+    if (kind === 'right') {
+      const t = ui.sheet === 'layers' ? right.querySelector('.ph-layers-box') : null;
+      right.scrollTop = t ? t.offsetTop - right.offsetTop : 0;
+    }
+  }
+  function renderSheetChrome() {
+    const cur = SHEETS.find((s) => s[0] === ui.sheet);
+    toolbar.replaceChildren(...SHEETS.map(([k, label, ic]) => h('button', { type: 'button', class: `ph-tb${ui.sheet === k ? ' on' : ''}`, 'aria-pressed': ui.sheet === k ? 'true' : 'false', 'data-sheet': k, onclick: () => setSheet(k) }, icon(ic, 20), h('span', {}, label))));
+    sheetHead.replaceChildren(
+      h('strong', {}, cur ? cur[1] : ''),
+      h('span', { class: 'spacer' }),
+      iconButton(ui.sheetBig ? 'zoomOut' : 'zoomIn', ui.sheetBig ? 'Make the panel smaller' : 'Make the panel bigger', () => ((ui.sheetBig = !ui.sheetBig), root.classList.toggle('sheet-big', ui.sheetBig), renderSheetChrome()), 'ghost'),
+      iconButton('x', 'Close the panel', () => setSheet(null), 'ghost'),
+    );
+    root.classList.toggle('sheet-open', !!ui.sheet);
+  }
+  // the on-screen keyboard: shrink the app to what is visible so the sheet and the canvas stay in view
+  if (window.visualViewport) {
+    const vvFit = () => {
+      const kb = keyboardInset(window.innerHeight, window.visualViewport);
+      const on = kb > 0 && !root.hidden;
+      document.documentElement.style.setProperty('--ph-vvh', `${Math.round(window.visualViewport.height)}px`);
+      document.body.classList.toggle('ph-kb', on);
+      if (on) {
+        window.scrollTo(0, 0);
+        // keep the field being typed in above the keyboard
+        requestAnimationFrame(() => document.activeElement && right.contains(document.activeElement) && document.activeElement.scrollIntoView({ block: 'nearest' }));
+      }
+    };
+    window.visualViewport.addEventListener('resize', vvFit);
+    window.visualViewport.addEventListener('scroll', vvFit);
+  }
 
   let scale = 1;
   let raf = 0;
@@ -127,9 +201,11 @@ export function createPhotoStudio({ root, studio }) {
   };
   function drawNow() {
     const doc = store.get();
-    const avW = Math.max(100, stage.clientWidth - 48);
-    const avH = Math.max(100, stage.clientHeight - 48);
+    const cs = getComputedStyle(stage);
+    const avW = Math.max(100, stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+    const avH = Math.max(100, stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom));
     const fit = Math.min(avW / doc.w, avH / doc.h);
+    fitScale = fit;
     scale = ui.zoom ? ui.zoom : fit;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const cw = Math.round(doc.w * scale);
@@ -140,7 +216,7 @@ export function createPhotoStudio({ root, studio }) {
     canvas.height = Math.round(ch * dpr);
     canvas.style.width = `${cw}px`;
     canvas.style.height = `${ch}px`;
-    drawDoc(canvas.getContext('2d'), doc, { scale: scale * dpr, getImage, getMatte, preview: true });
+    drawDoc(canvas.getContext('2d'), doc, { scale: scale * dpr, getImage: getPreview, getMatte, preview: true });
     drawOverlay();
   }
   function drawOverlay() {
@@ -154,7 +230,7 @@ export function createPhotoStudio({ root, studio }) {
     if (snapGuide.x != null) parts.push(h('div', { class: 'ph-guide v', style: { left: `${snapGuide.x * scale}px` } }));
     if (snapGuide.y != null) parts.push(h('div', { class: 'ph-guide h', style: { top: `${snapGuide.y * scale}px` } }));
     if (L && L.visible) {
-      const sel = h('div', { class: `ph-sel${L.locked ? ' locked' : ''}`, style: { left: `${L.x * scale}px`, top: `${L.y * scale}px`, width: `${L.w * scale}px`, height: `${L.h * scale}px`, transform: `rotate(${L.rot}deg)` } });
+      const sel = h('div', { class: `ph-sel${L.locked ? ' locked' : ''}${ui.crop && L.type === 'image' ? ' cropping' : ''}${Math.min(L.w, L.h) * scale < 130 ? ' small' : ''}${L.y * scale < 52 ? ' rot-below' : ''}`, style: { left: `${L.x * scale}px`, top: `${L.y * scale}px`, width: `${L.w * scale}px`, height: `${L.h * scale}px`, transform: `rotate(${L.rot}deg)` } });
       if (!L.locked) {
         for (const k of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) sel.append(h('span', { class: `ph-handle ${k}`, 'data-handle': k }));
         sel.append(h('span', { class: 'ph-rot', 'data-handle': 'rot', title: 'Drag to rotate (Shift: 15° steps)' }));
@@ -162,6 +238,42 @@ export function createPhotoStudio({ root, studio }) {
       parts.push(sel);
     }
     overlay.replaceChildren(...parts);
+    renderQuick();
+  }
+  // Buttons for what the keyboard does (Delete, Ctrl+D, Esc, double-click), shown over the canvas on a phone or tablet.
+  let quickKey = '';
+  function renderQuick() {
+    const L = selLayer();
+    const key = L ? `${L.id}|${L.type}|${L.locked}|${ui.crop}` : '';
+    if (key === quickKey) return;
+    quickKey = key;
+    if (!L) return quick.replaceChildren();
+    if (L.type !== 'image') ui.crop = false;
+    const dup = () => {
+      let c = null;
+      update((d) => (c = duplicateLayer(d, L.id)));
+      if (c) ui.sel = c.id;
+      renderRight();
+    };
+    quick.replaceChildren(...[
+      iconButton('settings', 'Style this layer', () => setSheet('style', { scrollTo: true }), 'ghost'),
+      L.type === 'text' ? iconButton('type', 'Edit the text', () => editText(), 'ghost') : null,
+      L.type === 'image' && L.fit !== 'stretch' ? iconButton('scissors', ui.crop ? 'Done cropping' : 'Crop: drag the photo inside its frame', () => ((ui.crop = !ui.crop), (quickKey = ''), drawOverlay()), `ghost${ui.crop ? ' on' : ''}`) : null,
+      iconButton('copy', 'Duplicate', dup, 'ghost'),
+      iconButton('arrowUp', 'Bring forward', () => update((d) => moveLayer(d, L.id, 1)), 'ghost'),
+      iconButton('arrowDown', 'Send backward', () => update((d) => moveLayer(d, L.id, -1)), 'ghost'),
+      iconButton(L.locked ? 'key' : 'hand', L.locked ? 'Unlock' : 'Lock', () => update(L_((x) => (x.locked = !x.locked))), `ghost${L.locked ? ' on' : ''}`),
+      iconButton('trash', 'Delete this layer', removeSel, 'ghost danger'),
+      iconButton('x', 'Deselect', () => ((ui.sel = null), renderRight(), drawOverlay()), 'ghost'),
+    ].filter(Boolean));
+  }
+  function editText() {
+    setSheet('style', { scrollTo: true });
+    const ta = right.querySelector('textarea[data-k="ph-text"]');
+    if (ta) {
+      ta.focus();
+      ta.setSelectionRange(0, ta.value.length);
+    }
   }
   new ResizeObserver(() => draw()).observe(stage);
 
@@ -172,7 +284,60 @@ export function createPhotoStudio({ root, studio }) {
     const r = overlay.getBoundingClientRect();
     return { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale };
   };
+  // fingers on the canvas: one moves a layer (or pans a zoomed view), two pinch the view (or the photo while cropping)
+  const touches = new Map();
+  let pinch = null;
+  let lastTap = null;
+  let fitScale = 1;
+  overlay.addEventListener('contextmenu', (e) => e.preventDefault());
+  let pendingEdit = 0;
+  const openEdit = () => {
+    clearTimeout(pendingEdit);
+    pendingEdit = 0;
+    editText();
+  };
+  overlay.addEventListener('click', () => pendingEdit && openEdit());
+  const setView = (s) => {
+    ui.zoom = s <= fitScale * 1.02 ? 0 : s;
+  };
+  function startPinch() {
+    const [a, b] = [...touches.values()];
+    const m = mid(a, b);
+    const r = overlay.getBoundingClientRect();
+    const L = selLayer();
+    drag = null;
+    pinch = { d0: dist(a, b), scale0: scale, z0: L && L.type === 'image' ? L.zoom : 1, anchor: { x: (m.x - r.left) / scale, y: (m.y - r.top) / scale } };
+  }
+  function movePinch() {
+    const [a, b] = [...touches.values()];
+    if (!a || !b || !pinch) return;
+    const m = mid(a, b);
+    const L = selLayer();
+    if (ui.crop && L && L.type === 'image' && !L.locked) {
+      const z = pinchScale({ scale0: pinch.z0, d0: pinch.d0, d1: dist(a, b), min: 1, max: 4 });
+      update(L_((x) => (x.zoom = Math.round(z * 100) / 100)), 'pinch-crop');
+      return;
+    }
+    setView(pinchScale({ scale0: pinch.scale0, d0: pinch.d0, d1: dist(a, b), min: fitScale, max: fitScale * 8 }));
+    drawNow();
+    const r = overlay.getBoundingClientRect();
+    const d = scrollDelta({ anchor: pinch.anchor, scale, box: { x: r.left, y: r.top }, mid: m });
+    stage.scrollLeft += d.x;
+    stage.scrollTop += d.y;
+  }
   overlay.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch') {
+      if (!ui.touched) (ui.touched = true), syncTouch();
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size >= 2) {
+        try {
+          overlay.setPointerCapture(e.pointerId);
+        } catch {
+          /* synthetic pointer */
+        }
+        return startPinch();
+      }
+    }
     const p = docPoint(e);
     const handle = e.target.dataset && e.target.dataset.handle;
     const doc = store.get();
@@ -183,9 +348,18 @@ export function createPhotoStudio({ root, studio }) {
       renderRight();
       drawOverlay();
     }
+    if (!L && e.pointerType === 'touch' && (stage.scrollWidth > stage.clientWidth + 2 || stage.scrollHeight > stage.clientHeight + 2)) {
+      drag = { mode: 'pan', x: e.clientX, y: e.clientY, l: stage.scrollLeft, t: stage.scrollTop, moved: true };
+      try {
+        overlay.setPointerCapture(e.pointerId);
+      } catch {
+        /* synthetic pointer */
+      }
+      return;
+    }
     if (!L || L.locked) return;
     e.preventDefault();
-    drag = { mode: handle === 'rot' ? 'rot' : handle ? 'resize' : 'move', handle, start: p, L: structuredClone(L), key: `drag-${L.id}-${Date.now()}`, moved: false };
+    drag = { mode: handle === 'rot' ? 'rot' : handle ? 'resize' : ui.crop && L.type === 'image' ? 'crop' : 'move', handle, start: p, L: structuredClone(L), key: `drag-${L.id}-${Date.now()}`, moved: false };
     try {
       overlay.setPointerCapture(e.pointerId);
     } catch {
@@ -193,7 +367,14 @@ export function createPhotoStudio({ root, studio }) {
     }
   });
   overlay.addEventListener('pointermove', (e) => {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch) return movePinch();
     if (!drag) return;
+    if (drag.mode === 'pan') {
+      stage.scrollLeft = drag.l - (e.clientX - drag.x);
+      stage.scrollTop = drag.t - (e.clientY - drag.y);
+      return;
+    }
     const p = docPoint(e);
     const dx = p.x - drag.start.x;
     const dy = p.y - drag.start.y;
@@ -220,6 +401,13 @@ export function createPhotoStudio({ root, studio }) {
         }
         L.x = Math.round(nx);
         L.y = Math.round(ny);
+      } else if (drag.mode === 'crop') {
+        const rec = studio.get(o.mediaId);
+        if (!rec || !rec.width) return;
+        const r = (-o.rot * Math.PI) / 180;
+        const s = cropShift({ fit: o.fit, iw: rec.width, ih: rec.height, bw: o.w, bh: o.h, zoom: o.zoom }, dx * Math.cos(r) - dy * Math.sin(r), dx * Math.sin(r) + dy * Math.cos(r));
+        L.focusX = Math.min(1, Math.max(0, Math.round((o.focusX + s.fx) * 1000) / 1000));
+        L.focusY = Math.min(1, Math.max(0, Math.round((o.focusY + s.fy) * 1000) / 1000));
       } else if (drag.mode === 'rot') {
         const cx = o.x + o.w / 2;
         const cy = o.y + o.h / 2;
@@ -253,8 +441,15 @@ export function createPhotoStudio({ root, studio }) {
       }
     }, drag.key);
   });
-  const endDrag = () => {
+  const endDrag = (e) => {
+    if (e && touches.delete(e.pointerId) && pinch && touches.size < 2) pinch = null;
     if (!drag) return;
+    // a second quick tap on text opens it for editing (double-click does not fire on a touch screen)
+    if (e && e.type === 'pointerup' && e.pointerType === 'touch' && !drag.moved && drag.L.type === 'text' && drag.mode === 'move') {
+      const now = { t: performance.now(), x: e.clientX, y: e.clientY };
+      if (isDoubleTap(lastTap, now)) (lastTap = null), (pendingEdit = setTimeout(openEdit, 450)); // after the click that follows, or it would land on the sheet
+      else lastTap = now;
+    }
     drag = null;
     snapGuide.x = snapGuide.y = null;
     drawOverlay();
@@ -415,6 +610,7 @@ export function createPhotoStudio({ root, studio }) {
       const doc = tp.build(ctx());
       if (tp.needs === 'show' && t.showId) doc.showId = t.showId;
       openDoc(doc, { isNew: true });
+      if (narrow.matches) setSheet(null); // on a phone the sheet would cover the new design
       toast(`New design: ${doc.name}. Everything is editable.`);
     };
     const slidesPick = h('select', { 'data-k': 'tpl-slides', 'aria-label': 'Slides' }, h('option', { value: '0', selected: !t.slides }, `Auto (${t.photoIds.length > 1 ? carouselSlides(t.photoIds.map((id) => studio.get(id)).filter(Boolean).map((x) => ({ w: x.width, h: x.height }))) : photo ? slidesForImage(photo.width, photo.height) : 3})`), [2, 3, 4, 5, 6, 7, 8, 9, 10].map((k) => h('option', { value: String(k), selected: t.slides === k }, `${k} slides`)));
@@ -659,14 +855,19 @@ export function createPhotoStudio({ root, studio }) {
       button('Fit', () => ((ui.zoom = 0), draw()), { variant: 'sm ghost', title: 'Fit the design in the window' }),
       iconButton('zoomIn', 'Zoom in', () => ((ui.zoom = (ui.zoom || scale) * 1.25), draw()), 'ghost'),
       h('div', { class: 'spacer' }),
-      relinkButton('photo'),
-      h('span', { class: 'muted tiny' }, `${doc.w}×${doc.h}${doc.slides > 1 ? ` · ${doc.slides} slides of ${Math.round(doc.w / doc.slides)}×${doc.h}` : ''}`),
-      posterShow(doc) ? button('Use as the show’s poster', usePoster, { iconName: 'check', variant: 'sm', title: `Save it to the media library and put it on the show at ${posterShow(doc).venue || 'this venue'}` }) : null,
-      button('Save to media', saveToLibrary, { iconName: 'image', variant: 'sm', title: 'Add the finished image(s) to the media library, the Photos page and the Video Studio' }),
-      button('JPG', () => exportImages('image/jpeg'), { iconName: 'download', variant: 'sm' }),
-      button(doc.slides > 1 ? `PNG · ${doc.slides} slides` : 'PNG', () => exportImages('image/png'), { iconName: 'download', variant: 'sm primary' }),
+      ...exportControls(doc, 'ph-bar-export'),
     );
+    // the same actions in the Export sheet (the bar hides them on a phone or tablet)
+    exportSheet.replaceChildren(h('h3', { class: 'ph-h3' }, 'Save or download'), h('div', { class: 'ph-export-btns' }, ...exportControls(doc, 'ph-export-btn').filter((x) => !x.classList.contains('muted'))), h('p', { class: 'muted small' }, `${doc.w}×${doc.h}${doc.slides > 1 ? ` · ${doc.slides} slides, each its own image` : ''}. On a phone the download goes to your Downloads or Files; “Save to media” keeps it in the app.`));
   }
+  const exportControls = (doc, cls) => [
+    relinkButton('photo', { variant: `sm ${cls}` }),
+    h('span', { class: `muted tiny ${cls}` }, `${doc.w}×${doc.h}${doc.slides > 1 ? ` · ${doc.slides} slides of ${Math.round(doc.w / doc.slides)}×${doc.h}` : ''}`),
+    posterShow(doc) ? button('Use as the show’s poster', usePoster, { iconName: 'check', variant: `sm ${cls}`, title: `Save it to the media library and put it on the show at ${posterShow(doc).venue || 'this venue'}` }) : null,
+    button('Save to media', saveToLibrary, { iconName: 'image', variant: `sm ${cls}`, title: 'Add the finished image(s) to the media library, the Photos page and the Video Studio' }),
+    button('JPG', () => exportImages('image/jpeg'), { iconName: 'download', variant: `sm ${cls}` }),
+    button(doc.slides > 1 ? `PNG · ${doc.slides} slides` : 'PNG', () => exportImages('image/png'), { iconName: 'download', variant: `sm primary ${cls}` }),
+  ].filter(Boolean);
 
   // ---------------------------------------------------------------- export
   const missing = () => docMedia(store.get()).filter((id) => !getImage(id));
@@ -941,13 +1142,44 @@ export function createPhotoStudio({ root, studio }) {
           e.preventDefault();
           const from = dragId || e.dataTransfer.getData('text/plain');
           if (!from || from === L.id) return;
-          update((d) => {
-            const a = d.layers.findIndex((x) => x.id === from);
-            const [m] = d.layers.splice(a, 1);
-            const b = d.layers.findIndex((x) => x.id === L.id);
-            d.layers.splice(b + 1, 0, m); // dropped on a row: goes just in front of it
-          });
+          update((d) => (d.layers = dropAfter(d.layers, from, L.id))); // dropped on a row: goes just in front of it
         });
+        // a visible handle that works with a finger (the row itself can't be dragged on most touch browsers)
+        const grip = h('span', { class: 'ph-grip', role: 'img', 'aria-label': `Drag to reorder ${L.name}`, title: 'Drag to reorder' }, icon('grid', 16));
+        let gripping = false;
+        const rowAt = (e) => {
+          const el = document.elementFromPoint(e.clientX, e.clientY);
+          return el && el.closest ? el.closest('.ph-layer') : null;
+        };
+        grip.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          gripping = true;
+          li.classList.add('lifting');
+          try {
+            grip.setPointerCapture(e.pointerId);
+          } catch {
+            /* synthetic pointer */
+          }
+        });
+        grip.addEventListener('pointermove', (e) => {
+          if (!gripping) return;
+          list.querySelectorAll('.drop').forEach((x) => x.classList.remove('drop'));
+          const row = rowAt(e);
+          if (row && row.dataset.id !== L.id) row.classList.add('drop');
+          const r = right.getBoundingClientRect();
+          if (e.clientY < r.top + 36) right.scrollTop -= 14;
+          else if (e.clientY > r.bottom - 36) right.scrollTop += 14;
+        });
+        const gripEnd = (e) => {
+          if (!gripping) return;
+          gripping = false;
+          const row = e.type === 'pointerup' ? rowAt(e) : null;
+          list.querySelectorAll('.drop, .lifting').forEach((x) => x.classList.remove('drop', 'lifting'));
+          if (row && row.dataset.id && row.dataset.id !== L.id) update((d) => (d.layers = dropAfter(d.layers, L.id, row.dataset.id)));
+        };
+        grip.addEventListener('pointerup', gripEnd);
+        grip.addEventListener('pointercancel', gripEnd);
+        li.prepend(grip);
         return li;
       }),
     );
@@ -1000,6 +1232,7 @@ export function createPhotoStudio({ root, studio }) {
       renderLeft();
       renderBar();
       renderRight();
+      renderSheetChrome();
       ensureMattes();
       draw();
     },
