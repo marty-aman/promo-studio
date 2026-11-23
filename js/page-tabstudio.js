@@ -6,9 +6,11 @@ import { media, addMedia } from './media.js';
 import { uid } from './core.js';
 import { defaultTabLayer } from './tab.js';
 import { drumHitsFromAudio } from './drums.js';
-import { TAB_ACCEPT } from './panel-layers.js';
+import { TAB_ACCEPT, makeLayer } from './panel-layers.js';
 import * as E from './tabedit.js';
 import { TRANSCRIBE_KINDS, decodeStem, gridFromSamples, transcribeSamples, drumsToTrack } from './transcribe.js';
+import { transcribeStem } from './ai/basicpitch.js';
+import * as ST from './stemtab.js';
 import { wrapBars, clampZoom, nextSpeed, loopPosition, readGesture } from './tablayout.js';
 
 // Phones and tablets (and any touch screen) get the touch layout: bars wrap to the screen, a playback bar at
@@ -173,6 +175,12 @@ function voice(ac, out, when, track, n, dur) {
 }
 
 /** Open a Guitar Pro / MusicXML file from the media library in Tab Studio (next time the page shows). */
+/** Song Files > "Make a tab from this stem": open the stem panel with this stem and part picked. */
+export function presetStemTab(rec, role) {
+  S.tx = { stem: rec.id, kind: ST.TAB_ROLES[role] === 'bass' ? 'bass' : 'lead' };
+  S.showTx = true;
+}
+
 export function openInTabStudio(rec, offset = 0) {
   if (!rec || !rec.score) return false;
   S.model = E.fromScore(rec.score);
@@ -842,9 +850,11 @@ export function buildTabStudio({ store, engine, ui, panels }) {
     for (const t of S.model.tracks) for (const bar of t.bars) E.padBar(bar, S.model.ts);
     try {
       const bytes = await E.toGpBytes(S.model);
-      const file = new File([bytes], `${slug(S.model.title)}${S.savedId || S.sourceId ? '-edit' : ''}.gp`, { type: 'application/octet-stream' });
+      const draft = S.model.tracks.some((t) => t.draft);
+      const file = new File([bytes], `${slug(S.model.title)}${draft ? '-draft-from-stem' : ''}${S.savedId || S.sourceId ? '-edit' : ''}.gp`, { type: 'application/octet-stream' });
       const rec = await addMedia(file, file.name);
       S.savedId = rec.id;
+      if (draft && ui.draftTabSaved) ui.draftTabSaved(rec);
       S.dirty = false;
       toast(`Saved “${file.name}” to your media.${use ? '' : ' Use it from the Guitar Pro tab, or press “Use in video”.'}`, 'info', 5000);
       if (use) useInVideo(rec);
@@ -878,10 +888,93 @@ export function buildTabStudio({ store, engine, ui, panels }) {
 
   // ------------------------------------------------------------ transcription
 
+  /** The notes of a draft as a .mid in your media, ready for the MIDI notes layers and the rhythm game. */
+  async function useAsMidi() {
+    const bytes = S.model && ST.modelToMidi(S.model);
+    if (!bytes) return toast('There are no notes to save yet.', 'error');
+    try {
+      const file = new File([bytes], `${slug(S.model.title)}${S.model.tracks.some((t) => t.draft) ? '-draft-from-stem' : ''}.mid`, { type: 'audio/midi' });
+      const rec = await addMedia(file, file.name);
+      store.update((d) => {
+        d.layers ||= [];
+        const L = { ...makeLayer(d, 'midi'), name: S.model.title || 'MIDI notes', visible: true, mediaId: rec.id, tracks: [], offset: S.model.offset != null ? S.model.offset : d.song ? d.song.offset : 0 };
+        d.layers.push(L);
+      });
+      toast(`Saved “${file.name}” to your media and added a MIDI notes layer to the Video Studio edit. The rhythm game can use the file too.`, 'info', 6000);
+    } catch (e) {
+      toast(e.message || 'Could not save the MIDI file.', 'error', 6000);
+    }
+  }
+
+  /** Basic Pitch: the notes in the stem (chords too), cleaned, put on the song's beat grid, with frets chosen. */
+  async function transcribeBP(form, rec, kind) {
+    const p = store.get();
+    S.abort = new AbortController();
+    S.busy = `Listening to “${rec.name}”…`;
+    S.progress = 0;
+    render();
+    try {
+      const { samples, duration } = await decodeStem(rec.blob);
+      const tuning = E.TUNINGS[form.tuning.value];
+      const range = ST.playableRange(tuning);
+      const songBeats = p.beats && p.beats.beats && p.beats.beats.length;
+      const ts = S.model ? S.model.ts : [4, 4];
+      const sg = form.grid.value === 'song' && songBeats ? { bpm: p.beats.bpm, firstBeat: p.beats.beats[0] } : gridFromSamples(samples, 22050);
+      const raw = await transcribeStem(samples, { range, signal: S.abort.signal, onProgress: (v) => ((S.progress = v), (S.busy = `Finding notes in “${rec.name}”… ${Math.round(v * 100)}%`), paintBusy()) });
+      const { notes } = ST.cleanNotes(raw.notes, { range, mono: kind !== 'rhythm' });
+      if (!notes.length) throw new Error('No notes found. Is this an isolated stem with the part playing?');
+      const name = `${kind === 'bass' ? 'Bass' : 'Guitar'} (draft from stem)`;
+      const res = ST.notesToTrack(notes, { tuning, name, bpm: sg.bpm, firstBeat: sg.firstBeat, ts, grid: form.noteGrid.value, stemId: rec.id });
+      if (!res.stats.notes) throw new Error('No notes fit this instrument and tuning. Try another tuning.');
+      installTrack(res, { ...sg, ts }, rec, samples, duration);
+      toast(`${res.track.name}: ${res.stats.notes} notes${res.stats.chords ? ` (${res.stats.chords} chords)` : ''} at ${Math.round(sg.bpm)} BPM${res.stats.skipped ? `, ${res.stats.skipped} outside the tuning left out` : ''}. Play it back and fix anything that sounds off.`, 'info', 8000);
+    } catch (e) {
+      if (e.name !== 'AbortError') toast(e.message || 'Could not transcribe that file.', 'error', 6000);
+    }
+    S.abort = null;
+    S.busy = '';
+    render();
+  }
+
+  /** Update only the text of the busy button (a full render per progress step would be wasteful). */
+  function paintBusy() {
+    const b = root.querySelector('.ts-tx button.primary');
+    if (b) b.lastChild.textContent = S.busy;
+  }
+
+  /** Add a made track to the open model (or start one), line its bars up with the others. */
+  function installTrack(res, grid, rec, samples, duration) {
+    const p = store.get();
+    const t = { id: `trk-${Date.now().toString(36)}`, ...res.track, stemId: rec.id };
+    S.stemPeaks.set(t.id, { peaks: peaksOf(samples, 1600), duration });
+    if (!S.model || (!S.dirty && !S.sourceId && S.model.tracks.every((x) => x.bars.every((b) => b.beats.every((k) => k.rest))))) {
+      S.model = { title: p.endCard.title && p.endCard.title !== 'Song Title' ? p.endCard.title : 'From stems', tempo: Math.round(grid.bpm), ts: grid.ts, tempos: {}, offset: res.offset, tracks: [t] };
+      S.sourceId = null;
+      S.undo = [];
+    } else {
+      snapshot();
+      const barLen = E.barQuarters(S.model.ts) * (60 / S.model.tempo);
+      if (S.model.offset == null) S.model.offset = res.offset;
+      const shift = Math.round((res.offset - S.model.offset) / barLen);
+      if (shift > 0) t.bars.unshift(...Array.from({ length: shift }, () => E.emptyBar(S.model.ts)));
+      else if (shift < 0) {
+        S.model.tracks.forEach((x) => x.bars.unshift(...Array.from({ length: -shift }, () => E.emptyBar(S.model.ts))));
+        S.model.offset = +(S.model.offset + shift * barLen).toFixed(3);
+      }
+      S.model.tracks.push(t);
+      E.alignTracks(S.model);
+    }
+    S.sel = { track: S.model.tracks.length - 1, bar: 0, beat: 0, key: 1 };
+    S.dirty = true;
+    S.showTx = false;
+    S.tx = null;
+  }
+
   async function transcribe(form) {
     const rec = media.get(form.stem.value);
     if (!rec) return toast('Pick a stem first.', 'error');
     const kind = form.kind.value;
+    if (kind !== 'drums' && form.method.value === 'bp') return transcribeBP(form, rec, kind);
     const p = store.get();
     S.busy = `Listening to “${rec.name}”…`;
     render();
@@ -933,13 +1026,16 @@ export function buildTabStudio({ store, engine, ui, panels }) {
   function txPanel() {
     const stems = audioFiles();
     const p = store.get();
-    const stem = h('select', { name: 'stem', 'aria-label': 'Stem' }, stems.map((m) => h('option', { value: m.id, selected: p.song && m.id === p.song.mediaId ? null : undefined }, m.name)));
-    const kind = h('select', { name: 'kind', 'aria-label': 'Part' }, TRANSCRIBE_KINDS.map(([id, label]) => h('option', { value: id }, label)));
+    const stem = h('select', { name: 'stem', 'aria-label': 'Stem' }, stems.map((m) => h('option', { value: m.id, selected: S.tx && S.tx.stem === m.id ? true : undefined }, m.name)));
+    const kind = h('select', { name: 'kind', 'aria-label': 'Part' }, TRANSCRIBE_KINDS.map(([id, label]) => h('option', { value: id, selected: S.tx && S.tx.kind === id ? true : undefined }, label)));
+    const method = h('select', { name: 'method', 'aria-label': 'Method' }, h('option', { value: 'bp' }, 'Basic Pitch (finds chords too, slower)'), h('option', { value: 'quick' }, 'Quick pitch tracker (single notes, power chords)'));
+    const noteGrid = h('select', { name: 'noteGrid', 'aria-label': 'Note grid' }, ST.GRIDS.map(([id, label]) => h('option', { value: id }, label)));
+    const songKey = (ui.linkedSong && ui.linkedSong() && ui.linkedSong().key) || '';
     const tuning = h('select', { name: 'tuning', 'aria-label': 'Tuning' }, Object.keys(E.TUNINGS).map((n) => h('option', { value: n }, n)));
     const grid = h('select', { name: 'grid', 'aria-label': 'Tempo from' },
       h('option', { value: 'song', disabled: !p.beats }, p.beats ? `The song’s detected tempo (${Math.round(p.beats.bpm)} BPM)` : 'The song’s tempo (run Detect BPM in Audio)'),
       h('option', { value: 'stem', selected: !p.beats }, 'Detect from this stem'));
-    const pickTuning = () => (tuning.value = kind.value === 'bass' ? 'Bass · Standard E' : 'Guitar · Standard E');
+    const pickTuning = () => (tuning.value = ST.tuningFor(kind.value === 'bass' ? 'bass' : 'guitar', songKey));
     kind.addEventListener('change', pickTuning);
     tuning.disabled = false;
     const form = h('form', { class: 'tool-box ts-tx', onsubmit: (e) => (e.preventDefault(), transcribe(form)) },
@@ -953,8 +1049,10 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       }, { iconName: 'upload', variant: 'ghost sm' })),
       h('div', { class: 'grid2' }, field('Stem', stem), field('Part', kind)),
       h('div', { class: 'grid2' }, field('Tuning', tuning), field('Tempo from', grid)),
+      h('div', { class: 'grid2' }, field('Method', method), field('Note grid', noteGrid)),
+      h('p', { class: 'warn-list small' }, 'Distorted, fast or layered guitar comes out noisy and needs correcting by ear. A clean, isolated single-note part works best. Basic Pitch runs on this device: nothing is uploaded.'),
       h('p', { class: 'muted tiny' }, 'Stems exported from your session start with the song, so the song’s tempo lines the tab up with the video.'),
-      h('div', { class: 'row' }, button(S.busy ? S.busy : 'Transcribe', null, { iconName: 'wand', variant: 'primary', disabled: !!S.busy || !stems.length }), button('Close', () => ((S.showTx = false), render()), { variant: 'ghost sm' })),
+      h('div', { class: 'row' }, button(S.busy ? S.busy : 'Transcribe', null, { iconName: 'wand', variant: 'primary', disabled: !!S.busy || !stems.length }), S.abort ? button('Cancel', () => S.abort && S.abort.abort(), { variant: 'sm' }) : null, button('Close', () => ((S.showTx = false), render()), { variant: 'ghost sm' })),
     );
     form.querySelector('button.primary').type = 'submit';
     pickTuning();
@@ -1365,6 +1463,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       button('New tab', fresh, { iconName: 'plus', variant: 'ghost sm' }),
       button('Make tab from stems…', () => ((S.showTx = !S.showTx), render()), { iconName: 'wand', variant: `sm${S.showTx ? ' on' : ''}` }),
       h('span', { class: 'spacer' }),
+      S.model && S.model.tracks.some((t) => t.kind !== 'drums') ? button('Use as MIDI notes', useAsMidi, { iconName: 'music', variant: 'sm', title: 'Save the notes as a .mid and add a MIDI notes layer to the video. The rhythm game can use the file too.' }) : null,
       S.model ? button(S.dirty ? 'Save as new .gp' : 'Saved', () => save(), { iconName: 'download', variant: `sm${S.dirty ? ' primary' : ''}`, disabled: !S.dirty }) : null,
       S.model ? button('Save & use in video', () => save({ use: true }), { iconName: 'check', variant: 'sm' }) : null,
     );

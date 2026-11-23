@@ -6,7 +6,7 @@ import { driveButton } from '../gdrive.js';
 import { relinkNotice } from '../relink.js';
 import { media as mediaLib } from '../media.js';
 import { qualityBadges, weakToggle } from '../panel-quality.js';
-import { STEM_ROLES, newFiles, addStems, addFootage, addTabs, setVideo, fileCounts, stemName, groupStems, moveStem, VIDEO_STATUSES, videoDone } from './files.js';
+import { STEM_TAB_ROLES, STEM_ROLES, newFiles, addStems, addFootage, addTabs, setVideo, fileCounts, stemName, groupStems, moveStem, VIDEO_STATUSES, videoDone } from './files.js';
 
 /** Which upload is running (not saved). */
 export const filesUI = { busy: null };
@@ -81,7 +81,7 @@ export function filesTab(ctx, song, S) {
       'div',
       { class: 'mgr-file tab' },
       h('div', { class: 'mgr-file-main' }, h('strong', { title: m.name }, m.title || m.name), m.title ? h('span', { class: 'muted tiny' }, m.name) : null),
-      parts.length ? h('div', { class: 'mgr-tracks' }, parts.map((p) => h('span', { class: 'mgr-chip' }, p))) : null,
+      parts.length || t.draft ? h('div', { class: 'mgr-tracks' }, t.draft ? h('span', { class: 'mgr-chip st-hold', title: 'Made by the computer from a stem. Check it by ear and fix it in Tab Studio.' }, 'Draft from stem') : null, parts.map((p) => h('span', { class: 'mgr-chip' }, p))) : null,
       h(
         'div',
         { class: 'row' },
@@ -145,6 +145,7 @@ export function filesTab(ctx, song, S) {
         'div',
         { class: 'row' },
         s.role === 'drums' || s.role === 'perc' ? button('Drum chart', () => send(m.id, 'drums'), { iconName: 'activity', variant: 'sm', title: 'Add a drum chart layer that finds the hits in this stem' }) : null,
+        STEM_TAB_ROLES.includes(s.role) ? button('Make a tab from this stem', () => st.stemToTab(m.id, s.role), { iconName: 'guitar', variant: 'sm', title: 'Find the notes on this device and open a draft tab in Tab Studio. Distorted, fast or layered guitar comes out noisy and needs correcting.' }) : null,
         button('Visualizer', () => send(m.id, 'viz'), { iconName: 'volume', variant: 'sm', title: 'Add a visualizer that moves to this stem' }),
         button('Audio track', () => send(m.id, 'audio'), { iconName: 'music', variant: 'sm', title: 'Add it as an extra audio track at the playhead' }),
         iconButton('trash', `Remove ${name} from this song`, drop, 'ghost'),

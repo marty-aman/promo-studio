@@ -16,6 +16,8 @@ export const STEM_ROLES = [
   ['click', 'Click / guide'],
   ['other', 'Other'],
 ];
+/** Stem parts that can become a draft tab. */
+export const STEM_TAB_ROLES = ['guitar', 'bass', 'keys', 'other'];
 export const stemRoleLabel = (k) => (STEM_ROLES.find(([v]) => v === k) || STEM_ROLES[STEM_ROLES.length - 1])[1];
 
 /** A stem's name: the one you gave it, else its file name without the extension. */
@@ -71,7 +73,7 @@ export function normalizeFiles(raw) {
   const ok = (x) => x && typeof x === 'object' && typeof x.mediaId === 'string';
   const role = (r) => (STEM_ROLES.some(([k]) => k === r) ? r : 'other');
   return {
-    tabs: (Array.isArray(f.tabs) ? f.tabs : []).filter(ok).map((t) => ({ id: typeof t.id === 'string' ? t.id : mid('tab'), mediaId: t.mediaId })),
+    tabs: (Array.isArray(f.tabs) ? f.tabs : []).filter(ok).map((t) => ({ id: typeof t.id === 'string' ? t.id : mid('tab'), mediaId: t.mediaId, ...(t.draft ? { draft: true } : {}) })),
     stems: (Array.isArray(f.stems) ? f.stems : []).filter(ok).map((s) => ({ id: typeof s.id === 'string' ? s.id : mid('stem'), mediaId: s.mediaId, role: role(s.role), name: typeof s.name === 'string' ? s.name.slice(0, 80) : '' })),
     // offset: where the song's 0:00 is in the music video (seconds), for cutting song sections out of it
     video: ok(f.video) ? { mediaId: f.video.mediaId, offset: Number.isFinite(+f.video.offset) ? +f.video.offset : 0 } : null,
