@@ -3,6 +3,7 @@
 // Text matches (caption, photographer, tags, file name) stay instant and first; picture matches are added after
 // them with a "looks like" badge and a match bar. This file holds the switch, the status bar (progress, pause,
 // stop, clear) and the query-vector cache; the page asks it for scores while it draws.
+import { warnDownload } from '../mobilelogic.js';
 import { h, button, toast } from '../dom.js';
 import { photoIndex, onPhotoIndex, indexPhotos, pausePhotoIndex, stopPhotoIndex, startPhotoIndex, clearPhotoIndex, photoQueryVector, photoScore, searchModelInfo } from './searchindex.js';
 
@@ -128,6 +129,7 @@ function paint(v) {
           'div',
           { class: 'ai-consent', 'data-k': 'photos-smart-consent' },
           h('strong', {}, `Download the picture model (${mb} MB)?`),
+          warnDownload(mb) ? h('p', { class: 'warn-list small', role: 'note' }, warnDownload(mb)) : null,
           h('p', { class: 'small' }, `One time only: TinyCLIP (MIT licence) is downloaded from huggingface.co and kept in this browser (Find a moment in the Video Studio uses the same one). No photo, video or search words are sent anywhere; your photos are looked at on this computer, a few at a time in the background.`),
           h('div', { class: 'row' }, button(`Download ${mb} MB and look at my photos`, () => ((model.offer = false), startPhotoIndex(env.records(), { consented: true }), changed(true)), { variant: 'primary', iconName: 'download' }), button('Not now', () => ((model.offer = false), paint(v)), { variant: 'ghost' })),
         ),

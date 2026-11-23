@@ -52,6 +52,7 @@ import { syncPoint, autoLineUp, describeSyncPoint } from './clipsync.js';
 import { media, addMedia, removeMedia, tabTimeline } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
+import { exportAdvice, exportEnv, keepAwake } from './mobilelogic.js';
 import { SAFE_CHOICES } from './studioedit.js';
 import { describeProject } from './projectfile.js';
 import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS, MASK_SHAPES, GRADE_PRESETS, renderFrame } from './renderer.js';
@@ -2563,6 +2564,12 @@ export function createPanels({ store, engine, ui }) {
     r.stale = true;
     if (ui.tab === 'export') ui.refreshPanels(true);
   });
+  // what this browser will produce and what to do before exporting (phones: keep the screen on)
+  function exportNote(p) {
+    const a = exportAdvice(exportEnv(p.duration, pickMimeType));
+    const wl = !!navigator.wakeLock;
+    return h('ul', { class: `warn-list export-advice${a.phone || !a.format ? '' : ' calm'}`, role: 'note' }, a.lines.map((l) => h('li', {}, l)), a.phone ? h('li', {}, wl ? 'This browser can keep the screen awake for you while it exports.' : 'This browser cannot keep the screen awake by itself: turn off auto-lock for now.') : null);
+  }
   function buildExport(b) {
     const p = store.get();
     const mp4 = pickMimeType('mp4');
@@ -2591,6 +2598,7 @@ export function createPanels({ store, engine, ui }) {
     if (p.clips.length && contentLen < p.duration - (p.endCard.enabled && p.endCard.background !== 'video' ? p.endCard.duration : 0) - 0.05) issues.push(`Clips end at ${formatTime(contentLen)}; after that the background shows until ${formatTime(p.duration)}.`);
 
     const start = async () => {
+      const awake = await keepAwake(); // phones: keep the screen on while it records (released below)
       exportState.running = true;
       exportState.progress = 0;
       if (exportState.result) URL.revokeObjectURL(exportState.result.url); // the older file's address is not needed any more
@@ -2621,6 +2629,7 @@ export function createPanels({ store, engine, ui }) {
       } catch (e) {
         if (e.message !== 'cancelled') exportState.error = e.message || 'Export failed';
       }
+      awake.release();
       exportState.running = false;
       ui.refreshPanels(true);
     };
@@ -2638,6 +2647,7 @@ export function createPanels({ store, engine, ui }) {
         'Export video',
         h('p', { class: 'small' }, `${w}×${hgt} · ${formatTime(p.duration)} long. The video plays through once while it records, so exporting takes about ${Math.ceil(p.duration)} seconds. Keep this tab in front.`),
         issues.length ? h('ul', { class: 'warn-list' }, issues.map((i) => h('li', {}, i))) : null,
+        exportNote(p),
         cv ? canvasExportNote(p) : null,
         field('Format', fmt),
         h('div', { class: 'grid2' }, field('Quality', quality), field('Frame rate', fps)),

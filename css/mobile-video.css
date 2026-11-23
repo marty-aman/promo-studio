@@ -1,0 +1,183 @@
+/* Mobile: the app shell and the Video Studio on phones and tablets.
+   Everything is scoped to body classes that js/mobile.js sets (m-phone, m-land, m-tab, m-compact, m-sheets, touch),
+   so a window wider than ~1100 px with a mouse looks and works exactly as before. */
+
+/* ---- things that only exist on small screens */
+.m-scrub, .m-only, .m-more-btn, .m-sheetbar, .m-more, .m-modemenu { display: none; }
+.m-sheetbar[hidden], .m-more[hidden], .m-modemenu[hidden] { display: none !important; }
+
+/* ---- touch fundamentals (any window, but only when a finger has been used) */
+body.touch { -webkit-tap-highlight-color: transparent; }
+body.touch button, body.touch a, body.touch select, body.touch label, body.touch summary, body.touch .rail-btn, body.touch .tl-ruler { touch-action: manipulation; }
+body.touch .icon-btn { width: 44px; height: 44px; }
+body.touch .btn, body.touch .btn.sm, body.touch .btn.chip, body.touch .seg button { min-height: 44px; }
+body.touch .btn.chip { padding-left: 14px; padding-right: 14px; }
+body.touch .play-btn { width: 48px; height: 48px; }
+body.touch input[type='text'], body.touch input[type='search'], body.touch input[type='password'], body.touch input[type='number'], body.touch input[type='url'], body.touch input[type='date'], body.touch input[type='time'], body.touch input[type='email'], body.touch input:not([type]), body.touch select, body.touch textarea { font-size: 16px; min-height: 44px; }
+body.touch input[type='checkbox'] { width: 24px; height: 24px; }
+body.touch .toggle, body.touch .list-row, body.touch .link { min-height: 44px; }
+body.touch input[type='range'] { height: 32px; touch-action: pan-y; }
+body.touch .overview, body.touch .sync-view { touch-action: none; }
+body.touch .lyric-row { grid-template-columns: 34px 1fr 74px 74px 44px; gap: 6px; padding: 4px 2px; }
+body.touch .lyric-num { height: 40px; }
+body.touch .sync-btns .btn { min-height: 56px; flex: 1 1 120px; font-size: 15px; }
+/* timeline: handles can be grabbed, blocks do not pop a text-selection or callout on long-press */
+body.touch .tl-block, body.touch .tl-content { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+body.touch .tl-block.selected .tl-handle { width: 14px; background: rgba(255, 255, 255, 0.55); }
+body.touch .tl-block.selected .tl-handle.l { border-radius: 5px 0 0 5px; }
+body.touch .tl-block.selected .tl-handle.r { border-radius: 0 5px 5px 0; }
+body.touch .tl-end-handle { width: 24px; margin-left: -12px; height: 30px; top: -3px; }
+body.touch .tl-kf { width: 14px; height: 14px; margin-left: -7px; }
+body.touch .tl-kf::after { content: ''; position: absolute; inset: -16px; transform: rotate(-45deg); }
+body.touch .tl-playhead { width: 3px; }
+body.touch .tl-playhead-knob { left: -9px; width: 20px; height: 18px; }
+body.touch .kf-menu button { min-height: 44px; padding: 8px 12px; font-size: 14px; }
+body.touch .rail-btn { min-height: 52px; }
+
+/* ---- shared: the sheets layout (phone, phone on its side, tablet) */
+body.m-sheets { --bar-h: 56px; --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px); --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px); --top-h: 52px; }
+body.m-compact { --top-h: calc(48px + var(--safe-t)); }
+body.m-sheets #app { height: 100vh; height: 100dvh; padding-left: var(--safe-l); padding-right: var(--safe-r); }
+body.m-compact .topbar { padding-top: var(--safe-t); padding-left: calc(8px + var(--safe-l)); gap: 4px; }
+body.m-compact.m-phone .topbar, body.m-compact.m-land .topbar { padding-right: 8px; }
+body.m-compact .brand { display: none; }
+body.m-compact .mode-switch { padding: 2px; border-radius: 12px; flex: none; }
+body.m-compact .mode-btn:not(.on) { display: none; }
+body.m-compact .mode-btn.on { min-height: 40px; padding: 0 12px; border-radius: 10px; }
+body.m-compact .mode-btn.on::after { content: ''; width: 6px; height: 6px; margin-left: 2px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg) translate(-2px, -2px); }
+body.m-phone .mode-btn.on span { display: none; }
+body.m-compact:not(.mode-manager) .m-more-btn { display: inline-grid; }
+body.m-compact .topbar .icon-btn, body.m-compact .m-more-btn { width: 44px; height: 44px; }
+body.m-compact .topbar .btn { min-height: 44px; }
+body.m-compact .topbar .now-on { min-height: 44px; }
+
+/* the Project menu: the controls that do not fit the bar */
+body.m-compact .m-more { display: block; position: fixed; z-index: 60; top: var(--top-h); left: 8px; right: 8px; max-width: 460px; margin-left: auto; max-height: calc(100dvh - var(--top-h) - 16px); overflow-y: auto; background: var(--panel); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6); }
+.m-more-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 6px 0 14px; }
+.m-more-body { display: grid; gap: 10px; padding: 10px 14px 14px; }
+.m-more-body > * { min-width: 0; max-width: none; width: 100%; flex: none; }
+.m-more-body .proj-name { border: 1px solid var(--border-strong); background: var(--bg); width: 100%; max-width: none; }
+.m-more-body .aspect, .m-more-body .artist-sel { width: 100%; max-width: none; }
+.m-more-body .save-state { display: block !important; margin: 0; }
+.m-more-body .postcheck-pill .pc-label { display: inline !important; }
+.m-more-body .now-on { max-width: none; justify-content: flex-start; }
+.m-more-body .now-on .now-sep, .m-more-body .now-on .now-song, .m-more-body .now-on .now-band { display: inline !important; max-width: none; }
+body.m-compact .m-modemenu { display: grid; position: fixed; z-index: 60; top: var(--top-h); left: 8px; min-width: 220px; gap: 2px; padding: 6px; background: var(--panel); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6); }
+.m-modemenu button { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font-size: 15px; font-weight: 600; text-align: left; cursor: pointer; }
+.m-modemenu button.on { background: var(--accent); color: var(--accent-ink); }
+
+/* the workspace is the preview plus the transport; the tools live in the bottom bar and the sheets */
+body.m-sheets:not(.mode-manager) .workspace { display: flex; flex-direction: column; min-height: 0; }
+body.m-sheets:not(.mode-manager) .center { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(0, 1fr) auto; }
+body.m-sheets .panel.left, body.m-sheets .panel.right { display: none; }
+body.m-sheets:not(.mode-manager) .page-overlay { display: none; }
+
+/* transport: a big scrub bar over the buttons */
+body.m-sheets .transport { flex-wrap: wrap; justify-content: flex-start; gap: 2px 6px; padding: 4px 10px 6px; }
+body.m-sheets .m-scrub { display: block; flex: 1 1 100%; width: 100%; height: 44px; margin: 0; padding: 0; background: transparent; touch-action: none; appearance: none; -moz-appearance: none; -webkit-appearance: none; }
+.m-scrub::-moz-range-track { height: 8px; border-radius: 4px; background: var(--raised); }
+.m-scrub::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: var(--raised); }
+.m-scrub::-moz-range-progress { height: 8px; border-radius: 4px; background: var(--accent); }
+.m-scrub::-moz-range-thumb { width: 30px; height: 30px; border: 3px solid var(--bg); border-radius: 50%; background: var(--accent); }
+.m-scrub::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; border: 3px solid var(--bg); border-radius: 50%; background: var(--accent); margin-top: -11px; }
+body.m-sheets .time { min-width: 0; flex: none; }
+body.m-sheets .overlay-pick { margin-left: 0; }
+body.m-sheets .overlay-pick select { width: 130px; }
+body.m-sheets .meter { flex: 1 1 50px; min-width: 40px; }
+body.m-sheets .stage { padding: 4px; }
+
+/* timeline */
+body.m-sheets .timeline { grid-template-rows: 48px minmax(0, 1fr); }
+body.m-sheets .tl-toolbar { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; gap: 4px; padding: 0 8px; flex: none; }
+body.m-sheets .tl-toolbar > * { flex: none; }
+body.m-sheets .tl-toolbar .spacer, body.m-sheets .tl-toolbar .muted.tiny { display: none; }
+body.m-sheets .tl-toolbar input[type='range'] { width: 110px; }
+body.m-sheets .m-only { display: inline-flex; }
+body.m-sheets .tl-body { grid-template-columns: 68px minmax(0, 1fr); }
+body.m-sheets .tl-head { padding: 0 4px; gap: 2px; font-size: 10.5px; overflow: hidden; }
+body.m-sheets .tl-head svg { width: 14px; height: 14px; }
+
+/* the bottom toolbar: every tool, scrolling sideways */
+body.m-sheets:not(.mode-manager) .rail { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; flex-direction: row; align-items: stretch; gap: 0; padding: 0 var(--safe-r) var(--safe-b) var(--safe-l); height: calc(var(--bar-h) + var(--safe-b)); overflow-x: auto; overflow-y: hidden; border-right: 0; border-top: 1px solid var(--border); scrollbar-width: none; }
+body.m-sheets:not(.mode-manager) .rail-btn { flex: none; min-width: 68px; height: var(--bar-h); padding: 6px 6px; border-left: 0; border-top: 3px solid transparent; }
+body.m-sheets:not(.mode-manager) .rail-btn.on { border-top-color: var(--accent); }
+body.m-sheets:not(.mode-manager) .rail-dot { right: 18px; }
+body.m-sheets .rail-sep { width: 0; height: auto; margin: 10px 4px; border-top: 0; border-left: 1px solid var(--border); flex: none; }
+
+/* sheets */
+body.m-sheets .m-sheetbar { z-index: 41; position: fixed; align-items: center; height: 44px; padding: 0 4px 0 14px; background: var(--raised); border: 1px solid var(--border-strong); border-bottom: 0; border-radius: 14px 14px 0 0; }
+body.m-sheets.m-sheet .m-sheetbar:not([hidden]) { display: flex; }
+body.m-sheets .m-sheetbar .icon-btn { width: 44px; height: 44px; }
+body.m-sheets.m-sheet-left .panel.left, body.m-sheets.m-sheet-insp .panel.right { display: block; position: fixed; z-index: 40; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5); border: 1px solid var(--border-strong); border-top: 0; padding: 12px 14px calc(70px + var(--safe-b)); }
+body.m-sheets.m-sheet-left .panel.left .panel-title { display: none; }
+body.m-sheets:not(.mode-manager).m-sheet-left .page-overlay:not([hidden]) { display: block; position: fixed; z-index: 42; border: 1px solid var(--border-strong); border-top: 0; overscroll-behavior: contain; }
+body.m-sheets .page { padding: 12px 12px 60px; }
+body.m-sheets .page-bar .seg { min-width: 0; }
+body.m-sheets .trend-grid { grid-template-columns: minmax(0, 1fr); }
+body.m-sheets .export-bar { flex-wrap: wrap; max-width: calc(100vw - 16px); bottom: calc(var(--bar-h) + var(--safe-b) + 8px); }
+body.m-sheets .export-bar .export-progress { width: 120px; }
+
+/* ---- phone, portrait */
+body.m-phone { --sheet-h: 52vh; --sheet-h: 52dvh; --tl-h: 250px; }
+body.m-phone.m-sheet-tall, body.m-phone.m-sheet-page { --sheet-h: calc(100dvh - var(--top-h) - 44px - var(--bar-h) - var(--safe-b)); }
+body.m-phone:not(.mode-manager) #app { grid-template-rows: var(--top-h) minmax(0, 1fr) var(--tl-h) calc(var(--bar-h) + var(--safe-b)); }
+body.m-phone.mode-manager #app { grid-template-rows: var(--top-h) minmax(0, 1fr); padding-bottom: var(--safe-b); }
+body.m-phone .m-sheetbar { left: var(--safe-l); right: var(--safe-r); bottom: calc(var(--bar-h) + var(--safe-b) + var(--sheet-h)); }
+body.m-phone.m-sheet-left .panel.left, body.m-phone.m-sheet-insp .panel.right, body.m-phone:not(.mode-manager).m-sheet-left .page-overlay:not([hidden]) { left: var(--safe-l); right: var(--safe-r); top: auto; bottom: calc(var(--bar-h) + var(--safe-b)); height: var(--sheet-h); width: auto; }
+body.m-phone .grid2, body.m-phone .grid3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+body.m-phone .tpl-card { grid-template-columns: 64px 1fr; }
+
+/* ---- phone on its side: preview on the left, timeline on the right, panels slide in from the right */
+body.m-land { --top-h: calc(44px + var(--safe-t)); --bar-h: 52px; --drawer-w: 56vw; }
+body.m-land.m-compact { --top-h: calc(44px + var(--safe-t)); }
+body.m-land:not(.mode-manager) #app { grid-template-columns: 46% minmax(0, 1fr); grid-template-rows: var(--top-h) minmax(0, 1fr); }
+body.m-land.mode-manager #app { grid-template-rows: var(--top-h) minmax(0, 1fr); }
+body.m-land .topbar { grid-column: 1 / -1; }
+body.m-land:not(.mode-manager) .workspace { grid-column: 1; grid-row: 2; padding-bottom: calc(var(--bar-h) + var(--safe-b)); }
+body.m-land:not(.mode-manager) .timeline { grid-column: 2; grid-row: 2; border-left: 1px solid var(--border); }
+body.m-land:not(.mode-manager) .rail { right: auto; width: calc(46% - var(--safe-l)); }
+body.m-land .transport { flex-wrap: nowrap; overflow-x: auto; padding: 2px 6px; gap: 6px; scrollbar-width: none; }
+body.m-land .transport > * { flex: none; }
+body.m-land .m-scrub { flex: 1 0 140px; min-width: 140px; width: auto; order: 5; }
+body.m-land .meter { display: none; }
+body.m-land .m-sheetbar { top: var(--top-h); right: var(--safe-r); width: var(--drawer-w); border-radius: 14px 0 0 0; }
+body.m-land.m-sheet-left .panel.left, body.m-land.m-sheet-insp .panel.right, body.m-land:not(.mode-manager).m-sheet-left .page-overlay:not([hidden]) { top: calc(var(--top-h) + 44px); bottom: 0; left: auto; right: var(--safe-r); width: var(--drawer-w); height: auto; }
+body.m-land .topbar .btn span { display: inline; }
+
+/* ---- tablet: rail on the left, panels in a drawer on the right */
+body.m-tab { --drawer-w: min(400px, 56vw); --tl-h: 290px; }
+body.m-tab.m-compact { --top-h: calc(48px + var(--safe-t)); }
+body.m-tab:not(.mode-manager) #app { grid-template-rows: var(--top-h) minmax(0, 1fr) var(--tl-h); }
+body.m-tab.mode-manager #app { grid-template-rows: var(--top-h) minmax(0, 1fr); }
+body.m-tab:not(.mode-manager) .workspace { grid-template-columns: 76px minmax(0, 1fr); display: grid; }
+body.m-tab:not(.mode-manager) .rail { position: static; flex-direction: column; height: auto; width: auto; padding: 6px 0; border-top: 0; border-right: 1px solid var(--border); overflow-y: auto; overflow-x: hidden; z-index: auto; }
+body.m-tab:not(.mode-manager) .rail-btn { min-width: 0; height: auto; border-top: 0; border-left: 3px solid transparent; }
+body.m-tab:not(.mode-manager) .rail-btn.on { border-left-color: var(--accent); border-top-color: transparent; }
+body.m-tab .rail-sep { width: auto; height: 0; margin: 4px 10px; border-left: 0; border-top: 1px solid var(--border); }
+body.m-tab:not(.mode-manager) .center { grid-column: 2; }
+body.m-tab:not(.mode-manager) .rail { grid-column: 1; grid-row: 1; }
+body.m-tab .m-sheetbar { top: var(--top-h); right: var(--safe-r); width: var(--drawer-w); border-radius: 14px 0 0 0; }
+body.m-tab.m-sheet-left .panel.left, body.m-tab.m-sheet-insp .panel.right, body.m-tab:not(.mode-manager).m-sheet-left .page-overlay:not([hidden]) { top: calc(var(--top-h) + 44px); bottom: 0; left: auto; right: var(--safe-r); width: var(--drawer-w); height: auto; }
+body.m-tab:not(.mode-manager).m-sheet-left .page-overlay:not([hidden]) { width: min(720px, 80vw); }
+body.m-tab.m-sheet-page .m-sheetbar { width: min(720px, 80vw); }
+body.m-tab .export-bar { bottom: 12px; }
+body.m-tab .transport { flex-wrap: nowrap; justify-content: center; }
+body.m-tab .m-scrub { flex: 1 1 200px; width: auto; min-width: 120px; }
+
+/* ---- clip settings leave the timeline free, so a clip can be trimmed while its settings are open */
+body.m-phone.m-sheet-insp:not(.m-sheet-tall) { --sheet-h: min(42vh, calc(100vh - var(--top-h) - var(--bar-h) - var(--safe-b) - var(--tl-h) - 134px)); --sheet-h: min(42dvh, calc(100dvh - var(--top-h) - var(--bar-h) - var(--safe-b) - var(--tl-h) - 134px)); }
+body.m-phone.m-sheet-insp:not(.m-sheet-tall) .m-sheetbar { bottom: calc(var(--bar-h) + var(--safe-b) + var(--tl-h) + var(--sheet-h)); }
+body.m-phone.m-sheet-insp:not(.m-sheet-tall) .panel.right { bottom: calc(var(--bar-h) + var(--safe-b) + var(--tl-h)); }
+/* on its side: settings take the preview's half, the timeline stays on the right */
+body.m-land.m-sheet-insp:not(.m-sheet-tall) .m-sheetbar { top: var(--top-h); left: var(--safe-l); right: auto; width: calc(46% - var(--safe-l)); border-radius: 0 14px 0 0; }
+body.m-land.m-sheet-insp:not(.m-sheet-tall) .panel.right { top: calc(var(--top-h) + 44px); left: var(--safe-l); right: auto; width: calc(46% - var(--safe-l)); bottom: calc(var(--bar-h) + var(--safe-b)); }
+/* tablet: the drawer stops above the timeline */
+body.m-tab.m-sheet-insp:not(.m-sheet-tall) .panel.right { bottom: var(--tl-h); }
+
+/* ---- fixes found in the phone check */
+body.m-sheets .add-layer { grid-template-columns: minmax(0, 1fr); }
+body.m-sheets .panel .btn, body.m-sheets .page .btn { white-space: normal; }
+body.m-sheets input.m-scrub { height: 44px; }
+body.m-compact .mode-btn.on { min-height: 44px; }
+/* the other workspaces get a container that never widens the page: anything wider than the screen scrolls inside it */
+body.m-sheets .photo, body.m-sheets .tabws, body.m-sheets .manager { min-width: 0; overflow-x: auto; }

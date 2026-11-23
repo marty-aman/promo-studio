@@ -991,3 +991,13 @@ On a phone, a tablet or any touch screen (`(max-width: 1100px), (pointer: coarse
 - Sound starts after the first tap, because mobile browsers block it until then.
 
 Code: `js/tablayout.js` (pure layout and gesture helpers, unit tested) and `css/mobile-tab.css`.
+
+### Mobile: Video Studio and shell
+
+The app works on phones and tablets with touch. Windows wider than about 1100 px with a mouse are unchanged.
+
+- `js/mobile.js` sets one layout class on `<body>` from the window size: `m-phone` (portrait, up to 700 px wide), `m-land` (a phone on its side), `m-tab` (701 to 1100 px, or up to 1250 px once a finger has touched the screen). `touch` is added the first time a finger is used. The rules live in `css/mobile-video.css`; `js/mobilelogic.js` holds the pure parts (layout choice, pinch maths, edge trim zone, export advice, download warning) and is covered by `test/mobile.test.js`.
+- **Shell:** the four workspaces are one button that opens a list; name, artist, format, save status and New project sit in a Project menu; undo, redo and Export stay on the bar. Each workspace fills the space under the bar and respects the safe-area insets.
+- **Video Studio on a phone:** preview on top, transport with a 44 px scrub bar, timeline below. Every tool is on a bottom toolbar and opens as a sheet (a side drawer on a tablet or a phone on its side). Tapping a clip opens its settings in a sheet that leaves the timeline free.
+- **Touch editing:** tap selects, drag moves, drag the edge of a selected clip to trim (44 px zone), long-press for split, duplicate, copy, settings and delete, one finger on empty space scrolls, two fingers pinch to zoom and scroll, drag the ruler or the playhead to scrub. Every action also has a visible button.
+- **Export on a phone:** the Export panel says which format this browser will save, how long it will take and to keep the screen on, and asks the browser to keep the screen awake while it records (Screen Wake Lock, where available). The Download-size prompts for the on-device AI models add a warning on a phone, a slow connection or Data Saver.
