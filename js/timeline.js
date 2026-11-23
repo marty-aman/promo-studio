@@ -6,6 +6,7 @@ import { h, icon } from './dom.js';
 import { kfTarget } from './panel-kf.js';
 import { allKeys, moveKey, removeKey, EASES, KEY_EPS, snapToBeat, propInfo } from './keyframes.js';
 import { markTimed } from './manager/lyrictiming.js';
+import { qualityMarks } from './panel-quality.js';
 
 const HEAD_W = 112;
 
@@ -99,7 +100,9 @@ export function createTimeline({ root, store, engine, ui }) {
    * when it's ready.
    */
   let waveRedraw = 0;
+  const qualityRedraw = () => requestAnimationFrame(() => render());
   function clipWave(el, rec, clip, widthPx) {
+    qualityMarks(el, rec, clip, widthPx, qualityRedraw);
     if (!rec || rec.kind !== 'video' || ui.clipWaves === false) return;
     const state = videoWaveform(rec, () => {
       cancelAnimationFrame(waveRedraw);

@@ -4,6 +4,8 @@
 import { h, button, iconButton, toast, pickFiles } from '../dom.js';
 import { driveButton } from '../gdrive.js';
 import { relinkNotice } from '../relink.js';
+import { media as mediaLib } from '../media.js';
+import { qualityBadges, weakToggle } from '../panel-quality.js';
 import { STEM_ROLES, newFiles, addStems, addFootage, addTabs, setVideo, fileCounts, stemName, groupStems, moveStem, VIDEO_STATUSES, videoDone } from './files.js';
 
 /** Which upload is running (not saved). */
@@ -215,7 +217,7 @@ export function filesTab(ctx, song, S) {
     return h(
       'div',
       { class: 'mgr-clip' },
-      h('div', { class: 'mgr-clip-thumb' }, m.thumb ? h('img', { src: m.thumb, alt: '' }) : null, m.kind === 'video' && m.duration ? h('span', { class: 'mgr-clip-len' }, len(m.duration)) : m.kind === 'image' ? h('span', { class: 'mgr-clip-len' }, 'Photo') : null),
+      h('div', { class: 'mgr-clip-thumb' }, m.thumb ? h('img', { src: m.thumb, alt: '' }) : null, qualityBadges(mediaLib.get(m.id)), m.kind === 'video' && m.duration ? h('span', { class: 'mgr-clip-len' }, len(m.duration)) : m.kind === 'image' ? h('span', { class: 'mgr-clip-len' }, 'Photo') : null),
       h('strong', { title: m.name }, m.name),
       ctx.form.text(`clip-note-${c.id}`, '', c.note, S((x, v) => {
         const y = x.files.footage.find((z) => z.id === c.id);
@@ -238,6 +240,7 @@ export function filesTab(ctx, song, S) {
       for (const c of usable) send(c.mediaId, 'clip');
     }, { iconName: 'plus', variant: 'sm' }) : null),
     h('p', { class: 'muted small' }, 'Everything you filmed for this song: shoot takes, live clips, B-roll and photos. Add a note to find takes later. They also show in the Video Studio under Video → From your songs.'),
+    files.footage.some((c) => info(c.mediaId)?.kind === 'video') ? weakToggle() : null,
     clips.length ? h('div', { class: 'mgr-clips' }, clips) : null,
     h(
       'div',

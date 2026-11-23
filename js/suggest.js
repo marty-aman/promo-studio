@@ -5,6 +5,7 @@ import { findHook, detectBeats, beatCutPlan, uid, formatTime } from './core.js';
 import { applyTemplate, tabSources, TEMPLATES } from './templates.js';
 import { isBassTrack } from './tab.js';
 import { suggestBackdrops } from './backgrounds.js';
+import { bestStart, isWeakTake } from './framequality.js';
 
 const beatCache = new Map(); // song media id -> detectBeats result (or null)
 
@@ -113,10 +114,10 @@ function baseClip(rec, start, duration, carry) {
 }
 
 /**
- * Apply a take to project draft `d`. ctx: { inv, seed, palette, tabTempo(mediaId, track) -> bpm }.
+ * Apply a take to project draft `d`. ctx: { inv, seed, palette, tabTempo(mediaId, track) -> bpm, extraScore(rec, from, to) -> 0..1 }.
  * Returns facts for the card ("why this edit"): [string].
  */
-export function applyTake(d, take, { inv, seed = 0, palette = null, tabTempo = () => null } = {}) {
+export function applyTake(d, take, { inv, seed = 0, palette = null, tabTempo = () => null, extraScore: ctxExtra = null } = {}) {
   const facts = [];
   const song = inv.song;
   // keep the cut-out settings you already chose for a clip, per media item
@@ -137,20 +138,33 @@ export function applyTake(d, take, { inv, seed = 0, palette = null, tabTempo = (
   const beats = inv.beats;
   if (beats) d.beats = beats;
 
-  // clips cut on the beat
+  // clips cut on the beat. Videos that frame-quality analysis found mostly blurry, shaky or badly exposed are left
+  // out while others remain, and each cut starts at the best stretch of its clip. `extraScore(rec, from, to)` (in the
+  // ctx or on `inv`) can add its own 0..1 score per stretch (e.g. a text-search match); from/to are seconds into the file.
+  let skippedWeak = 0;
+  let picked = 0;
   if (inv.clips.length) {
-    const order = inv.clips.map((m, i) => inv.clips[(i + seed) % inv.clips.length]);
+    const extraScore = ctxExtra || inv.extraScore || null;
+    const good = inv.clips.filter((m) => !(m.kind === 'video' && isWeakTake(m.quality)));
+    const pool = good.length ? good : inv.clips;
+    skippedWeak = good.length ? inv.clips.length - good.length : 0;
+    const order = pool.map((m, i) => pool[(i + seed) % pool.length]);
     const grid = beats ? beats.beats.map((b) => b - d.song.offset).filter((x) => x > 0) : Array.from({ length: Math.ceil(d.duration * 2) }, (_, i) => (i + 1) * 0.5);
     const plan = beatCutPlan(order.map((m) => m.id), grid, take.beatsPerCut, d.duration);
-    const used = new Map();
+    const used = new Map(); // media id -> [from, to] ranges already used
     d.clips = plan.map((step) => {
-      const rec = inv.clips.find((m) => m.id === step.mediaId);
-      const u = used.get(rec.id) || 0;
-      const room = rec.kind === 'video' ? rec.duration - step.duration : Infinity;
-      const start = rec.kind === 'video' ? (u <= room ? u : 0) : 0;
-      used.set(rec.id, start + step.duration);
+      const rec = pool.find((m) => m.id === step.mediaId);
+      const ranges = used.get(rec.id) || [];
+      let start = 0;
+      if (rec.kind === 'video') {
+        const q = rec.quality || null;
+        start = bestStart(q, step.duration, rec.duration, ranges, extraScore && q ? (a, b) => extraScore(rec, a, b) : null);
+        if (q) picked++;
+      }
+      used.set(rec.id, [...ranges, [start, start + step.duration]]);
       return baseClip(rec, start, step.duration, carry.get(rec.id));
     });
+    if (picked) facts.push(`Cut from the sharpest, steadiest stretches of your footage${skippedWeak ? `, leaving out ${skippedWeak} weak take${skippedWeak === 1 ? '' : 's'}` : ''}`);
     facts.push(beats ? `${d.clips.length} cuts every ${take.beatsPerCut} beats at ${beats.bpm} BPM across ${Math.min(inv.clips.length, d.clips.length)} clip${inv.clips.length === 1 ? '' : 's'}` : `${d.clips.length} cuts across your clips (no steady beat found, so every ${take.beatsPerCut / 2} s)`);
   }
 
