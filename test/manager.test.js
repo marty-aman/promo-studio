@@ -320,7 +320,9 @@ test('money: ledger plus show settlements, totals by category and month, release
   assert.equal(sum.net, -7.5);
   assert.deepEqual(sum.byMonth.map((x) => x[0]), ['2026-11']);
   assert.ok(sum.byCat.some(([k, i]) => k === 'merch' && i === 90));
-  assert.deepEqual(releaseSpend(m, s), { spent: 250, budget: 400, left: 150 });
+  const rs = releaseSpend(m, s);
+  assert.deepEqual({ spent: rs.spent, budget: rs.budget, left: rs.left }, { spent: 250, budget: 400, left: 150 });
+  assert.equal(rs.earned, 0, 'the untagged streaming line is not this song’s');
   assert.equal(moneySummary(lines, { from: '2027-01-01', to: '2027-12-31' }).net, 0);
 });
 

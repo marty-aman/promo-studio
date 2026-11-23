@@ -1,6 +1,7 @@
 // Calendar export, the press kit (EPK) and the money ledger. Pure functions, unit tested.
 import { agenda, addDays, parseDate, isoDate, niceDate, mid, EVENT_KINDS } from './model.js';
 import { combinedAgenda, viewOf, photoStyleCss } from './artists.js';
+import { showMerchSales, merchMoneyLines } from './merch.js';
 
 // ---- calendar
 
@@ -171,15 +172,41 @@ export const showSettled = (s, today) => s.status === 'played' || (s.status === 
 export function moneyLines(m, today = isoDate(new Date())) {
   const out = m.money.map((e) => ({ ...e, amount: amt(e.amount), from: 'ledger' }));
   for (const s of m.shows) {
-    const st = s.settlement || {};
+    const sm = showMoney(m, s);
     const base = { date: s.date, showId: s.id, songId: '', from: 'show', note: s.venue || 'Show' };
     // costs are money already spent (a deposit, the van), so they count as soon as they're typed
-    if (amt(st.costs)) out.push({ ...base, id: `${s.id}-costs`, kind: 'expense', category: 'travel', amount: amt(st.costs) });
+    if (sm.costs) out.push({ ...base, id: `${s.id}-costs`, kind: 'expense', category: 'travel', amount: sm.costs });
     if (!showSettled(s, today)) continue;
-    if (amt(st.pay)) out.push({ ...base, id: `${s.id}-pay`, kind: 'income', category: 'show', amount: amt(st.pay) });
-    if (amt(st.merch)) out.push({ ...base, id: `${s.id}-merch`, kind: 'income', category: 'merch', amount: amt(st.merch) });
+    if (sm.pay) out.push({ ...base, id: `${s.id}-pay`, kind: 'income', category: 'show', amount: sm.pay });
+    if (sm.merch) out.push({ ...base, id: `${s.id}-merch`, kind: 'income', category: 'merch', amount: sm.merch, ...(sm.merchFrom === 'sales' ? { merchSales: true } : {}) });
   }
+  out.push(...merchMoneyLines(m));
   return out.filter((e) => e.amount > 0).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+/** What a show's recap lists as spent ([{ label, amount }]); 0 when there's no recap. */
+export function recapExpenses(s) {
+  const list = s && s.recap && Array.isArray(s.recap.expenses) ? s.recap.expenses : [];
+  return cents(list.reduce((a, x) => a + (x && typeof x === 'object' ? amt(x.amount) : 0), 0));
+}
+
+/**
+ * A show's money, the one place that decides it: { pay, merch, costs, merchFrom, costsFrom }.
+ * Merch: when merch sales are logged for the show (Money → Merch), their total REPLACES the
+ * settlement's "Merch sales" number, never adds to it. Costs: the settlement's "Costs", or the recap's
+ * expense lines when Costs is blank or 0.
+ */
+export function showMoney(m, s) {
+  const st = s.settlement || {};
+  const sales = showMerchSales(m, s.id);
+  const recap = recapExpenses(s);
+  return {
+    pay: amt(st.pay),
+    merch: sales.qty ? sales.amount : amt(st.merch),
+    costs: amt(st.costs) || recap,
+    merchFrom: sales.qty ? 'sales' : amt(st.merch) ? 'settlement' : '',
+    costsFrom: amt(st.costs) ? 'settlement' : recap ? 'recap' : '',
+  };
 }
 
 /** Pay already typed in for shows still to come (today or later, or no date yet; not cancelled), e.g. guarantees: { total, shows }. */
@@ -231,7 +258,8 @@ export function memberTotals(m, { from = '', to = '9999', today = isoDate(new Da
   for (const s of m.shows) {
     if (!showSettled(s, today) || (s.date || '') < from || (s.date || '0') > to) continue;
     const st = s.settlement || {};
-    const sp = memberSplit(amt(st.pay) + amt(st.merch) - amt(st.costs), members, st);
+    const sm = showMoney(m, s);
+    const sp = memberSplit(sm.pay + sm.merch - sm.costs, members, st);
     fund += sp.fund;
     for (const x of sp.members) if (by.has(x.id)) by.get(x.id).amount += x.amount;
   }
@@ -263,9 +291,64 @@ export function moneySummary(lines, { from = '', to = '9999' } = {}) {
   };
 }
 
-/** A release's spend against its budget (the shoot budget field, parsed). */
-export function releaseSpend(m, song) {
-  const spent = moneyLines(m).filter((e) => e.songId === song.id && e.kind === 'expense').reduce((s, e) => s + e.amount, 0);
-  const budget = +(String(song.shoot.budget || '').replace(/[^\d.]/g, '') || 0);
-  return { spent, budget, left: budget ? budget - spent : null };
+/** Earnings from imported streaming reports (Streaming stats) matched to a song. */
+export const importedEarnings = (m, songId) => cents(((m.stats && m.stats.lines) || []).filter((l) => l && l.songId === songId).reduce((a, l) => a + amt(l.earnings), 0));
+
+/**
+ * Spent and earned for ledger lines tagged with `pick(e)`, plus streaming imports worth `imported`.
+ * No double counting: when there are imported earnings, ledger "Streaming & sales" income for the same
+ * thing is left out (it is most likely the same payout); without imports, that ledger income counts.
+ */
+function spentEarned(lines, pick, imported) {
+  let spent = 0;
+  let ledgerIn = 0;
+  let ledgerStreaming = 0;
+  for (const e of lines) {
+    if (!pick(e)) continue;
+    if (e.kind === 'expense') spent += e.amount;
+    else if (e.category === 'streaming') ledgerStreaming += e.amount;
+    else ledgerIn += e.amount;
+  }
+  const streaming = imported > 0 ? imported : ledgerStreaming;
+  return { spent: cents(spent), ledgerIn: cents(ledgerIn), streaming: cents(streaming), streamingFrom: imported > 0 ? 'imports' : ledgerStreaming ? 'ledger' : '' };
+}
+
+const budgetOf = (song) => +(String((song.shoot && song.shoot.budget) || '').replace(/[^\d.]/g, '') || 0);
+
+/**
+ * A song release's money: spend against its budget (the Video shoot budget field, parsed) and what it
+ * earned (ledger income tagged "For" the song, plus streaming earnings imported on Streaming stats).
+ * { spent, budget, left, earned, ledgerIn, streaming, streamingFrom, net, paidOff }. `lines` saves
+ * recomputing moneyLines for every song.
+ */
+export function releaseSpend(m, song, lines = moneyLines(m)) {
+  const r = spentEarned(lines, (e) => e.songId === song.id, importedEarnings(m, song.id));
+  const budget = budgetOf(song);
+  const earned = cents(r.ledgerIn + r.streaming);
+  return { ...r, budget, left: budget ? cents(budget - r.spent) : null, earned, net: cents(earned - r.spent), paidOff: r.spent > 0 && earned >= r.spent };
+}
+
+/**
+ * An EP or album's money: its tracks added up, plus ledger lines tagged "For" the release itself.
+ * The budget is the tracks' shoot budgets added up (there is no second budget field).
+ */
+export function releaseTotals(m, rel, lines = moneyLines(m)) {
+  const tracks = m.songs.filter((s) => s.releaseId === rel.id).map((s) => ({ song: s, ...releaseSpend(m, s, lines) }));
+  const own = spentEarned(lines, (e) => e.releaseId === rel.id, 0);
+  // a release-level "Streaming & sales" ledger line is left out when any track has imports (same rule as songs)
+  const ownStreaming = tracks.some((t) => t.streamingFrom === 'imports') ? 0 : own.streaming;
+  const sum = (k) => cents(tracks.reduce((a, t) => a + t[k], 0));
+  const spent = cents(sum('spent') + own.spent);
+  const earned = cents(sum('earned') + own.ledgerIn + ownStreaming);
+  const budget = sum('budget');
+  return { rel, tracks, spent, earned, budget, left: budget ? cents(budget - spent) : null, net: cents(earned - spent), paidOff: spent > 0 && earned >= spent, ownSpent: own.spent, ownEarned: cents(own.ledgerIn + ownStreaming) };
+}
+
+/** Every release with money on it: { releases: [releaseTotals…], songs: [{ song, …releaseSpend }] } (songs not on an EP or album). */
+export function releaseMoney(m, today = isoDate(new Date())) {
+  const lines = moneyLines(m, today);
+  const relIds = new Set(m.releases.map((r) => r.id));
+  const releases = m.releases.map((r) => releaseTotals(m, r, lines)).filter((x) => x.spent || x.earned || x.budget);
+  const songs = m.songs.filter((s) => !relIds.has(s.releaseId)).map((s) => ({ song: s, ...releaseSpend(m, s, lines) })).filter((x) => x.spent || x.earned || x.budget);
+  return { releases, songs };
 }
