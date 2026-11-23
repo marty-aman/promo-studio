@@ -1534,3 +1534,16 @@ body.exporting .workspace .stage { opacity: 1; }
 .reframe .grid2 select { width: 100%; min-width: 0; }
 .reframe-status { margin: 6px 0; min-height: 1.4em; overflow-wrap: anywhere; }
 .reframe .row { margin-top: 4px; flex-wrap: wrap; }
+
+/* == ai-assistant == */
+.ai-box { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; min-width: 0; }
+.ai-box .row { flex-wrap: wrap; }
+.ai-body { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+.ai-setup, .ai-writer, .ai-drafts { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ai-setup input, .ai-setup select { width: 100%; }
+.ai-setup p, .ai-writer p { margin: 0; }
+.ai-warn { margin: 0; padding: 6px 8px; background: rgba(251, 146, 60, 0.12); border: 1px solid rgba(251, 146, 60, 0.4); border-radius: 6px; }
+.ai-check { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; }
+.ai-sent pre { margin: 6px 0 0; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 11px; color: var(--muted); }
+.ai-draft { display: flex; flex-direction: column; gap: 4px; }
+.ai-draft textarea { width: 100%; font: inherit; font-size: 13px; }

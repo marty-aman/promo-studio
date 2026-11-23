@@ -5,6 +5,7 @@ import { shootIdeas, hookLines } from './ideas.js';
 import { niceDate, mid } from './model.js';
 import { exportPDF } from './pdf.js';
 import { videoStatusControl } from './page-files.js';
+import { assistantBox, songContext } from '../ai/panel-assistant.js';
 
 // clips worth grabbing on the same day, for the short-form plan
 const SHORT_FORM_GRABS = [
@@ -128,6 +129,7 @@ export function buildShootTab(ctx, song, S) {
           ),
         ),
       ),
+      assistantBox({ id: `shoot-${song.id}`, task: 'ideas', context: () => ({ ...songContext(song, ctx.store.get().band), draft: sh.concept }), onAccept: (text) => ctx.update(Sh((x) => (x.concept = text))) || toast('The draft is now the concept below.'), acceptLabel: 'Use as concept' }),
     ),
     h(
       'div',
