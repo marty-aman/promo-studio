@@ -13,6 +13,8 @@ import { analyseAll } from './framequality.js';
 let uiRef = null;
 const refreshSuggest = () => uiRef && uiRef.refreshPanels(true); // stable, so waiting on the same clip twice adds it once
 
+import { activeExtraScore } from './ai/searchindex.js'; // Find a moment: the last search steers the cut (hook read by suggest.js from PR #47)
+
 export const suggestState = { seed: 0, seen: '' };
 
 /** Is there a suggestion the user hasn't looked at yet (for the dot on the rail)? */
@@ -116,7 +118,7 @@ export function buildSuggestPanel({ store, engine, ui }) {
 
   const cards = takes.map((take, i) => {
     const draft = structuredClone(p);
-    const facts = applyTake(draft, take, { inv, seed: seed + i, palette, tabTempo });
+    const facts = applyTake(draft, take, { inv, seed: seed + i, palette, tabTempo, extraScore: activeExtraScore() });
     draft.look.overlay = 'off';
     const W = 135;
     const dims = engine.dims();
@@ -189,7 +191,7 @@ export function buildSuggestPanel({ store, engine, ui }) {
     });
     const use = button('Use this edit', () => {
       stop();
-      store.update((d) => applyTake(d, take, { inv, seed: seed + i, palette, tabTempo }));
+      store.update((d) => applyTake(d, take, { inv, seed: seed + i, palette, tabTempo, extraScore: activeExtraScore() }));
       engine.seek(0);
       toast(`“${take.title}” edit applied. Undo (Ctrl+Z) to go back.`);
       ui.refreshPanels(true);
