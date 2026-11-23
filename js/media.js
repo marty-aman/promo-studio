@@ -393,13 +393,20 @@ export function removeMedia(id) {
 
 export async function restoreMedia() {
   const recs = await mediaDB.all();
-  for (const r of recs) {
-    try {
-      await addMedia(r.blob, r.name, { kind: r.kind, source: r.source, attribution: r.attribution, path: r.path }, { persist: false, id: r.id });
-    } catch (e) {
-      console.warn('Could not restore', r.name, e);
+  // a few files at a time: decoding runs off the main thread, so four in flight cut the wait on a big library
+  // shortcut: fixed pool of 4, store the analysis with each record to skip decoding altogether if this is still slow
+  let next = 0;
+  const worker = async () => {
+    while (next < recs.length) {
+      const r = recs[next++];
+      try {
+        await addMedia(r.blob, r.name, { kind: r.kind, source: r.source, attribution: r.attribution, path: r.path }, { persist: false, id: r.id });
+      } catch (e) {
+        console.warn('Could not restore', r.name, e);
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, recs.length) }, worker));
 }
 
 export function clearMedia() {

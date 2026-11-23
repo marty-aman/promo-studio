@@ -7,7 +7,8 @@ import { createStore, loadSettings, saveSettings, FONTS } from '../state.js';
 import { PROVIDERS, searchStockPhotos, downloadStock } from '../stock.js';
 import { driveButton } from '../gdrive.js';
 import { relinkButton } from '../relink.js';
-import { SIZES, sizeById, BLENDS, MASKS, SHAPES, LOOKS, defaultAdjust, newDoc, newLayer, normalizeDoc, hitTest, moveLayer, duplicateLayer, resizeBox, loadDesigns, saveDesigns, docMedia, slidesForImage } from './model.js';
+import { zipStore } from '../batch.js';
+import { SIZES, sizeById, BLENDS, MASKS, SHAPES, LOOKS, defaultAdjust, newDoc, newLayer, normalizeDoc, hitTest, moveLayer, duplicateLayer, resizeBox, loadDesigns, saveDesigns, docMedia, slidesForImage, pullBackLayers } from './model.js';
 import { drawDoc, renderDoc, renderSlides, canvasBlob, layoutText } from './render.js';
 import { TEMPLATES, templateById, countdownSet, carouselSlides } from './templates.js';
 import { dist, mid, pinchScale, scrollDelta, keyboardInset, dropAfter, previewSize, isDoubleTap, cropShift } from './gesture.js';
@@ -468,6 +469,7 @@ export function createPhotoStudio({ root, studio }) {
     if (/INPUT|TEXTAREA|SELECT/.test(tag) && e.target.type !== 'range') return;
     const mod = e.ctrlKey || e.metaKey;
     const k = e.key.toLowerCase();
+    if (document.querySelector('dialog[open]') || (e.target.closest && e.target.closest('dialog'))) return; // a dialog is in front
     if (mod && k === 'z') return e.preventDefault(), e.shiftKey ? store.redo() : store.undo();
     if (mod && k === 'y') return e.preventDefault(), store.redo();
     const L = selLayer();
@@ -480,6 +482,7 @@ export function createPhotoStudio({ root, studio }) {
       return renderRight();
     }
     if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (tag === 'BUTTON' || tag === 'A' || tag === 'SUMMARY') return; // the key belongs to the focused control
       e.preventDefault();
       return removeSel();
     }
@@ -844,6 +847,8 @@ export function createPhotoStudio({ root, studio }) {
       const k = +slidesSel.value > 1 ? +slidesSel.value : 1;
       d.w = Math.round((d.w / old) * k);
       d.slides = k > 1 ? k : 0;
+      const moved = pullBackLayers(d, k);
+      if (moved) setTimeout(() => toast(`${moved} layer${moved === 1 ? ' was' : 's were'} past the new edge and moved onto the last slide.`, 'info', 5000));
     }));
     bar.replaceChildren(
       name,
@@ -865,6 +870,7 @@ export function createPhotoStudio({ root, studio }) {
     h('span', { class: `muted tiny ${cls}` }, `${doc.w}×${doc.h}${doc.slides > 1 ? ` · ${doc.slides} slides of ${Math.round(doc.w / doc.slides)}×${doc.h}` : ''}`),
     posterShow(doc) ? button('Use as the show’s poster', usePoster, { iconName: 'check', variant: `sm ${cls}`, title: `Save it to the media library and put it on the show at ${posterShow(doc).venue || 'this venue'}` }) : null,
     button('Save to media', saveToLibrary, { iconName: 'image', variant: `sm ${cls}`, title: 'Add the finished image(s) to the media library, the Photos page and the Video Studio' }),
+    doc.slides > 1 ? button('Separate files', () => exportImages('image/png', true), { variant: `sm ghost ${cls}`, title: 'Download each slide as its own PNG instead of one .zip (handy on a phone)' }) : null,
     button('JPG', () => exportImages('image/jpeg'), { iconName: 'download', variant: `sm ${cls}` }),
     button(doc.slides > 1 ? `PNG · ${doc.slides} slides` : 'PNG', () => exportImages('image/png'), { iconName: 'download', variant: `sm primary ${cls}` }),
   ].filter(Boolean);
@@ -874,21 +880,34 @@ export function createPhotoStudio({ root, studio }) {
   async function images(type) {
     const doc = store.get();
     ensureMattes();
+    if ([...mattes.values()].includes('pending')) {
+      toast('Finding the person first…', 'info', 20000);
+      for (let i = 0; i < 400 && [...mattes.values()].includes('pending'); i++) await new Promise((r) => setTimeout(r, 100));
+    }
     const opt = { getImage, getMatte };
     const canv = doc.slides > 1 ? renderSlides(doc, opt) : [renderDoc(doc, opt)];
     const ext = type === 'image/jpeg' ? 'jpg' : 'png';
     const blobs = await Promise.all(canv.map((c) => canvasBlob(c, type, 0.92)));
     return blobs.map((b, i) => ({ blob: b, name: `${slug(doc.name)}${canv.length > 1 ? `-${i + 1}` : ''}.${ext}` }));
   }
-  async function exportImages(type) {
+  async function exportImages(type, separateFiles = false) {
     const gone = missing();
-    if (gone.length) toast(`${gone.length === 1 ? 'A photo in this design is' : `${gone.length} photos in this design are`} not in the media library (${gone.map((id) => (studio.fileName && studio.fileName(id)) || 'name unknown').join(', ')}) and left out. Use Replace missing files to put ${gone.length === 1 ? 'it' : 'them'} back.`, 'error', 7000);
+    const warn = () => gone.length && toast(`${gone.length === 1 ? 'A photo in this design is' : `${gone.length} photos in this design are`} not in the media library (${gone.map((id) => (studio.fileName && studio.fileName(id)) || 'name unknown').join(', ')}) and left out. Use Replace missing files to put ${gone.length === 1 ? 'it' : 'them'} back.`, 'error', 9000);
+    warn();
     const out = await images(type);
-    for (const [i, f] of out.entries()) {
-      if (i) await new Promise((r) => setTimeout(r, 350)); // browsers drop downloads fired together
-      download(f.blob, f.name);
+    warn(); // the matte wait may have replaced the toast
+    const doc = store.get();
+    if (out.length > 1 && !separateFiles) {
+      // one .zip beats a burst of downloads that Chrome may ask to allow (and drop when refused)
+      const files = await Promise.all(out.map(async (f, i) => ({ name: `${slug(doc.name)}-${String(i + 1).padStart(2, '0')}.${f.name.split('.').pop()}`, bytes: new Uint8Array(await f.blob.arrayBuffer()) })));
+      download(new Blob([zipStore(files)], { type: 'application/zip' }), `${slug(doc.name)}.zip`);
+    } else {
+      for (const [i, f] of out.entries()) {
+        if (i) await new Promise((r) => setTimeout(r, 350)); // browsers drop downloads fired together
+        download(f.blob, f.name);
+      }
     }
-    toast(out.length > 1 ? `Downloading ${out.length} slides. Post them in order and they line up.` : `Downloading ${out[0].name}`);
+    if (!gone.length) toast(out.length > 1 ? (separateFiles ? `Downloading ${out.length} slides.` : `Downloading ${slug(doc.name)}.zip with ${out.length} slides. Post them in order and they line up.`) : `Downloading ${out[0].name}`);
     lastExport.files = out;
   }
   /** The show a poster design was made for (when it still exists). */
