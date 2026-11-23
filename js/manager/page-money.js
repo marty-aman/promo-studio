@@ -1,13 +1,16 @@
 // Money: what came in and went out (the ledger plus every show's settlement), by category and
-// month, and each release's spend against its budget.
+// month, and each release's spend against its budget. Tabs: Overview, Merch and Releases (money-tabs.js).
 import { h, button, iconButton, download, toast } from '../dom.js';
 import { exportPDF } from './pdf.js';
 import { moneyHTML } from './docs.js';
 import { niceDate } from './model.js';
 import { MONEY_CATS, newEntry, moneyLines, moneySummary, releaseSpend, expectedShowMoney, memberTotals } from './extras.js';
+import { buildMerchTab, buildReleasesTab } from './money-tabs.js';
+
+const TABS = [['overview', 'Overview'], ['merch', 'Merch'], ['releases', 'Releases']];
 
 export const moneyUI = { year: '' };
-const $ = (v) => `${v < 0 ? '−' : ''}$${Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+const $ = (v) => `${v < 0 ? '−' : ''}$${Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: Math.round(Math.abs(v) * 100) % 100 ? 2 : 0, maximumFractionDigits: 2 })}`;
 const catLabel = (k) => (MONEY_CATS.find(([v]) => v === k) || [k, 'Other'])[1];
 
 /** Each member's take from the shows' splits (set on each show under After the show). */
@@ -24,6 +27,12 @@ function perMember(m, range, today) {
 }
 
 export function buildMoney(ctx) {
+  const tab = TABS.some(([k]) => k === ctx.view.tab) ? ctx.view.tab : 'overview';
+  const tabs = h('div', { class: 'mgr-tabs', role: 'tablist' }, TABS.map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': k === tab ? 'true' : 'false', class: `mgr-tab${k === tab ? ' on' : ''}`, onclick: () => ctx.setTab(k) }, l)));
+  if (tab !== 'overview') {
+    const sub = tab === 'merch' ? 'Shirts, vinyl and the rest: what’s in the box, what sold at which show, and when to reorder.' : 'What each song, EP and album cost against what it brought in.';
+    return h('div', { class: 'mgr-page wide' }, h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, 'Money'), h('p', { class: 'muted' }, sub))), tabs, tab === 'merch' ? buildMerchTab(ctx) : buildReleasesTab(ctx));
+  }
   const m = ctx.store.get();
   const f = ctx.form;
   const ui = moneyUI;
@@ -52,7 +61,11 @@ export function buildMoney(ctx) {
   const maxMonth = Math.max(1, ...sum.byMonth.map(([, i, x]) => Math.max(i, x)));
   const ledger = m.money.filter((e) => ui.year === 'all' || (e.date || '').startsWith(ui.year));
   const shows = lines.filter((e) => e.from === 'show' && (ui.year === 'all' || (e.date || '').startsWith(ui.year)));
-  const songs = m.songs.map((s) => ({ s, ...releaseSpend(m, s) })).filter((x) => x.budget || x.spent);
+  const songs = m.songs.map((s) => ({ s, ...releaseSpend(m, s, lines) })).filter((x) => x.budget || x.spent);
+  const merchLines = lines.filter((e) => e.from === 'merch' && (ui.year === 'all' || (e.date || '').startsWith(ui.year)));
+  // the ledger's "For": a song, or an EP / album (saved as releaseId)
+  const forOptions = [['', '—'], ...m.songs.map((s) => [s.id, s.title]), ...m.releases.map((r) => [`rel:${r.id}`, `${r.title || 'Release'} (release)`])];
+  const setFor = (x, v) => (v.startsWith('rel:') ? ((x.releaseId = v.slice(4)), (x.songId = '')) : ((x.songId = v), (x.releaseId = '')));
 
   return h(
     'div',
@@ -63,6 +76,7 @@ export function buildMoney(ctx) {
       h('div', {}, h('h1', {}, 'Money'), h('p', { class: 'muted' }, 'Show pay, merch, streaming and what you spend, so you know what the band can afford next.')),
       h('div', { class: 'row' }, yearSel, button('Download CSV', csv, { iconName: 'download', variant: 'sm' }), button('Export PDF', pdf, { iconName: 'print', variant: 'sm' }), button('Money in', () => add('income'), { iconName: 'plus', variant: 'sm' }), button('Money out', () => add('expense'), { iconName: 'plus', variant: 'sm primary' })),
     ),
+    tabs,
     h(
       'div',
       { class: 'mgr-cards' },
@@ -94,7 +108,7 @@ export function buildMoney(ctx) {
                     h('td', {}, f.select(`mk-${e.id}`, '', e.kind, [['income', 'In'], ['expense', 'Out']], E(e.id, (x, v) => (x.kind = v)), { aria: `In or out: ${e.note || 'money line'}` })),
                     h('td', {}, f.select(`mc-${e.id}`, '', e.category, MONEY_CATS, E(e.id, (x, v) => (x.category = v)), { aria: `Category: ${e.note || 'money line'}` })),
                     h('td', {}, f.text(`ma-${e.id}`, '', e.amount, E(e.id, (x, v) => (x.amount = v)), { type: 'number', placeholder: '$' })),
-                    h('td', {}, f.select(`ms-${e.id}`, '', e.songId || '', [['', '—'], ...m.songs.map((s) => [s.id, s.title])], E(e.id, (x, v) => (x.songId = v)), { aria: `Song: ${e.note || 'money line'}` })),
+                    h('td', {}, f.select(`ms-${e.id}`, '', e.releaseId ? `rel:${e.releaseId}` : e.songId || '', forOptions, E(e.id, setFor), { aria: `For a song or release: ${e.note || 'money line'}` })),
                     h('td', {}, f.text(`mn-${e.id}`, '', e.note, E(e.id, (x, v) => (x.note = v)), { placeholder: 'What for' })),
                     h('td', {}, iconButton('trash', 'Delete this line', () => ctx.update((d) => (d.money = d.money.filter((x) => x.id !== e.id))), 'ghost')),
                   ),
@@ -102,7 +116,8 @@ export function buildMoney(ctx) {
               ),
             )
           : h('p', { class: 'muted small' }, 'Nothing in the ledger for this year. Add money in or out above.'),
-        shows.length ? h('div', {}, h('h3', { class: 'mgr-h3' }, 'From show settlements'), h('ul', { class: 'mgr-facts' }, shows.map((e) => h('li', {}, h('button', { type: 'button', class: 'link', onclick: () => ctx.go('shows', e.showId) }, `${niceDate(e.date, { weekday: false })} · ${e.note} · ${catLabel(e.category)}`), h('span', { class: e.kind === 'income' ? 'ok' : '' }, `${e.kind === 'income' ? '+' : '−'}${$(e.amount)}`))))) : null,
+        shows.length ? h('div', {}, h('h3', { class: 'mgr-h3' }, 'From show settlements'), h('ul', { class: 'mgr-facts' }, shows.map((e) => h('li', {}, h('button', { type: 'button', class: 'link', onclick: () => ctx.go('shows', e.showId) }, `${niceDate(e.date, { weekday: false })} · ${e.note} · ${catLabel(e.category)}${e.merchSales ? ' (sales log)' : ''}`), h('span', { class: e.kind === 'income' ? 'ok' : '' }, `${e.kind === 'income' ? '+' : '−'}${$(e.amount)}`))))) : null,
+        merchLines.length ? h('div', {}, h('h3', { class: 'mgr-h3' }, 'From merch'), h('ul', { class: 'mgr-facts' }, merchLines.map((e) => h('li', {}, h('button', { type: 'button', class: 'link', onclick: () => ctx.go('money', null, 'merch') }, `${e.date ? niceDate(e.date, { weekday: false }) : 'No date'} · ${e.note}`), h('span', { class: e.kind === 'income' ? 'ok' : '' }, `${e.kind === 'income' ? '+' : '−'}${$(e.amount)}`))))) : null,
       ),
       h(
         'div',
@@ -127,8 +142,9 @@ export function buildMoney(ctx) {
           { class: 'mgr-sect' },
           h('h2', {}, 'Release budgets'),
           songs.length
-            ? h('ul', { class: 'mgr-facts' }, songs.map(({ s, spent, budget, left }) => h('li', {}, h('button', { type: 'button', class: 'link', onclick: () => ctx.go('songs', s.id, 'shoot') }, `“${s.title}”`), h('span', { class: left != null && left < 0 ? 'bad' : '' }, budget ? `${$(spent)} of ${$(budget)}${left != null ? ` · ${left >= 0 ? `${$(left)} left` : `${$(-left)} over`}` : ''}` : `${$(spent)} spent`))))
+            ? h('ul', { class: 'mgr-facts' }, songs.map(({ s, spent, budget, left, earned }) => h('li', {}, h('button', { type: 'button', class: 'link', onclick: () => ctx.go('songs', s.id, 'shoot') }, `“${s.title}”`), h('span', { class: left != null && left < 0 ? 'bad' : '' }, `${budget ? `${$(spent)} of ${$(budget)}${left != null ? ` · ${left >= 0 ? `${$(left)} left` : `${$(-left)} over`}` : ''}` : `${$(spent)} spent`}${earned ? ` · earned ${$(earned)}` : ''}`))))
             : h('p', { class: 'muted small' }, 'Set a budget on a song’s Video shoot tab and tag spending with the song (“For”) to track it here.'),
+          button('Spent vs earned per release', () => ctx.setTab('releases'), { variant: 'sm ghost' }),
         ),
       ),
     ),

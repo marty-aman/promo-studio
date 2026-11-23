@@ -1,1 +1,29 @@
 /* Manager: merch. Owned by the build that adds it; app.css stays untouched. */
+.mgr-merch-form { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: end; }
+.mgr-merch-form .mf { min-width: 110px; }
+.mgr-merch-form .mf select { max-width: 260px; }
+.mgr-merch-form .mf input[type='number'] { width: 90px; }
+.mgr-merch-table td input[type='number'] { width: 72px; }
+.mgr-merch-table td:first-child input { min-width: 140px; }
+.mgr-merch-table td.n input { text-align: right; }
+.mgr-merch-sizes { display: flex; flex-wrap: wrap; gap: 4px; }
+.mgr-merch-size { display: grid; gap: 1px; font-size: 10.5px; color: var(--muted); text-align: center; }
+.mgr-merch-size input[type='number'] { width: 48px; }
+.mgr-merch-size.out span { color: var(--danger); }
+.mgr-merch-flag { display: inline-block; margin-top: 3px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; background: rgba(248, 113, 113, 0.16); color: var(--danger); }
+.mgr-merch-lowrow td { background: rgba(248, 113, 113, 0.05); }
+.mgr-merch-retired td { opacity: 0.6; }
+.mgr-merch-restock td { background: var(--panel-2); }
+.mgr-merch-restock .mgr-merch-form > strong { flex-basis: 100%; }
+.mgr-merch-acts { white-space: nowrap; }
+.mgr-merch-acts .btn { margin-right: 4px; }
+.mgr-merch-sales li > span:last-child { display: inline-flex; align-items: center; gap: 4px; }
+.mgr-merch-paid { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.mgr-merch-paid.ok { color: var(--ok); font-weight: 700; }
+.mgr-rel-money .mgr-rel-row td { font-weight: 600; }
+.mgr-rel-money .mgr-rel-track td:first-child { padding-left: 18px; }
+.mgr-rel-money td .muted.tiny { display: block; font-weight: 400; }
+@media (max-width: 640px) {
+  .mgr-merch-form .mf { min-width: 0; flex: 1 1 40%; }
+  .mgr-merch-form .mf select, .mgr-merch-form .mf input { width: 100%; max-width: none; }
+}

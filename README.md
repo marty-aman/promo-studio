@@ -203,6 +203,26 @@ marks the top three captions by the median views of the posts they were used on 
 the same text as a post's hook line or title) and says when there is too little data (fewer than 2 captions
 or 3 posts with views). Both are stored per artist in this browser and go into backups.
 
+### Merch and release money
+
+**Money** now has three tabs: **Overview** (as before), **Merch** and **Releases**.
+
+- **Merch** keeps your stock: each item (shirt, hoodie, vinyl, CD, sticker, patch, poster, other) with a
+  price, a cost per piece, the count per size (or one count) and a reorder point. **Add stock** adds a batch
+  and puts what it cost into Money as merch spending. **Sell at a show** logs a sale (show, item, size, how
+  many, price) and takes it off the stock; you can't sell more than you have, and **Take this sale back**
+  puts it back. Items at or below their reorder point are flagged and get a reorder reminder on Home and
+  the Calendar; **Retire** an item to stop selling it and its reminder.
+- Sales logged for a show **replace** that show's "Merch sales" number in Money and in the members' split,
+  never add to it, and count once the show is played. Shows with no logged sales keep using the number.
+  Sales with no show (online, mail order) count on their own date.
+- A show's costs are its settlement "Costs", or the show recap's expense lines when Costs is blank.
+- **Releases** shows each song, EP and album: budget (the songs' Video shoot budgets), spent and earned
+  (ledger lines tagged "For" the song or release, plus streaming earnings from reports imported on
+  Streaming stats), net, and **Paid off** once earnings cover the spending. When a song has imported
+  earnings, a ledger "Streaming & sales" line for it is left out so a payout isn't counted twice.
+  **Export PDF** prints the table. Nothing here is live: it's what you typed or imported.
+
 ## How it's laid out
 
 The rail on the left has one **Start** tab for ideas, then a tab for each kind of thing you build:
