@@ -229,12 +229,24 @@ export function drawDoc(ctx, doc, opt = {}) {
   ctx.fillStyle = doc.bg || '#000000';
   ctx.fillRect(0, 0, W, H);
   let below = null;
+  const keep = opt.cache ? new Set() : null;
   for (const L of doc.layers) {
     if (!L.visible || (opt.hide && opt.hide === L.id)) {
       below = null;
       continue;
     }
-    const lc = renderLayer(L, W, H, scale, opt, below);
+    let lc;
+    if (opt.cache) {
+      // preview only: a layer that did not change since the last frame is not drawn again
+      const sig = layerSig(L, W, H, scale, opt, below);
+      const hit = opt.cache.get(L.id);
+      if (hit && hit.sig === sig) lc = hit.canvas;
+      else {
+        lc = renderLayer(L, W, H, scale, opt, below);
+        opt.cache.set(L.id, { sig, canvas: lc });
+      }
+      keep.add(L.id);
+    } else lc = renderLayer(L, W, H, scale, opt, below);
     ctx.save();
     ctx.globalAlpha = L.opacity;
     ctx.globalCompositeOperation = L.blend || 'source-over';
@@ -248,7 +260,25 @@ export function drawDoc(ctx, doc, opt = {}) {
     ctx.restore();
     below = lc;
   }
+  if (keep) for (const id of [...opt.cache.keys()]) if (!keep.has(id)) opt.cache.delete(id);
   ctx.restore();
+}
+
+// Identity numbers for the objects a layer is drawn from (a photo element, a person matte, the layer drawn below it),
+// so a cached layer is redrawn when its photo, matte or clip source is a different object than last time.
+const ids = new WeakMap();
+let nextId = 1;
+const idOf = (o) => {
+  if (!o) return 0;
+  if (!ids.has(o)) ids.set(o, nextId++);
+  return ids.get(o);
+};
+/** Everything a layer's picture depends on, as a string. `opt.epoch` changes when fonts or files arrive. */
+export function layerSig(L, W, H, scale, opt, below) {
+  const img = L.type === 'image' && L.mediaId && opt.getImage ? opt.getImage(L.mediaId) : null;
+  const matte = L.type === 'image' && L.mask && L.mask.type === 'person' && opt.getMatte ? opt.getMatte(L.mediaId) : null;
+  const clip = L.mask && L.mask.type === 'clip' ? idOf(below) : 0;
+  return `${JSON.stringify(L)}|${W}x${H}@${scale}|${opt.offsetX || 0}|${opt.preview ? 1 : 0}|${opt.epoch || 0}|${idOf(img)}|${idOf(matte)}|${clip}`;
 }
 
 /** The whole design at full size (or `scale`), as a canvas. */
@@ -261,9 +291,10 @@ export function renderDoc(doc, opt = {}) {
 
 /** Each carousel slide (or the one design) as its own full-size canvas. */
 export function renderSlides(doc, opt = {}) {
+  const k = opt.scale || 1; // 2 or 3 for a print-size export
   return slices(doc).map((s) => {
-    const c = mk(s.w, doc.h);
-    drawDoc(c.getContext('2d'), doc, { ...opt, scale: 1, offsetX: s.x });
+    const c = mk(s.w * k, doc.h * k);
+    drawDoc(c.getContext('2d'), doc, { ...opt, scale: k, offsetX: s.x });
     return c;
   });
 }

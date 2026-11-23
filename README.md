@@ -96,8 +96,31 @@ undoes; drag rows in the layer list to reorder, hide or lock them.
   artist's Photos page. An export waits for a *cut out the person* layer to finish being found, and a
   warning about missing photos stays on screen. Making a carousel shorter moves layers that would be
   left off the edge back onto the last slide. Delete and Backspace only remove a layer when the focus is
-  on the design, not on a button or behind a dialog. Designs are saved in this browser. Media is restored
-  four files at a time on start.
+  on the design, not on a button or behind a dialog. Designs are saved in this browser.
+- **Download size**: a **Download size** box next to the export buttons gives 1×, 2× or 3× (only as far as the
+  browser can draw; a phone offers less). A poster or flyer shows its dpi (a poster at 3× is 5400 × 7200 px,
+  300 dpi); files are named `name-3x.png`. **Save to media** and the show poster stay at 1×.
+- **Custom size**: choose **Custom size…** in the size box (or in New blank design) and type the width and height of one
+  slide, 100 to 8000 px. Layers keep their place when the size changes.
+- **Story safe area**: a 9:16 design shows dashed bands where Instagram's top bar (about 250 of 1920 px) and reply
+  bar and stickers (about 340) cover it. **Safe area** in the bar turns it off. It is only on screen, never in the image.
+- **Align**: six buttons under Position and blend line a layer up with the left, centre or right and the top, middle or
+  bottom of its own slide.
+- **Designs**: each saved design has a small picture (made once and kept until it changes) and, past four designs, a
+  **Find a design** box. The empty "My first design" a first visit makes is dropped when you move on from it untouched.
+- **First visit**: with no photos yet, the Templates tab has **Upload photos**, **From Google Drive** and **Search stock**
+  right there. It also links to the Video Studio's Carousel page, and that page has **Edit in Photo Studio**, which
+  saves its slides to the media library and opens them as a carousel design (up to 10 slides) with a photo on each.
+- A small **Saving… / Saved in this browser** note sits in the bar. The lock buttons are padlocks (pressed = locked).
+  A slider on a carousel redraws only the layer it changes, and the top bar is rebuilt only when what it shows changes.
+- **Shared**: the open workspace is kept in the address (`#photo`, `#studio`, `#tabstudio`; the Manager keeps its own
+  `#m/...` address), so a reload or a shared link opens the same one. The workspace tabs and the Photo Studio's
+  left tabs move with the arrow keys (Home and End too). Messages stack (up to three) instead of replacing each
+  other; errors are announced as alerts and stay until closed (or 30 s).
+- **Faster start**: each audio file is stored with its waveform, loudness curve and length (a video with its
+  thumbnail), so after the first visit a big library is not decoded again. Files saved before this get their
+  analysis written back in the background once. While a big library loads, a "Loading your files (n/N)" note
+  shows. Media is restored four files at a time.
 
 **Export PDF.** The press release, press kit, call sheet, show sheet, show plan, stage plot, tour sheet,
 money report and the month's calendar each have **Export PDF**. It opens the print dialog with a clean

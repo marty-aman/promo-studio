@@ -26,7 +26,9 @@ const nameIndex = () => {
   }
   return names;
 };
+let namesHeld = 0; // while restoring a whole library the index is written once at the end, not per file
 const saveNames = () => {
+  if (namesHeld) return;
   try {
     localStorage.setItem(NAMES_KEY, JSON.stringify(trim(nameIndex(), (id) => library.has(id))));
   } catch {
@@ -312,7 +314,7 @@ async function analyseAudio(rec) {
  * Add a blob to the library. `meta` may carry source/attribution for stock media.
  * Persists to IndexedDB unless `persist` is false (used when restoring).
  */
-export async function addMedia(blob, name, meta = {}, { persist = true, id = null } = {}) {
+export async function addMedia(blob, name, meta = {}, { persist = true, id = null, cached = null } = {}) {
   const kind = meta.kind || kindOf(blob.type || '', name);
   if (!kind) throw new Error(`Unsupported file type: ${name}`);
   const rec = {
@@ -333,8 +335,10 @@ export async function addMedia(blob, name, meta = {}, { persist = true, id = nul
     if (kind === 'midi') throw new Error(`Could not read ${name}: it isn’t a MIDI file with notes in it.`);
     throw new Error(`Could not open ${name}. Your browser may not support this format.`);
   }
-  if (kind === 'audio' || (kind === 'video' && meta.analyse)) await analyseAudio(rec);
-  rec.thumb = await makeThumb(rec);
+  // a file analysed on an earlier visit comes back with its waveform, loudness curve and thumbnail: no decoding again
+  const fromCache = useAnalysis(rec, cached);
+  if (!fromCache && (kind === 'audio' || (kind === 'video' && meta.analyse))) await analyseAudio(rec);
+  rec.thumb = fromCache && fromCache.thumb !== undefined ? fromCache.thumb : await makeThumb(rec);
   rec.ready = true;
   rec.path = meta.path || blob.webkitRelativePath || '';
   library.set(rec.id, rec);
@@ -342,7 +346,7 @@ export async function addMedia(blob, name, meta = {}, { persist = true, id = nul
   saveNames();
   if (persist) {
     requestPersistence();
-    mediaDB.put({ id: rec.id, name, kind, blob, source: rec.source, attribution: rec.attribution, path: rec.path }).catch(async (e) => {
+    mediaDB.put(stored(rec)).catch(async (e) => {
       // the file works in this visit but would be gone after a reload: say so now, not later
       rec.unsaved = true;
       reportSaveFail(`the file “${name}”`, { media: true, name, bytes: blob.size, space: await spaceLeft(), error: e && e.name });
@@ -350,6 +354,34 @@ export async function addMedia(blob, name, meta = {}, { persist = true, id = nul
   }
   emit();
   return rec;
+}
+
+/**
+ * What is worth keeping next to a file so the next visit doesn't analyse it again: the waveform peaks, the loudness
+ * curve, the length and the thumbnail (a video's frame). Images need nothing (their thumbnail is the file itself).
+ */
+const ANALYSIS_V = 1;
+export function analysisOf(rec) {
+  if (rec.kind === 'audio' && rec.peaks && rec.envelope) return { v: ANALYSIS_V, peaks: rec.peaks, peaksPerSec: rec.peaksPerSec, envelope: rec.envelope, envRate: rec.envRate, duration: rec.duration, thumb: rec.thumb || null };
+  if (rec.kind === 'video' && rec.thumb) return { v: ANALYSIS_V, thumb: rec.thumb, peaks: rec.peaks || null, peaksPerSec: rec.peaksPerSec, envelope: rec.envelope || null, envRate: rec.envRate, duration: rec.peaks ? rec.duration : 0 };
+  return null;
+}
+/** The record as it is kept in IndexedDB. */
+const stored = (rec) => ({ id: rec.id, name: rec.name, kind: rec.kind, blob: rec.blob, source: rec.source, attribution: rec.attribution, path: rec.path, analysis: analysisOf(rec) });
+/** Fill rec from a kept analysis. Returns it when it was usable (right version, right kind), else null. */
+export function useAnalysis(rec, a) {
+  if (!a || a.v !== ANALYSIS_V) return null;
+  if (rec.kind === 'audio') {
+    if (!a.peaks || !a.envelope || !(a.duration > 0)) return null;
+  } else if (rec.kind !== 'video' || a.thumb === undefined) return null;
+  if (a.peaks && a.envelope) {
+    rec.peaks = a.peaks;
+    rec.peaksPerSec = a.peaksPerSec;
+    rec.envelope = a.envelope;
+    rec.envRate = a.envRate;
+    if (rec.kind === 'audio') rec.duration = a.duration;
+  }
+  return a;
 }
 
 let askedPersist = false;
@@ -391,22 +423,45 @@ export function removeMedia(id) {
   emit();
 }
 
-export async function restoreMedia() {
+/**
+ * Bring the saved files back. Each record carries its analysis from the last visit, so a file is only decoded the
+ * first time; records saved before that get their analysis written back once, in the background. `onProgress(done, total)`
+ * is called as files arrive.
+ */
+export async function restoreMedia({ onProgress = null } = {}) {
   const recs = await mediaDB.all();
   // a few files at a time: decoding runs off the main thread, so four in flight cut the wait on a big library
-  // shortcut: fixed pool of 4, store the analysis with each record to skip decoding altogether if this is still slow
+  // shortcut: fixed pool of 4; the first visit after this change still decodes every older file once
   let next = 0;
+  let done = 0;
+  const backfill = [];
+  namesHeld++;
   const worker = async () => {
     while (next < recs.length) {
       const r = recs[next++];
       try {
-        await addMedia(r.blob, r.name, { kind: r.kind, source: r.source, attribution: r.attribution, path: r.path }, { persist: false, id: r.id });
+        const rec = await addMedia(r.blob, r.name, { kind: r.kind, source: r.source, attribution: r.attribution, path: r.path }, { persist: false, id: r.id, cached: r.analysis });
+        if (!r.analysis && analysisOf(rec)) backfill.push(rec);
       } catch (e) {
         console.warn('Could not restore', r.name, e);
       }
+      onProgress && onProgress(++done, recs.length);
     }
   };
-  await Promise.all(Array.from({ length: Math.min(4, recs.length) }, worker));
+  try {
+    await Promise.all(Array.from({ length: Math.min(4, recs.length) }, worker));
+  } finally {
+    namesHeld--;
+    saveNames();
+  }
+  // one at a time and after everything else, so it never competes with the first screen
+  (async () => {
+    for (const rec of backfill) {
+      if (library.get(rec.id) !== rec) continue;
+      await new Promise((r) => setTimeout(r, 50));
+      await mediaDB.put(stored(rec)).catch(() => {}); // the file is already stored; only the shortcut is lost
+    }
+  })();
 }
 
 export function clearMedia() {

@@ -296,3 +296,81 @@ export function pullBackLayers(d, slides = 1) {
   }
   return moved;
 }
+
+// ---------------------------------------------------------------- sizes, print scale, align, safe area
+
+/** Real paper sizes in inches (width, height), for the dpi shown next to the export size. */
+export const PRINT_INCHES = { poster: [18, 24], flyer: [8.5, 11] };
+
+/**
+ * A typed width or height as whole pixels between 100 and 8000 (1080 when it isn't a number). For a carousel pass
+ * its slide count: the whole canvas can't be wider than 12000, so a slide gets narrower as slides are added.
+ */
+export const clampDim = (v, slides = 1) => clamp(Math.round(num(v, 1080)), 100, Math.min(8000, Math.floor(12000 / Math.max(1, slides))));
+
+/**
+ * Give a design a new size. Layers keep their place on the canvas by scaling with it. `pw` and `ph` are the size of
+ * ONE slide; a carousel is `slides` of them side by side. `sizeId` is a SIZES id or 'custom'.
+ */
+export function resizeDoc(d, sizeId, pw, ph) {
+  const k = d.slides > 1 ? d.slides : 1;
+  const sx = (pw * k) / d.w;
+  const sy = ph / d.h;
+  for (const L of d.layers) Object.assign(L, { x: Math.round(L.x * sx), y: Math.round(L.y * sy), w: Math.round(L.w * sx), h: Math.round(L.h * sy) });
+  Object.assign(d, { size: sizeId, w: pw * k, h: ph });
+}
+
+/**
+ * Export multipliers a design can use: 1×, 2× and 3×, but only while the picture stays under what a browser can draw
+ * (a side of `maxSide` and `maxArea` pixels, which a phone sets much lower). Always includes 1.
+ */
+export function exportScales(doc, { maxSide = 16000, maxArea = 120e6 } = {}) {
+  const sw = doc.w / (doc.slides > 1 ? doc.slides : 1);
+  return [1, 2, 3].filter((s) => s === 1 || (Math.max(sw, doc.h) * s <= maxSide && sw * s * doc.h * s <= maxArea));
+}
+
+/** Dots per inch of a paper-sized design (poster, flyer) at an export multiplier, or null for screen sizes. */
+export function dpiOf(doc, scale = 1) {
+  const inch = PRINT_INCHES[doc.size];
+  return inch && !(doc.slides > 1) && doc.w === sizeById(doc.size)[2] ? Math.round((doc.w * scale) / inch[0]) : null;
+}
+
+/**
+ * Line a layer up with its own slide: where is 'left', 'center', 'right', 'top', 'middle' or 'bottom'.
+ * shortcut: uses the layer's unrotated box, so a rotated layer lines up by its box, not its visible corners.
+ */
+export function alignLayer(d, L, where) {
+  const k = d.slides > 1 ? d.slides : 1;
+  const sw = d.w / k;
+  const slide = Math.max(0, Math.min(k - 1, Math.floor((L.x + L.w / 2) / sw)));
+  if (where === 'left') L.x = Math.round(slide * sw);
+  else if (where === 'center') L.x = Math.round(slide * sw + (sw - L.w) / 2);
+  else if (where === 'right') L.x = Math.round(slide * sw + sw - L.w);
+  else if (where === 'top') L.y = 0;
+  else if (where === 'middle') L.y = Math.round((d.h - L.h) / 2);
+  else if (where === 'bottom') L.y = Math.round(d.h - L.h);
+}
+
+/**
+ * Where Instagram's own buttons cover a story or Reel cover: the top bar (about 250 of 1920 px) and the reply bar and
+ * sticker area (about 340). Returns the two heights in design pixels for a 9:16 design, null for any other shape.
+ */
+export function safeInsets(doc) {
+  const sw = doc.w / (doc.slides > 1 ? doc.slides : 1);
+  if (!(sw > 0) || doc.h / sw < 1.7) return null;
+  return { top: Math.round((doc.h * 250) / 1920), bottom: Math.round((doc.h * 340) / 1920) };
+}
+
+/** A design nobody has touched: no layers and never saved with a change (the empty one a first visit creates). */
+export const isUntouched = (d) => !d.layers.length && !d.updatedAt;
+
+/**
+ * A carousel design with one photo per slide (the Video Studio's Carousel page hands its slides over this way).
+ * `items`: [{ id, name }] in slide order (at most 10 fit). Slides are 1080×1350 like the page's.
+ */
+export function carouselFromImages(items, { name = 'Carousel', slideW = 1080, slideH = 1350 } = {}) {
+  const used = items.slice(0, 10);
+  const doc = newDoc({ size: 'post', name, slides: used.length, w: slideW * Math.max(1, used.length), h: slideH });
+  used.forEach((m, i) => doc.layers.push(newLayer('image', doc, { name: m.name || `Slide ${i + 1}`, mediaId: m.id, x: i * slideW, y: 0, w: slideW, h: slideH })));
+  return { doc, left: items.length - used.length };
+}

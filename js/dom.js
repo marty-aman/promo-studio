@@ -88,6 +88,14 @@ const ICONS = {
   route: 'M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8 17h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8',
   cloud: 'M17.5 19H7a5 5 0 1 1 1-9.9A6 6 0 0 1 19.5 11a4 4 0 0 1-2 8z',
   grid: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
+  alignLeft: 'M4 3v18M8 7h12M8 13h7',
+  alignCenter: 'M12 3v18M6 7h12M8 13h8',
+  alignRight: 'M20 3v18M4 7h12M9 13h7',
+  alignTop: 'M3 4h18M7 8v12M13 8v7',
+  alignMiddle: 'M3 12h18M7 6v12M13 8v8',
+  alignBottom: 'M3 20h18M7 4v12M13 9v7',
+  lock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4',
+  unlock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 7.6-1.7',
 };
 
 export function icon(name, size = 18) {
@@ -121,17 +129,58 @@ export function iconButton(iconName, title, onClick, variant = '') {
   return h('button', { type: 'button', class: `icon-btn ${variant}`.trim(), title, 'aria-label': title, onclick: onClick }, icon(iconName, 18));
 }
 
-let toastTimer = null;
+/**
+ * Messages stack in #toast (up to 3, newest last). A second message no longer replaces the first. An error is
+ * announced as an alert, has a close button and stays until closed (or 30 s, so a forgotten one doesn't linger).
+ * #toast itself carries `show` and the newest message's kind while anything is on screen.
+ */
+export const MAX_TOASTS = 3;
+const ERROR_MS = 30000;
 export function toast(msg, kind = 'info', ms = 3200) {
   let el = document.getElementById('toast');
   if (!el) {
     el = h('div', { id: 'toast', role: 'status', 'aria-live': 'polite' });
     document.body.append(el);
   }
-  el.textContent = msg;
-  el.className = `show ${kind}`;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.className = ''), ms);
+  const sync = () => {
+    const last = el.lastElementChild;
+    el.className = last ? `show ${last.dataset.kind}` : '';
+  };
+  // the same message again: refresh it instead of stacking a copy
+  for (const old of [...el.children]) if (old.querySelector('.toast-msg').textContent === String(msg)) (clearTimeout(old._t), old.remove());
+  const isErr = kind === 'error';
+  const item = h('div', { class: `toast-item ${kind}`, dataset: { kind }, role: isErr ? 'alert' : null });
+  item.append(h('span', { class: 'toast-msg' }, String(msg)));
+  const close = () => (clearTimeout(item._t), item.remove(), sync());
+  if (isErr) item.append(h('button', { type: 'button', class: 'toast-x', 'aria-label': 'Close this message', title: 'Close', onclick: close }));
+  item._t = setTimeout(close, isErr ? Math.max(ms, ERROR_MS) : ms);
+  el.append(item);
+  while (el.children.length > MAX_TOASTS) el.firstElementChild.remove();
+  sync();
+}
+
+/**
+ * Arrow-key movement for a tab strip (role="tablist"): Left/Right (Up/Down too) move to the next or previous tab and
+ * select it, Home and End jump to the ends. Only the selected tab is in the Tab order. Call again after the tabs are rebuilt.
+ */
+export function tablistKeys(list) {
+  const tabs = () => [...list.querySelectorAll('[role="tab"]')];
+  for (const t of tabs()) t.tabIndex = t.getAttribute('aria-selected') === 'true' ? 0 : -1;
+  if (list._tabKeys) return;
+  list._tabKeys = true;
+  list.addEventListener('keydown', (e) => {
+    const all = tabs();
+    const i = all.indexOf(document.activeElement);
+    if (i < 0 || e.altKey || e.ctrlKey || e.metaKey) return;
+    const to = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: all.length - 1 }[e.key];
+    if (to == null) return;
+    e.preventDefault();
+    e.stopPropagation(); // the arrows belong to the tabs, not to a layer behind them
+    const next = all[(to + all.length) % all.length];
+    next.focus();
+    next.click(); // the tab strip may be rebuilt by the click; the owner puts focus back on the selected tab
+    for (const t of tabs()) t.tabIndex = t.getAttribute('aria-selected') === 'true' ? 0 : -1;
+  });
 }
 
 export function download(blob, filename) {

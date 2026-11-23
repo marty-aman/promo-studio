@@ -10,7 +10,8 @@ import { configureRelink, refreshRelink, relinkButton, openRelink, missingFor } 
 import { Engine, exportVideo } from './engine.js';
 import { createTimeline } from './timeline.js';
 import { createPanels } from './panels.js';
-import { h, icon, iconButton, button, toast, setFold, Binder, download } from './dom.js';
+import { h, icon, iconButton, button, toast, setFold, Binder, download, tablistKeys } from './dom.js';
+import { modeUrl } from './modeurl.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { buildInspirationPage } from './page-inspiration.js';
 import { buildTabStudio, openInTabStudio } from './page-tabstudio.js';
@@ -99,8 +100,7 @@ aspectSel.addEventListener('change', () => store.update((d) => (d.aspect = aspec
 
 const postSlot = h('span');
 // Manager | Video Studio: two workspaces in one app
-const MODE_KEY = 'pvm.mode.v1';
-const modeBtn = (id, label, ic) => h('button', { type: 'button', role: 'tab', class: 'mode-btn', 'data-mode': id, title: label, onclick: () => setMode(id) }, icon(ic, 16), h('span', {}, label));
+const modeBtn = (id, label, ic) => h('button', { type: 'button', role: 'tab', class: 'mode-btn', 'data-mode': id, 'aria-controls': id === 'studio' ? null : `ws-${id}`, title: label, onclick: () => setMode(id) }, icon(ic, 16), h('span', {}, label));
 const modeSwitch = h('div', { class: 'mode-switch', role: 'tablist', 'aria-label': 'Workspace' }, modeBtn('manager', 'Manager', 'users'), modeBtn('studio', 'Video Studio', 'film'), modeBtn('photo', 'Photo Studio', 'image'), modeBtn('tabstudio', 'Tab Studio', 'guitar'));
 const studioOnly = (...els) => h('div', { class: 'studio-only' }, ...els);
 // which artist this promo is for (from the Manager): its name, theme and logo go on the edit
@@ -145,9 +145,9 @@ const tlToolbar = h(
 const timelineRoot = h('section', { class: 'timeline', 'aria-label': 'Timeline' }, tlToolbar);
 const pageEl = h('div', { class: 'page-overlay', hidden: true, role: 'region', 'aria-label': 'Inspiration' });
 
-const managerRoot = h('div', { class: 'manager', role: 'region', 'aria-label': 'Band manager' });
-const photoRoot = h('div', { class: 'photo', role: 'region', 'aria-label': 'Photo Studio', hidden: true });
-const tabRoot = h('div', { class: 'tabws', role: 'region', 'aria-label': 'Tab Studio', hidden: true });
+const managerRoot = h('div', { id: 'ws-manager', class: 'manager', role: 'region', 'aria-label': 'Band manager' });
+const photoRoot = h('div', { id: 'ws-photo', class: 'photo', role: 'region', 'aria-label': 'Photo Studio', hidden: true });
+const tabRoot = h('div', { id: 'ws-tabstudio', class: 'tabws', role: 'region', 'aria-label': 'Tab Studio', hidden: true });
 // two bars that sit above everything: an export in progress (the editing controls are locked) and a failed save
 const exportBar = h('div', { class: 'export-bar', role: 'status', hidden: true });
 const saveBanner = h('div', { class: 'save-banner', role: 'alert', hidden: true });
@@ -197,6 +197,20 @@ const ui = {
     engine.loop = !!on;
     loopBtn.classList.toggle('on', engine.loop);
     loopBtn.setAttribute('aria-pressed', engine.loop ? 'true' : 'false');
+  },
+  /**
+   * Hand a finished carousel to the Photo Studio: the slides go to the media library and open as one design with a
+   * photo per slide (the Photo Studio takes up to 10 slides), ready for text, shapes and looks.
+   */
+  async editInPhoto(blobs, name) {
+    const items = [];
+    for (const [i, b] of blobs.slice(0, 10).entries()) {
+      const file = `${name}-${String(i + 1).padStart(2, '0')}.png`;
+      const rec = await addMedia(b, file, { kind: 'image', source: 'carousel' });
+      items.push({ id: rec.id, name: `Slide ${i + 1}` });
+    }
+    setMode('photo');
+    photo.openCarousel(items, name, blobs.length);
   },
   /** Switch to the Video Studio, on a tab. */
   goStudio(tab = 'layers') {
@@ -1092,6 +1106,7 @@ photo = createPhotoStudio({
       });
     },
     context: photoContext,
+    openCarouselPage: () => ui.goStudio('carousel'),
   },
 });
 media.onChange(() => mode === 'photo' && photo.mediaChanged());
@@ -1480,7 +1495,10 @@ if (localStorage.getItem('pvm.tab') === 'tabstudio') {
 }
 function setMode(m) {
   mode = m;
-  localStorage.setItem(MODE_KEY, m);
+  localStorage.setItem('pvm.mode.v1', m); // nothing reads it back, but older checks and tools look at it
+  // the workspace is in the address, so a reload or a shared link opens the same one
+  const url = modeUrl(m, location);
+  if (url !== location.pathname + location.search + location.hash) history.replaceState(history.state, '', url);
   // the Photo Studio hides the video editor the same way the Manager does
   document.body.classList.toggle('mode-manager', m === 'manager' || m === 'photo' || m === 'tabstudio');
   document.body.classList.toggle('mode-photo', m === 'photo');
@@ -1499,6 +1517,7 @@ function setMode(m) {
     b.classList.toggle('on', on);
     b.setAttribute('aria-selected', on ? 'true' : 'false');
   }
+  tablistKeys(modeSwitch);
   if (m === 'manager') manager.show();
   else if (m === 'photo') photo.show();
   else {
@@ -1532,7 +1551,12 @@ async function boot() {
   // Bundled fonts must be loaded before canvas text uses them.
   await Promise.all(FONTS.map((f) => document.fonts.load(`40px "${f.id}"`).catch(() => {})));
   engine.render();
-  await restoreMedia();
+  // a big library takes a moment: say how far it is (only shown when it is slow)
+  const loadNote = h('div', { class: 'load-note small', role: 'status' });
+  let noteTimer = setTimeout(() => document.body.append(loadNote), 600);
+  await restoreMedia({ onProgress: (n, total) => (loadNote.textContent = `Loading your files (${n}/${total})…`) });
+  clearTimeout(noteTimer);
+  loadNote.remove();
   configureRelink({ ready: true }); // from here on, a media id with no file is really missing
   configureTodoAuto({ has: (id) => media.has(id) }); // to-dos tick themselves only for files really in the library
   refreshRelink();
