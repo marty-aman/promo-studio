@@ -809,6 +809,20 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .mgr-cal-item.shoot { background: rgba(79, 140, 255, 0.22); }
 .mgr-cal-item.post { background: rgba(244, 114, 182, 0.18); }
 .mgr-cal-item:hover { outline: 1px solid var(--border-strong); }
+/* your own events, coloured by kind */
+.mgr-cal-item.event { background: rgba(167, 139, 250, 0.22); box-shadow: inset 3px 0 0 #a78bfa; }
+.mgr-cal-item.ev-meeting { background: rgba(45, 212, 191, 0.2); box-shadow: inset 3px 0 0 #2dd4bf; }
+.mgr-cal-item.ev-travel { background: rgba(251, 146, 60, 0.2); box-shadow: inset 3px 0 0 #fb923c; }
+.mgr-cal-item.ev-personal { background: rgba(148, 163, 184, 0.22); box-shadow: inset 3px 0 0 #94a3b8; }
+.mgr-cal-item.ev-other { background: var(--raised); box-shadow: inset 3px 0 0 var(--border-strong); }
+.mgr-kind.event, .mgr-item.event .mgr-kind { color: #a78bfa; }
+.mgr-cal-d { position: relative; cursor: cell; }
+.mgr-cal-add { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: var(--raised); color: var(--muted); cursor: pointer; opacity: 0; }
+.mgr-cal-d:hover .mgr-cal-add, .mgr-cal-add:focus-visible { opacity: 1; }
+.mgr-cal-add:hover { color: var(--text); }
+@media (hover: none) { .mgr-cal-add { opacity: 0.6; } }
+.mgr-evform { border-color: rgba(167, 139, 250, 0.5); }
+.mgr-evform .mf.inline { margin-bottom: 10px; }
 
 /* ---- press kit */
 .mgr-epk-prev { position: sticky; top: 12px; }

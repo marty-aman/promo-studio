@@ -126,6 +126,35 @@ export function newShow(date = '') {
   return { id: mid('show'), date, doors: '', setTime: '', loadIn: '', venueId: null, venue: '', city: 'Seattle', billing: 'support', lineup: [], status: 'idea', tickets: '', price: '', deal: '', contact: '', setlist: '', notes: '', posterId: null, todo: [], pitchedOn: '', followedUp: false, settlement: { gross: '', pay: '', merch: '', costs: '', fund: '', shares: {} } };
 }
 
+// ---- your own calendar events (rehearsals, meetings, travel…)
+export const EVENT_KINDS = [['rehearsal', 'Rehearsal'], ['meeting', 'Meeting'], ['travel', 'Travel'], ['personal', 'Personal'], ['other', 'Other']];
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** A new event. `repeat` is '' or 'weekly' (then `until`, a last date, or '' for no end). */
+export const newEvent = (date = '') => ({ id: mid('ev'), title: '', date, start: '', end: '', allDay: true, location: '', note: '', kind: 'rehearsal', repeat: '', until: '' });
+/** Events from a save, checked: bad dates and times dropped, unknown kinds become Other. */
+export function normalizeEvents(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((e) => e && typeof e === 'object' && typeof e.id === 'string' && parseDate(e.date))
+    .map((e) => {
+      const d = newEvent(e.date);
+      const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
+      const start = HHMM.test(e.start) ? e.start : '';
+      return { ...d, id: e.id, title: str(e.title, 200), start, end: start && HHMM.test(e.end) ? e.end : '', allDay: !start || e.allDay === true, location: str(e.location, 200), note: str(e.note, 2000), kind: EVENT_KINDS.some(([k]) => k === e.kind) ? e.kind : 'other', repeat: e.repeat === 'weekly' ? 'weekly' : '', until: e.repeat === 'weekly' && parseDate(e.until) && e.until >= e.date ? e.until : '' };
+    });
+}
+/** The dates an event falls on in [from, to): one, or every week for a weekly one. */
+export function eventDates(ev, from, to) {
+  if (!ev.repeat) return ev.date >= from && ev.date < to ? [ev.date] : [];
+  const out = [];
+  // jump straight to the first week in range, so an old weekly event isn't walked from its start
+  const skip = Math.max(0, Math.floor((daysBetween(ev.date, from) || 0) / 7));
+  for (let d = addDays(ev.date, skip * 7); d < to && (!ev.until || d <= ev.until) && out.length < 400; d = addDays(d, 7)) if (d >= from) out.push(d);
+  return out;
+}
+/** "19:00–21:00", "from 19:00", or '' for all day. */
+export const eventTime = (ev) => (ev.allDay || !ev.start ? '' : ev.end ? `${ev.start}–${ev.end}` : `from ${ev.start}`);
+
 export function newManager() {
   return {
     version: MANAGER_VERSION,
@@ -143,6 +172,7 @@ export function newManager() {
     tours: [], // this artist's tours: { id, name, stops: [{ city, date, status, picks, money… }] } (see tours.js)
     photoFolders: [], // folders on the Photos page: { id, name, parent } (see photos.js)
     photos: [], // this artist's photos: { id, mediaId, caption, credit, tags, favorite, addedAt }
+    events: [], // your own calendar events: { id, title, date, start, end, allDay, location, note, kind, repeat, until }
     playlists: [], // your own playlists and curators (shared by every artist)
     playlistsOff: [], // built-in playlist ids you hid
     seeded: {},
@@ -174,6 +204,7 @@ export function normalizeManager(raw) {
   m.playlistsOff = Array.isArray(raw.playlistsOff) ? raw.playlistsOff.filter((x) => typeof x === 'string') : [];
   m.shows = m.shows.map((s) => ({ ...newShow(), ...s, posterId: typeof s.posterId === 'string' && s.posterId ? s.posterId : null, settlement: { ...newShow().settlement, ...(s.settlement || {}), shares: s.settlement && s.settlement.shares && typeof s.settlement.shares === 'object' && !Array.isArray(s.settlement.shares) ? { ...s.settlement.shares } : {} } }));
   m.covers = normalizeCovers(raw.covers);
+  m.events = normalizeEvents(raw.events);
   m.seeded = raw.seeded && typeof raw.seeded === 'object' ? raw.seeded : {};
   return m;
 }
@@ -244,7 +275,10 @@ export function agenda(m, from, days = 14) {
     const song = m.songs.find((s) => s.id === p.songId);
     if (inRange(p.date) && p.status !== 'posted') out.push({ date: p.date, kind: 'post', title: p.title || 'Post', sub: [p.platform, song && `“${song.title}”`].filter(Boolean).join(' · '), ref: { page: 'content', id: p.id } });
   }
-  const order = { show: 0, release: 1, shoot: 2, post: 3, task: 4 };
+  for (const ev of m.events || []) {
+    for (const date of eventDates(ev, from, to)) out.push({ date, kind: 'event', evKind: ev.kind, key: ev.id, title: ev.title || 'Event', sub: [EVENT_KINDS.find(([k]) => k === ev.kind)?.[1], eventTime(ev), ev.location].filter(Boolean).join(' · '), time: ev.allDay ? '' : ev.start, ref: { page: 'calendar', id: ev.id } });
+  }
+  const order = { show: 0, release: 1, shoot: 2, event: 3, post: 4, task: 5 };
   return out.sort((a, b) => a.date.localeCompare(b.date) || order[a.kind] - order[b.kind]);
 }
 

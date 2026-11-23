@@ -1,5 +1,5 @@
 // Calendar export, the press kit (EPK) and the money ledger. Pure functions, unit tested.
-import { agenda, addDays, parseDate, isoDate, niceDate, mid } from './model.js';
+import { agenda, addDays, parseDate, isoDate, niceDate, mid, EVENT_KINDS } from './model.js';
 import { combinedAgenda, viewOf, photoStyleCss } from './artists.js';
 
 // ---- calendar
@@ -50,7 +50,8 @@ export const icsUid = (it) => `${it.kind}-${it.ref.id}${it.key ? `-${it.key}` : 
 
 /**
  * Everything in the manager as an .ics calendar (Google, Apple and Outlook calendars import it):
- * shows at their set time, shoots at call time, everything else as all-day items.
+ * shows at their set time, shoots at call time, your own events at their times (weekly ones repeat),
+ * everything else as all-day items.
  */
 export function managerICS(m, { from = '', days = 400, stamp = new Date(), ws = null } = {}) {
   const start = from || addDays(isoDate(new Date()), -30);
@@ -59,7 +60,7 @@ export function managerICS(m, { from = '', days = 400, stamp = new Date(), ws = 
   const views = ws ? Object.fromEntries(ws.artists.map((a) => [a.id, viewOf(ws, a.id)])) : null;
   const dt = `${stamp.toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Band Manager//Band manager//EN', `X-WR-CALNAME:${icsEsc(ws ? 'All artists · manager' : `${m.band.name || 'Band'} · manager`)}`, 'CALSCALE:GREGORIAN'];
-  items.forEach((it) => {
+  items.filter((it) => it.kind !== 'event').forEach((it) => {
     const src = views ? views[it.artistId] : m;
     const show = it.kind === 'show' && src.shows.find((s) => s.id === it.ref.id);
     const song = it.kind === 'shoot' && src.songs.find((s) => s.id === it.ref.id);
@@ -80,6 +81,29 @@ export function managerICS(m, { from = '', days = 400, stamp = new Date(), ws = 
     if (show && show.venue) lines.push(fold(`LOCATION:${icsEsc([show.venue, show.city].filter(Boolean).join(', '))}`));
     lines.push('END:VEVENT');
   });
+  // your own events go in as they are (a weekly one as one repeating event), not one per day
+  const endDay = addDays(start, days);
+  const events = ws ? ws.artists.flatMap((a) => (views[a.id].events || []).map((ev) => ({ ev, artistId: a.id, artist: a.band.name || 'Artist' }))) : (m.events || []).map((ev) => ({ ev }));
+  for (const { ev, artistId, artist } of events) {
+    const inRange = ev.repeat ? ev.date < endDay && (!ev.until || ev.until >= start) : ev.date >= start && ev.date < endDay;
+    if (!inRange) continue;
+    lines.push('BEGIN:VEVENT', `UID:event-${ev.id}${artistId ? `-${artistId}` : ''}@promo-studio`, `DTSTAMP:${dt}`);
+    const timed = !ev.allDay && /^\d{2}:\d{2}$/.test(ev.start || '');
+    if (timed) {
+      const mins = (t) => +t.slice(0, 2) * 60 + +t.slice(3, 5);
+      const s = mins(ev.start);
+      // no end: an hour; an end before the start runs past midnight
+      const e = /^\d{2}:\d{2}$/.test(ev.end || '') && ev.end !== ev.start ? mins(ev.end) + (mins(ev.end) < s ? 1440 : 0) : s + 60;
+      const eT = `${String(Math.floor((e % 1440) / 60)).padStart(2, '0')}:${String(e % 60).padStart(2, '0')}`;
+      lines.push(`DTSTART:${icsLocal(ev.date, ev.start)}`, `DTEND:${icsLocal(addDays(ev.date, Math.floor(e / 1440)), eT)}`);
+    } else lines.push(`DTSTART;VALUE=DATE:${icsDay(ev.date)}`, `DTEND;VALUE=DATE:${icsDay(addDays(ev.date, 1))}`);
+    if (ev.repeat === 'weekly') lines.push(`RRULE:FREQ=WEEKLY${ev.until ? `;UNTIL=${icsDay(ev.until)}${timed ? 'T235959' : ''}` : ''}`);
+    lines.push(fold(`SUMMARY:${icsEsc(`${artistId ? `${artist}: ` : ''}${ev.title || 'Event'}`)}`));
+    const desc = [(EVENT_KINDS.find(([k]) => k === ev.kind) || [])[1], ev.note].filter(Boolean).join('\n');
+    if (desc) lines.push(fold(`DESCRIPTION:${icsEsc(desc)}`));
+    if (ev.location) lines.push(fold(`LOCATION:${icsEsc(ev.location)}`));
+    lines.push('END:VEVENT');
+  }
   lines.push('END:VCALENDAR');
   return `${lines.join('\r\n')}\r\n`;
 }
