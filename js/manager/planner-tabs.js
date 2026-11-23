@@ -4,6 +4,7 @@ import { newShow, niceDate, addDays, mid } from './model.js';
 import { BAND_STATUSES, CONTACT_ROLES, SOCIALS, newBand, newContact, showTodo, breakEven, venueFit } from './planner.js';
 import { plannerUI, checkBadge } from './page-planner.js';
 import { SEED_BANDS_ON } from './seed.js';
+import { venueMemory } from './page-showday.js';
 
 const SOCIAL_LABEL = { instagram: 'Instagram', tiktok: 'TikTok', spotify: 'Spotify', bandcamp: 'Bandcamp', youtube: 'YouTube', website: 'Website', facebook: 'Facebook' };
 const ext = (href, text) => (href ? h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text) : null);
@@ -172,6 +173,7 @@ export function buildTab(ctx) {
       h('div', { class: 'mgr-two' }, inp('date', 'Date', 'date'), h('label', { class: 'mf' }, h('span', { class: 'mf-l' }, 'Billing'), billSel)),
       h('label', { class: 'mf' }, h('span', { class: 'mf-l' }, 'Venue'), venueSel),
       venue ? h('p', { class: 'muted small' }, [venue.city, venue.capacity && `${venue.capacity} capacity`, venue.ages].filter(Boolean).join(' · '), venue.howToBook ? h('span', {}, h('br'), venue.howToBook) : null) : h('p', { class: 'muted tiny' }, 'Pick one from your venue list, or leave it empty for now.'),
+      venue ? venueMemory(m, { venueId: venue.id, venue: venue.name }) : null,
       h('h2', {}, '2 · Who plays'),
       pool.length ? h('div', { class: 'chips' }, pool.map((b) => button(b.name, () => toggle(b.name), { variant: `chip${ui.bands.includes(b.name) ? ' on' : ''}` }))) : h('p', { class: 'muted small' }, 'Add bands in the Bands tab to pick them here.'),
       h('p', { class: 'muted tiny' }, ui.bands.length ? `${ui.bands.length + 1} bands with you. Three or four is a full local bill.` : 'Three or four bands is a full local bill. Pick bands whose fans would like yours.'),

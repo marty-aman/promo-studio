@@ -223,6 +223,31 @@ or 3 posts with views). Both are stored per artist in this browser and go into b
   earnings, a ledger "Streaming & sales" line for it is left out so a payout isn't counted twice.
   **Export PDF** prints the table. Nothing here is live: it's what you typed or imported.
 
+### Show day
+
+At the bottom of each show (**Shows** → a show) the **Show day** section has three tabs. Everything is typed
+by you and kept in this browser with the show (so backups, Restore and Undo cover it). Nothing is fetched,
+synced or sent by the app.
+
+- **Advance sheet:** one page for the venue and its sound engineer: load-in, soundcheck, doors, your set,
+  curfew, set length, lineup, parking, load-in notes, hospitality, a rider, and the stage plot and input
+  list from **Show planner → Stage plot**. The venue contact's name, phone and email are typed here and go
+  on the sheet only when you tick them. The sheet is built from a fixed list of fields: the deal, money,
+  the show's own notes, fans, bandmates and other contacts are never on it. **Send to venue** opens your
+  own email app with the sheet as text (a mailto link can't carry attachments, so save the PDF and attach it
+  yourself); **Export advance sheet PDF** and **Copy as text** are next to it. **Mark as sent** stops the reminder.
+- **Gear and load-in:** a packing list that can start from the stage plot's gear, with who brings each item,
+  a packed count, "Needs backline" for gear you won't bring (flagged until "Borrowed / arranged", and listed
+  on the advance sheet), and a printable version.
+- **After-show recap:** people through the door, expense lines (numbers), how it went, what worked, a note
+  on the promoter and a venue note for next time. "Add to the venue's notes" appends a dated line to the
+  venue's **Our notes**. **Use as Costs** copies the expense total into the settlement's Costs.
+
+A show page and **Show planner → Build a show** say "Last time here: …" (date, net, door count and your venue
+note) for a venue you played before. Two reminders appear in Home and Calendar: **Send advance sheet** a
+week before a Confirmed show until it's marked sent, and **Fill in the recap** the day after a Played show
+with no recap (for two weeks). Cancelled, past and not-played shows give no reminders.
+
 ## How it's laid out
 
 The rail on the left has one **Start** tab for ideas, then a tab for each kind of thing you build:

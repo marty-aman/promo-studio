@@ -1,1 +1,41 @@
-/* Manager: show. Owned by the build that adds it; app.css stays untouched. */
+/* Manager: show day (advance sheet, gear and load-in list, after-show recap). Selectors start with .sd- */
+.sd-wrap { margin-top: 16px; }
+.sd-wrap .mgr-tabs { margin-top: 4px; }
+.sd-tab { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sd-tab > p { margin: 0; }
+.sd-memory { border-left: 3px solid var(--accent); background: var(--bg); padding: 8px 12px; border-radius: 0 8px 8px 0; margin: 0 0 12px; }
+.sd-memory p { margin: 0 0 4px; }
+.sd-last { font-weight: 700; }
+.sd-past { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
+.sd-chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; cursor: pointer; }
+.sd-chk input { margin: 0; }
+.sd-tab > .sd-chk { white-space: normal; align-items: flex-start; }
+.sd-contact { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+.sd-actions { flex-wrap: wrap; gap: 8px; align-items: center; }
+.sd-actions a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+.sd-sent { font-size: 12px; color: var(--ok); }
+.sd-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.sd-bar { flex: 1 1 100%; height: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.sd-bar > span { display: block; height: 100%; background: var(--ok); }
+.sd-gearlist, .sd-exps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.sd-gear { display: grid; grid-template-columns: auto minmax(0, 2fr) minmax(0, 1fr) auto auto auto; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 8px; border: 1px solid transparent; }
+.sd-gear.packed > input:not([type=checkbox]):first-of-type { color: var(--muted); text-decoration: line-through; }
+.sd-gear.need { border-color: rgba(251, 146, 60, 0.5); background: rgba(251, 146, 60, 0.06); }
+.sd-flag { color: #fb923c; border-color: rgba(251, 146, 60, 0.6); grid-column: 1 / -1; justify-self: start; }
+.sd-progress .sd-flag { grid-column: auto; }
+.sd-exps li { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.sd-total { font-size: 13px; }
+.sd-exp-note { margin: 0 0 6px; }
+@media (max-width: 640px) {
+  .sd-wrap .mgr-tabs { overflow: visible; }
+  .sd-wrap .mgr-tab { flex: 1 1 0; min-width: 0; white-space: normal; text-align: center; padding: 8px 4px; font-size: 12px; line-height: 1.25; }
+  .sd-gear { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+  .sd-gear > .sd-chk:first-child { order: 0; }
+  .sd-gear > input[data-k^="gear-lb-"] { order: 1; flex: 1 1 50%; min-width: 0; }
+  .sd-gear > .icon-btn { order: 2; }
+  .sd-gear > input[data-k^="gear-ow-"] { order: 3; flex: 1 1 100%; min-width: 0; }
+  .sd-gear > .sd-chk:not(:first-child) { order: 4; }
+  .sd-gear > .sd-flag { order: 5; }
+  .sd-contact { grid-template-columns: 1fr; align-items: start; }
+  .sd-exps li { grid-template-columns: minmax(0, 1fr) 90px auto; }
+}
