@@ -130,6 +130,17 @@ loaded), a YouTube link, streaming stats imported in the last 90 days, a booking
 released song with links, and a confirmed upcoming show. Each one that isn't met says how to fix it and
 links to the page or field. The score counts passed checks only.
 
+### Availability (Calendar → Availability)
+
+Ask the band which dates work, with no accounts and no server. This app runs on your own computer, so a link to it would not open for your bandmates; you send a file instead.
+
+1. **New poll**: a title, a kind (rehearsal, show, recording, other), the candidate dates (click days on a month grid, or add a weekday range) and the names of who should answer. Up to 60 dates and 12 people.
+2. **Make poll file** saves one HTML file (about 20 KB). Send it by message or email. It opens offline in any browser, sends nothing anywhere, and has a strict Content-Security-Policy (no network, one hash-approved inline script). Your bandmate types their name, ticks Yes, Maybe or No for each date and gets a short **reply code** (`AV1.…`) with a Copy button and an email link.
+3. **Paste the codes** here (one, several, or the whole message they sent). A person's earlier reply is replaced when they answer again; codes for another poll, cut-off or tampered codes and a 13th person are ignored with a reason.
+4. The grid shows dates × people, a Yes / Maybe / No count per date, the dates everyone can make, the dates where everyone is at least a Maybe, and a **Best date**. **Pick this date** adds a calendar event of the right kind (or a show draft for a show poll) through the normal events and shows.
+
+Limits, also said in the app: no live sync (replies come back by hand), the code is not secret and does not prove who sent it, anyone with the file can answer, and you only see what people send. Only names are stored, never emails or phone numbers; a poll's names and answers are never put in the press kit, the .ics or any PDF. Polls live in the Manager workspace (backup, restore, undo and artist switch cover them). Code: `js/manager/availability.js` (logic), `page-availability.js` (screen), `css/mgr-avail.css`.
+
 ## How it's laid out
 
 The rail on the left has one **Start** tab for ideas, then a tab for each kind of thing you build:

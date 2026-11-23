@@ -7,6 +7,7 @@ import { agenda, addDays, niceDate, newEvent, EVENT_KINDS } from './model.js';
 import { monthGrid, monthStart, managerICS } from './extras.js';
 import { combinedAgenda } from './artists.js';
 import { scopeChips, openItem } from './page-home.js';
+import { buildAvailability } from './page-availability.js';
 
 export const calUI = { month: '', draft: null, isNew: false };
 const KIND = { show: ['ticket', 'Show'], release: ['disc', 'Release'], shoot: ['film', 'Shoot'], event: ['calendar', 'Event'], post: ['share', 'Post'], task: ['check', 'To do'] };
@@ -81,6 +82,7 @@ export function buildCalendar(ctx) {
     ui.month = monthStart(opened.date);
   }
   if (!ctx.view.id && ui.draft && !ui.isNew) ui.draft = null;
+  const tab = ctx.view.tab === 'avail' && !ctx.view.id ? 'avail' : 'overview';
   const addOn = (date) => openDraft(ctx, newEvent(date), true);
   const weeks = monthGrid(ui.month);
   const first = weeks[0][0];
@@ -100,6 +102,8 @@ export function buildCalendar(ctx) {
     exportPDF(calendarHTML({ title, monthName, items: inMonth }), `${title} ${ui.month.slice(0, 7)}`);
     toast('Pick “Save as PDF” as the printer to get a PDF.');
   };
+  const tabs = h('div', { class: 'mgr-tabs', role: 'tablist' }, [['overview', 'Calendar'], ['avail', 'Availability']].map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': k === tab ? 'true' : 'false', class: `mgr-tab${k === tab ? ' on' : ''}`, 'data-k': `cal-tab-${k}`, onclick: () => ctx.go('calendar', null, k) }, l)));
+  if (tab === 'avail') return h('div', { class: 'mgr-page wide' }, h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, 'Calendar'), h('p', { class: 'muted' }, 'Ask the band which dates work, with a poll file and reply codes. No accounts.'), scopeChips(ctx))), tabs, buildAvailability(ctx));
   const counts = Object.fromEntries(Object.keys(KIND).map((k) => [k, items.filter((x) => x.kind === k && x.date.slice(0, 7) === ui.month.slice(0, 7)).length]));
   return h(
     'div',
@@ -110,6 +114,7 @@ export function buildCalendar(ctx) {
       h('div', {}, h('h1', {}, all ? 'Calendar · all artists' : 'Calendar'), h('p', { class: 'muted' }, 'Shows, releases, shoots, your own events, posts and to-dos in one place. Click a day to add an event.'), scopeChips(ctx)),
       h('div', { class: 'row' }, all ? null : button('Add event', () => addOn(ui.month.slice(0, 7) === today.slice(0, 7) ? today : ui.month), { iconName: 'plus', variant: 'sm primary', title: 'A rehearsal, meeting, travel day or anything else' }), button('Export PDF', pdf, { iconName: 'print', variant: 'sm', title: 'This month as a printable list' }), button('Download for my calendar (.ics)', exportICS, { iconName: 'calendar', variant: 'sm', title: 'Import into Google Calendar, Apple Calendar or Outlook' })),
     ),
+    tabs,
     ui.draft ? eventForm(ctx) : null,
     h(
       'div',
