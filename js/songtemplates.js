@@ -2,13 +2,13 @@
 // (Guitar Hero / Rock Band style highways from its charts and stems), a promo cut from its music video with the
 // lyrics on top, and a promo of its raw footage cut on the beat with the lyrics on top. Each ends on the
 // song's end card. Pure apart from the project draft it changes; unit tested.
-import { uid, findHook, linesFromText } from './core.js';
+import { uid, findHook, linesFromText, beatCutPlan } from './core.js';
 import { lyricsFromTiming, markTimed, timingStale } from './manager/lyrictiming.js';
 import { applyTemplate } from './templates.js';
 import { applyTake } from './suggest.js';
 import { defaultGameLayer } from './rhythmgame.js';
 import { isBassTrack } from './tab.js';
-import { autoCover } from './manager/releases.js';
+import { autoCover, sectionSpans, fmtTime } from './manager/releases.js';
 
 export const SONG_TEMPLATES = [
   {
@@ -29,7 +29,65 @@ export const SONG_TEMPLATES = [
     blurb: 'Your raw footage cut on the beat over the hook, with the lyrics on top.',
     needs: 'footage',
   },
+  {
+    id: 'st-chorus',
+    name: 'Chorus promo',
+    blurb: 'A 15–30 s vertical promo of the first chorus (from the song’s Sections tab): your footage, the music video or the cover cut on the beat, the chorus lyrics on top.',
+    needs: 'chorus',
+  },
 ];
+
+/** The song's first section named Chorus (typed or accepted from detection), with its end filled: or null. */
+export function firstChorus(song, duration = 0) {
+  return sectionSpans(song && song.sections, duration).find((s) => /^chorus\b/i.test(String(s.label || '').trim())) || null;
+}
+
+/** The stretch of the song the Chorus promo plays: the chorus, held to 15–30 s and inside the song. { start, len } */
+export function chorusWindow(sec, duration = 0) {
+  const start = Math.max(0, sec.start);
+  const room = duration > start ? duration - start : 30;
+  const want = sec.end != null ? sec.end - start : 20;
+  const len = Math.min(room, Math.max(15, Math.min(30, want)));
+  return { start: +start.toFixed(2), len: +Math.max(5, len).toFixed(2) };
+}
+
+// "[Chorus]", "(Chorus x2)", "Chorus:", "Chorus 2" on a line of its own (not a lyric that starts with "hook")
+const HEADER = /^\s*(\[\s*(chorus|refrain|hook)\b[^\]]*\]|\(\s*(chorus|refrain|hook)\b[^)]*\)|(chorus|refrain|hook)\s*\d*\s*:?)\s*$/i;
+const ANY_HEADER = /^\s*\[[^\]]*\]\s*$|^\s*\((verse|chorus|bridge|intro|outro|pre-chorus|refrain|hook)[^)]*\)\s*$/i;
+
+/**
+ * The chorus lines of plain lyrics: the stanza after a [Chorus] / Chorus: header, else the stanza that repeats most,
+ * else the first. Returns { lines: [text], how: 'header'|'repeat'|'first' } (empty lines when there are no lyrics).
+ */
+export function chorusLines(text) {
+  const stanzas = [];
+  let cur = null;
+  let afterHeader = false;
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) {
+      cur = null;
+      continue;
+    }
+    if (HEADER.test(line) || ANY_HEADER.test(line)) {
+      cur = { lines: [], chorus: HEADER.test(line) };
+      stanzas.push(cur);
+      afterHeader = true;
+      continue;
+    }
+    if (!cur) stanzas.push((cur = { lines: [], chorus: false }));
+    cur.lines.push(line);
+  }
+  const full = stanzas.filter((s) => s.lines.length);
+  if (!full.length) return { lines: [], how: 'first' };
+  const marked = afterHeader && full.find((s) => s.chorus);
+  if (marked) return { lines: marked.lines, how: 'header' };
+  const key = (s) => s.lines.join('\n').toLowerCase().replace(/[^\p{L}\p{N}\n]+/gu, '');
+  const count = {};
+  for (const s of full) count[key(s)] = (count[key(s)] || 0) + 1;
+  const rep = full.filter((s) => count[key(s)] >= 2).sort((a, b) => count[key(b)] - count[key(a)])[0];
+  return rep ? { lines: rep.lines, how: 'repeat' } : { lines: full[0].lines, how: 'first' };
+}
 const ORDER = ['guitar', 'drums', 'bass', 'keys'];
 const LABEL = { guitar: 'Guitar', drums: 'Drums', bass: 'Bass', keys: 'Keys' };
 
@@ -82,6 +140,15 @@ export function songTemplateReady(id, ctx) {
       : { ok: false, uses: [], missing: `Add a Guitar Pro tab, a MIDI file or guitar, bass or drum stems to “${ctx.song.title}” (its Files tab).` };
   }
   if (id === 'st-mv') return ctx.video ? { ok: true, uses: [`Music video: ${ctx.video.rec.name}`, lyricsUse(ctx)], missing: '' } : { ok: false, uses: [], missing: `Add the music video to “${ctx.song.title}” (its Files tab).` };
+  if (id === 'st-chorus') {
+    const sec = firstChorus(ctx.song, ctx.audio.duration || 0);
+    if (!sec) return { ok: false, uses: [], missing: `“${ctx.song.title}” has no Chorus section yet. Detect the sections from the audio (or type them) on its Sections tab.`, detect: true };
+    const pic = chorusPicture(ctx);
+    if (!pic) return { ok: false, uses: [], missing: `Add raw footage, the music video or cover art to “${ctx.song.title}”.` };
+    const w = chorusWindow(sec, ctx.audio.duration || 0);
+    const picText = pic.kind === 'footage' ? `${ctx.footage.length} footage clip${ctx.footage.length === 1 ? '' : 's'}, cut on the beat` : pic.kind === 'video' ? `Music video: ${ctx.video.rec.name}, the same moment, cut on the beat` : 'The cover art, pulsing on the beat';
+    return { ok: true, uses: [`${sec.label} ${fmtTime(w.start)}–${fmtTime(w.start + w.len)} (${Math.round(w.len)} s)`, picText, chorusLyricsUse(ctx, w)], missing: '' };
+  }
   if (id === 'st-footage') return (ctx.footage || []).length ? { ok: true, uses: [`${ctx.footage.length} footage clip${ctx.footage.length === 1 ? '' : 's'}`, lyricsUse(ctx)], missing: '' } : { ok: false, uses: [], missing: `Add raw footage to “${ctx.song.title}” (its Files tab).` };
   return { ok: false, uses: [], missing: 'Unknown template.' };
 }
@@ -129,6 +196,56 @@ function lyricsOn(d, ctx, facts) {
   else facts.push('No lyrics yet: add them on the Lyrics tab and they show on top');
 }
 
+/** What the Chorus promo shows: your raw footage first, then the music video, then the cover art. */
+function chorusPicture(ctx) {
+  if ((ctx.footage || []).length) return { kind: 'footage' };
+  if (ctx.video) return { kind: 'video' };
+  if (ctx.coverRec && ctx.coverRec.kind === 'image') return { kind: 'cover' };
+  return null;
+}
+
+/** Timed lines (song seconds) that sit in the window. */
+const inWindow = (lines, w) => (lines || []).filter((l) => l.end > w.start + 0.2 && l.start < w.start + w.len - 0.2);
+
+function chorusLyricsUse(ctx, w) {
+  const s = ctx.song;
+  if (s.instrumental) return 'No lyrics (instrumental)';
+  if (s.lyricTiming && inWindow(lyricsFromTiming(s.lyricTiming, () => ''), w).length) return 'The chorus lines from the song’s timed lyrics';
+  if (s.lyrics && s.lyrics.trim()) {
+    const c = chorusLines(s.lyrics);
+    return c.how === 'first' ? 'The first lines of the lyrics, spread over the chorus (time them on the Lyrics tab)' : 'The chorus lines of the lyrics, spread over it (time them on the Lyrics tab)';
+  }
+  return ctx.hasLyrics ? 'The lyrics in the edit' : 'No lyrics yet: add them on the Lyrics tab';
+}
+
+/**
+ * The chorus lyrics on top: the song's saved timing first (when it covers the chorus), then the edit's own lines
+ * when they fall in it, then the chorus stanza of the plain lyrics spread over the window.
+ */
+function chorusLyricsOn(d, ctx, w, facts) {
+  d.layerVis = { ...(d.layerVis || {}) };
+  delete d.layerVis.lyrics;
+  const s = ctx.song;
+  if (s.instrumental) return facts.push('No lyrics: the song is instrumental');
+  const timed = s.lyricTiming ? lyricsFromTiming(s.lyricTiming) : [];
+  if (inWindow(timed, w).length) {
+    d.lyrics = timed;
+    d.lyricsFrom = { mediaId: ctx.audio.id, source: 'timing', title: s.title, timed: true };
+    d.lyricsTimed = markTimed(null, 'song', s.lyricTiming.savedAt);
+    return facts.push(`${inWindow(timed, w).length} chorus line${inWindow(timed, w).length === 1 ? '' : 's'} from the song’s timed lyrics${timingStale(s) ? ' (its lyrics changed since they were timed: check them on the Lyrics tab)' : ''}`);
+  }
+  // the edit's own lines, unless they are just the song's plain lyrics laid out 2.5 s apart from the start
+  const spread = d.lyricsFrom && d.lyricsFrom.source === 'manager' && !d.lyricsTimed;
+  if (!spread && inWindow(d.lyrics, w).length) return facts.push('Your lyrics in the edit on top');
+  const c = chorusLines(s.lyrics);
+  if (!c.lines.length) return facts.push('No lyrics yet: add them on the Lyrics tab and they show on top');
+  const per = Math.max(1.2, Math.min(4, (w.len - 0.4) / c.lines.length));
+  d.lyrics = linesFromText(c.lines.slice(0, Math.max(1, Math.floor((w.len - 0.4) / per))).join('\n'), +(w.start + 0.3).toFixed(2), +per.toFixed(2));
+  d.lyricsFrom = { mediaId: ctx.audio.id, source: 'manager', title: s.title };
+  d.lyricsTimed = null;
+  facts.push(`${c.how === 'first' ? 'The first lines of the lyrics' : 'The chorus lines'}, ${per.toFixed(1)} s each: tap-sync them on the Lyrics tab`);
+}
+
 const hideParts = (d) => {
   for (const l of d.layers || []) if (['tab', 'drums', 'viz', 'midi', 'game'].includes(l.type)) l.visible = false;
 };
@@ -164,7 +281,43 @@ export function applySongTemplate(d, id, ctx) {
   if (!ready.ok) throw new Error(ready.missing);
   d.layers = d.layers || [];
   d.texts = [];
-  if (id === 'st-footage') {
+  if (id === 'st-chorus') {
+    hideParts(d);
+    const sec = firstChorus(ctx.song, ctx.audio.duration || 0);
+    const w = chorusWindow(sec, ctx.audio.duration || 0);
+    const pic = chorusPicture(ctx);
+    facts.push(`${Math.round(w.len)} s of ${sec.label} from ${fmtTime(w.start)}`);
+    if (pic.kind === 'video') {
+      if (!d.song || d.song.mediaId !== ctx.audio.id) d.song = { mediaId: ctx.audio.id, offset: 0, volume: 1, fadeIn: 0.3, fadeOut: 1.2 };
+      Object.assign(d.song, { offset: w.start, fadeIn: 0.3 });
+      d.endCard.enabled = true;
+      d.duration = +(w.len + d.endCard.duration).toFixed(2);
+      if (ctx.beats) d.beats = ctx.beats;
+      // the same moment of the music video, cut into pieces on the beat (each piece punches in a little)
+      const grid = ctx.beats ? ctx.beats.beats.map((b) => b - w.start).filter((x) => x > 0) : Array.from({ length: Math.ceil(w.len * 2) }, (_, i) => (i + 1) * 0.5);
+      let at = w.start + (ctx.video.offset || 0);
+      d.clips = beatCutPlan([ctx.video.rec.id], grid, 4, w.len).map((step, i) => {
+        const c = videoClip(ctx.video.rec, at, step.duration, { zoom: i % 2 ? 1.12 : 1 });
+        at += step.duration;
+        return c;
+      });
+      applyTemplate(d, 'spotlight');
+      facts.push(`The music video at the same moment, ${d.clips.length} cuts on the beat`);
+    } else {
+      const clips = pic.kind === 'footage' ? ctx.footage : [ctx.coverRec];
+      const take = { id: 'st-chorus', template: 'spotlight', title: 'Chorus promo', hookLen: w.len, beatsPerCut: pic.kind === 'cover' ? 4 : 2, start: w.start };
+      facts.push(...applyTake(d, take, { inv: { song: ctx.audio, beats: ctx.beats || null, clips, sources: [], lyrics: 0 } }));
+      if (pic.kind === 'cover') facts.push('The cover art, pulsing on the beat');
+    }
+    hideParts(d);
+    d.look.letterbox = 0;
+    // hard cuts on the beat with a small pulse, instead of the template's slow crossfades
+    d.clips.forEach((c, i) => {
+      c.transition = i ? { type: 'none', duration: 0.3 } : { type: 'fade', duration: 0.4 };
+      c.effects = { ...(c.effects || {}), beatPulse: 0.35 };
+    });
+    chorusLyricsOn(d, ctx, w, facts);
+  } else if (id === 'st-footage') {
     hideParts(d);
     const take = { id: 'st-footage', template: 'spotlight', title: 'Raw footage + lyrics', hookLen: 15, beatsPerCut: 4 };
     facts.push(...applyTake(d, take, { inv: { song: ctx.audio, beats: ctx.beats || null, clips: ctx.footage, sources: [], lyrics: 0 } }));

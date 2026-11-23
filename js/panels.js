@@ -875,7 +875,9 @@ export function createPanels({ store, engine, ui }) {
                   toast(e.message, 'error', 6000);
                 }
               }, { variant: `sm${on ? '' : ' primary'}` })
-            : ctx && ctx.song ? button('Open the song’s files', () => ui.openSongFiles(ctx.song.id), { variant: 'sm ghost' }) : null,
+            : r.detect && ctx.audio
+              ? button('Detect sections first', () => ui.detectSongSections(ctx.song.id), { variant: 'sm', iconName: 'wand', title: 'Opens the song’s Sections tab and listens for the intro, verses and choruses; accept them there, then come back' })
+              : ctx && ctx.song ? button('Open the song’s files', () => ui.openSongFiles(ctx.song.id), { variant: 'sm ghost' }) : null,
         ),
       );
     });

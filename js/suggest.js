@@ -130,10 +130,11 @@ export function applyTake(d, take, { inv, seed = 0, palette = null, tabTempo = (
   if (song) {
     if (!d.song || d.song.mediaId !== song.id) d.song = { mediaId: song.id, offset: 0, volume: 1, fadeIn: 0.3, fadeOut: 1.2 };
     const len = Math.min(take.hookLen, Math.max(5, Math.floor(song.duration)));
-    d.song.offset = findHook(song.envelope, song.envRate || 100, len, song.duration);
+    // take.start: a stretch chosen by the caller (a song section) instead of the loudest part
+    d.song.offset = take.start != null ? take.start : findHook(song.envelope, song.envRate || 100, len, song.duration);
     d.endCard.enabled = true;
     d.duration = +(len + d.endCard.duration).toFixed(2);
-    facts.push(`${len} s hook from ${formatTime(d.song.offset, false)}, the loudest part of “${song.name}”`);
+    if (take.start == null) facts.push(`${len} s hook from ${formatTime(d.song.offset, false)}, the loudest part of “${song.name}”`);
   }
   const beats = inv.beats;
   if (beats) d.beats = beats;

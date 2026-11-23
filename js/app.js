@@ -26,6 +26,7 @@ import { photoStyle } from './manager/artists.js';
 import { createPhotoStudio } from './photo/page.js';
 import { sectionsExport } from './panel-sections.js';
 import { coverOf, songCovers, autoCover } from './manager/releases.js';
+import { requestDetect } from './manager/page-sections.js';
 import { addPhotos as addArtistPhotos } from './manager/photos.js';
 import { makeLayer, makeOverlayClip } from './panel-layers.js';
 import { studioSongFiles, studioSongContext, addStems } from './manager/files.js';
@@ -1297,7 +1298,18 @@ ui.songTemplateContext = () => {
     cover: songCoverOf(s),
     hasLyrics: p.lyrics.length > 0,
     today: new Date().toISOString().slice(0, 10),
+    // the cover as a library image, for the Chorus promo when there's no footage or music video
+    coverRec: (() => {
+      const r = media.get(coverOf(s, m.releases || []));
+      return r && r.kind === 'image' ? r : null;
+    })(),
   };
+};
+/** Open a song's Sections tab in the Manager and start detecting its sections from the audio. */
+ui.detectSongSections = (songId) => {
+  requestDetect(songId);
+  setMode('manager');
+  manager.go('songs', songId, 'sections');
 };
 /** Make a song template, then line its highways up with the song by listening. Returns the facts, or throws. */
 ui.applySongTemplate = (id, opts = {}) => {
