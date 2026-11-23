@@ -44,3 +44,13 @@ test('the artist list and the press kit carry the framing', () => {
   const html = epkHTML(m, { avatar: 'data:image/jpeg;base64,AAAA' });
   assert.ok(html.includes('style="object-fit:cover;object-position:30% 70%;transform-origin:30% 70%;transform:scale(1.2)"'));
 });
+
+test('small avatar frames are block boxes, so the photo fits them instead of rendering at full size', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const css = await readFile(new URL('../css/app.css', import.meta.url), 'utf8');
+  for (const sel of ['.mgr-artist-dot.photo', '.now-dot.photo']) {
+    const rule = css.match(new RegExp(`^${sel.replace(/\./g, '\\.')} \\{([^}]*)\\}`, 'm'));
+    assert.ok(rule, `${sel} rule exists`);
+    assert.match(rule[1], /display:\s*block/, `${sel} is display: block`);
+  }
+});
