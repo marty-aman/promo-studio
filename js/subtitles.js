@@ -87,7 +87,10 @@ export function videoCues(p, { which = 'all' } = {}) {
       const start = l.start - off;
       const end = l.end - off;
       if (end <= 0 || start >= ecStart || !String(l.text || '').trim()) continue;
-      cues.push({ start: Math.max(0, start), end: Math.min(end, ecStart), text: l.text.trim() });
+      const cue = { start: Math.max(0, start), end: Math.min(end, ecStart), text: l.text.trim() };
+      // Auto-sync's word times (moved to video time), so word-by-word captions land on the sung words
+      if (Array.isArray(l.words) && l.words.length && l.text.trim() === l.text.trimEnd()) cue.words = l.words.map((k) => ({ ...k, t: +(k.t - off).toFixed(3), ...(typeof k.end === 'number' ? { end: +(k.end - off).toFixed(3) } : {}) }));
+      cues.push(cue);
     }
   }
   if (which !== 'lyrics') for (const t of p.texts || []) if (t.caption && t.end > 0 && t.start < p.duration) cues.push({ start: Math.max(0, t.start), end: Math.min(t.end, p.duration), text: t.text });
@@ -113,7 +116,7 @@ export const captionStyle = (id) => (CAPTION_STYLES.find(([k]) => k === id) || C
 export function setCaptions(d, cues, { style = 'bold', y = 72 } = {}) {
   const st = captionStyle(style);
   d.texts = (d.texts || []).filter((t) => !t.caption);
-  for (const c of cues) d.texts.push({ id: uid('txt'), caption: true, captionStyle: style, text: c.text, start: c.start, end: c.end, x: 50, y, ...st });
+  for (const c of cues) d.texts.push({ id: uid('txt'), caption: true, captionStyle: style, text: c.text, start: c.start, end: c.end, x: 50, y, ...st, ...(c.words ? { words: c.words } : {}) });
   return cues.length;
 }
 
@@ -127,7 +130,7 @@ export function styleCaptions(d, id) {
 
 /** Shift every caption by `sec` seconds (a caption file made for a longer video, or a different start). */
 export function shiftCaptions(d, sec) {
-  for (const t of d.texts || []) if (t.caption) (t.start = +Math.max(0, t.start + sec).toFixed(3)), (t.end = +Math.max(0.2, t.end + sec).toFixed(3));
+  for (const t of d.texts || []) if (t.caption) ((t.start = +Math.max(0, t.start + sec).toFixed(3)), (t.end = +Math.max(0.2, t.end + sec).toFixed(3)), t.words && (t.words = t.words.map((k) => ({ ...k, t: +(k.t + sec).toFixed(3), ...(typeof k.end === 'number' ? { end: +(k.end + sec).toFixed(3) } : {}) }))));
 }
 
 /** Where captions sit for the app layout: low in the clear area, above the caption and buttons. */

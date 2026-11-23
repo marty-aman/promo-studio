@@ -3,6 +3,7 @@
 import { h, icon, button, iconButton, toast, pickFiles, download } from '../dom.js';
 import { timingSummary, timingStale, keepTiming, setSongTiming, timingFromLRC, timingToLRC, timingToSRT, SOURCE_LABELS } from './lyrictiming.js';
 import { driveButton } from '../gdrive.js';
+import { managerAutoSync } from '../ai/panel-lyricsync.js';
 import { SONG_STATUSES, TASK_CATS, newSong, taskDue, releaseProgress, releaseChecklist, niceDate, daysBetween, mid, deleteSong, markPreReleaseDone, isPreReleaseMoot } from './model.js';
 import { hookLines, planPosts } from './ideas.js';
 import { buildShootTab } from './page-shoot.js';
@@ -347,6 +348,7 @@ function timingSection(ctx, song, S) {
     h('h3', { class: 'mgr-h3' }, 'Timing'),
     h('p', { class: 'small', 'data-k': 'timing-summary' }, timingSummary(t), t ? h('span', { class: 'muted' }, ` · ${SOURCE_LABELS[t.source] || ''}`) : null),
     stale ? h('p', { class: 'warn-note small', 'data-k': 'timing-stale' }, 'The lyrics changed since they were timed. Send them to the video editor to re-time the new lines, or keep the timing as it is.', ' ', button('Keep the timing', () => ctx.update(S((s) => keepTiming(s))), { variant: 'sm ghost' })) : null,
+    song.lyrics.trim() ? managerAutoSync(ctx, song, S) : null,
     t ? null : h('p', { class: 'muted tiny' }, 'Tap-sync the lyrics on the Video Studio’s Lyrics tab (or find timed ones there) and the timing is saved here, so every edit of this song starts in time.'),
     h(
       'div',

@@ -33,6 +33,7 @@ import { createKeyframeUI } from './panel-kf.js';
 import { EXITS } from './exits.js';
 import { templateFromProject, applyMyTemplate, templateFile, parseTemplateFile, describeTemplate } from './mytemplates.js';
 import { bgRemoveSection } from './panel-bgremove.js';
+import { studioAutoSync } from './ai/panel-lyricsync.js';
 import { buildSuggestPanel, hasNewSuggestions } from './panel-suggest.js';
 import { captionPicker } from './panel-captions.js';
 import { fetchSpotifyInfo } from './spotify.js';
@@ -1868,7 +1869,7 @@ export function createPanels({ store, engine, ui }) {
         paste,
         h('div', { class: 'row' }, button('Use these lyrics', applyText, { variant: 'primary', iconName: 'check' }), button('Import .lrc', importLRC, { iconName: 'upload', variant: 'ghost' }), button('Export .lrc', exportLRC, { iconName: 'download', variant: 'ghost', disabled: !p.lyrics.length })),
       ),
-      section('2 · Sync to the song', syncBox),
+      section('2 · Sync to the song', syncBox, h('h4', { class: 'ai-h' }, 'Or let the computer do it'), studioAutoSync({ store, engine, ui, media })),
       p.lyrics.length
         ? section(
             '3 · Fine-tune timing',

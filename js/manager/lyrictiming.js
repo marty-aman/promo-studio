@@ -1,6 +1,6 @@
 // A song's lyric timing: the timed lines from the Video Studio's Lyrics tab (tap-sync, LRCLIB, an .lrc file
-// or times you set), kept on the song so every edit of it starts in time. Lines only, in seconds of the
-// song: song.lyricTiming = { lines: [{ t, end?, text }], offset, source, savedAt, songLength?, lyricsKey? }.
+// or times you set, or Auto-sync's `words` and `conf` (0..1 how sure a line is)), kept on the song so every edit of it starts in time. In seconds of the
+// song: song.lyricTiming = { lines: [{ t, end?, text, words?: [{ w, t, end? }], conf? }], offset, source, savedAt, songLength?, lyricsKey? }.
 // `end` is left out when the line simply runs to the next one. `lyricsKey` fingerprints the song's plain
 // lyrics when the timing was saved, so an edit of the words afterwards can be noticed.
 // The music video's sync point (song.files.video.offset) is a separate thing and isn't touched here.
@@ -9,11 +9,33 @@
 import { parseLRC, toLRC, sortLyrics, uid } from '../core.js';
 import { toSRT } from '../subtitles.js';
 
-export const TIMING_SOURCES = ['tap', 'lrclib', 'file', 'manual'];
+export const TIMING_SOURCES = ['tap', 'lrclib', 'file', 'manual', 'auto'];
 export const MAX_TIMED_LINES = 600;
+export const MAX_WORDS_PER_LINE = 40;
 const MAX_TEXT = 300;
 const r2 = (v) => Math.round(v * 100) / 100;
+const r3 = (v) => Math.round(v * 1000) / 1000;
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
+
+/**
+ * A line's word times from a save or backup, checked: [{ w, t, end? }] in song time (like the line's `t`),
+ * at most MAX_WORDS_PER_LINE, sorted, `t` clamped into [0, 36000), `end` kept only when it is after `t` and
+ * within 10 s. Anything unusable gives undefined (the line then splits its time by word length).
+ */
+export function normalizeWords(raw) {
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw
+    .filter((k) => k && typeof k === 'object' && typeof k.w === 'string' && k.w.trim() && fin(k.t))
+    .slice(0, MAX_WORDS_PER_LINE)
+    .map((k) => {
+      const t = Math.max(0, Math.min(35999, k.t));
+      const w = { w: k.w.trim().slice(0, 40), t: r3(t) };
+      if (fin(k.end) && k.end > t && k.end - t <= 10) w.end = r3(k.end);
+      return w;
+    })
+    .sort((a, b) => a.t - b.t);
+  return out.length ? out : undefined;
+}
 
 /** The song's plain lyrics, as a short fingerprint (blank lines and spacing ignored). */
 export function lyricsKey(text) {
@@ -32,6 +54,9 @@ export function normalizeLyricTiming(raw) {
     .map((l) => {
       const out = { t: r2(l.t), text: l.text.trim().slice(0, MAX_TEXT) };
       if (fin(l.end) && l.end > l.t && l.end - l.t <= 60) out.end = r2(l.end);
+      const words = normalizeWords(l.words);
+      if (words) out.words = words;
+      if (fin(l.conf)) out.conf = r2(Math.max(0, Math.min(1, l.conf)));
       return out;
     })
     .sort((a, b) => a.t - b.t);
@@ -59,10 +84,12 @@ const defaultEnd = (lines, i) => {
  */
 export function timingFromLyrics(lyrics, { source = 'manual', songLength = 0, lyricsText = '', now = new Date() } = {}) {
   const sorted = sortLyrics((lyrics || []).filter((l) => l && String(l.text || '').trim() && fin(l.start)));
-  const lines = sorted.slice(0, MAX_TIMED_LINES).map((l) => ({ t: r2(Math.max(0, l.start)), text: String(l.text).trim().slice(0, MAX_TEXT), end: fin(l.end) ? r2(l.end) : undefined }));
+  const lines = sorted.slice(0, MAX_TIMED_LINES).map((l) => ({ t: r2(Math.max(0, l.start)), text: String(l.text).trim().slice(0, MAX_TEXT), end: fin(l.end) ? r2(l.end) : undefined, words: normalizeWords(l.words), conf: fin(l.conf) ? r2(Math.max(0, Math.min(1, l.conf))) : undefined }));
   if (!lines.length) return null;
   lines.forEach((l, i) => {
     if (l.end === undefined || l.end <= l.t || Math.abs(l.end - r2(defaultEnd(lines, i))) < 0.02) delete l.end;
+    if (!l.words) delete l.words;
+    if (l.conf === undefined) delete l.conf;
   });
   const out = { lines, offset: 0, source: TIMING_SOURCES.includes(source) ? source : 'manual', savedAt: now.toISOString() };
   if (songLength > 0) out.songLength = r2(songLength);
@@ -78,15 +105,20 @@ export function lyricsFromTiming(timing, makeId = () => uid('lyr')) {
   return t.lines.map((l, i) => {
     const start = Math.max(0, l.t + t.offset);
     const end = Math.max(start + 0.2, (l.end ?? defaultEnd(t.lines, i)) + t.offset);
-    return { id: makeId(), text: l.text, start: +start.toFixed(3), end: +end.toFixed(3) };
+    const out = { id: makeId(), text: l.text, start: +start.toFixed(3), end: +end.toFixed(3) };
+    if (l.words) out.words = l.words.map((k) => ({ w: k.w, t: +(k.t + t.offset).toFixed(3), ...(k.end !== undefined ? { end: +(k.end + t.offset).toFixed(3) } : {}) }));
+    if (l.conf !== undefined) out.conf = l.conf;
+    return out;
   });
 }
+
+const sameWords = (a, b) => (!a && !b) || (!!a && !!b && a.length === b.length && a.every((k, i) => k.w === b[i].w && Math.abs(k.t - b[i].t) < 0.02));
 
 /** Do two timings put the same words at the same times (within 0.02 s)? */
 export function sameTiming(a, b) {
   const x = lyricsFromTiming(a, () => '');
   const y = lyricsFromTiming(b, () => '');
-  return x.length === y.length && x.length > 0 && x.every((l, i) => l.text === y[i].text && Math.abs(l.start - y[i].start) < 0.02 && Math.abs(l.end - y[i].end) < 0.02);
+  return x.length === y.length && x.length > 0 && x.every((l, i) => l.text === y[i].text && Math.abs(l.start - y[i].start) < 0.02 && Math.abs(l.end - y[i].end) < 0.02 && sameWords(l.words, y[i].words));
 }
 
 /** Were the song's plain lyrics edited after the timing was saved? */
@@ -172,7 +204,7 @@ export function timingSummary(timing, locale) {
   return `Timed (${t.lines.length} line${t.lines.length === 1 ? '' : 's'}${when ? `, saved ${when}` : ''})`;
 }
 
-export const SOURCE_LABELS = { tap: 'tap-synced', lrclib: 'from LRCLIB', file: 'from an .lrc file', manual: 'set by hand' };
+export const SOURCE_LABELS = { tap: 'tap-synced', lrclib: 'from LRCLIB', file: 'from an .lrc file', manual: 'set by hand', auto: 'auto-synced' };
 
 /** The timing as an .lrc file. */
 export const timingToLRC = (timing, meta = {}) => toLRC(lyricsFromTiming(timing, () => ''), meta);
