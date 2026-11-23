@@ -37,6 +37,7 @@ import { studioAutoSync } from './ai/panel-lyricsync.js';
 import { reframeSection } from './panel-reframe.js';
 import { buildSuggestPanel, hasNewSuggestions } from './panel-suggest.js';
 import { captionPicker } from './panel-captions.js';
+import { lyricIdeasAssistant } from './ai/panel-assistant.js';
 import { fetchSpotifyInfo } from './spotify.js';
 import { LINE_PRESETS, lineStyle, hasLineStyle } from './linestyle.js';
 import { THEMES, themeById, applyTheme } from './themes.js';
@@ -514,6 +515,7 @@ export function createPanels({ store, engine, ui }) {
           : null,
         button('Use all of these', () => apply('all', 'Theme, visualizer, lyric display and line looks applied.'), { iconName: 'wand', variant: 'sm primary' }),
       ),
+      lyricIdeasAssistant(() => store.get()),
     );
   }
 

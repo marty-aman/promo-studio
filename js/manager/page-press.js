@@ -4,6 +4,7 @@ import { h, button, iconButton, toast, download } from '../dom.js';
 import { exportPDF } from './pdf.js';
 import { mid, niceDate, addDays } from './model.js';
 import { MOODS, ENERGIES, VOCALS, lyricThemes, soundOf, suggestPlaylists, playlistTypes, playlistSearchURL, PLAYLISTS } from './playlists.js';
+import { assistantBox, songContext } from '../ai/panel-assistant.js';
 import { pressRelease, pressHTML, wordCount, spotifyPitch, spotifyFormHints, pitchDeadline, curatorPitch, SPOTIFY_PITCH_MAX, PITCH_STATUSES, PITCH_SERVICES, SUBMIT_SERVICES, submitPitch, newPitch } from './press.js';
 
 export const pitchUI = { curator: '', playlist: '', contact: '' };
@@ -288,6 +289,7 @@ export function pitchTab(ctx, song, S) {
         spField,
         counter,
         h('div', { class: 'row' }, button('Copy pitch', () => copy(sp, 'Pitch copied'), { iconName: 'copy', variant: 'sm primary' }), button('Redraft from the song', () => ctx.update(S((s) => delete s.press.edits.spotify)), { variant: 'sm ghost' })),
+        assistantBox({ id: `pitch-${song.id}`, task: 'pitch', context: () => ({ ...songContext(song, m.band), draft: spField.querySelector('textarea').value }), onAccept: (text) => ctx.update(S((s) => ((s.press.edits ||= {}).spotify = text))) || toast('The draft is now the song description.'), acceptLabel: 'Use as description' }),
         h('h3', { class: 'mgr-h3' }, 'What to pick in the form'),
         h('ul', { class: 'mgr-facts' }, hints.map(([k, v]) => h('li', {}, h('span', {}, k), h('span', { class: 'muted small' }, v)))),
       ),
@@ -302,6 +304,7 @@ export function pitchTab(ctx, song, S) {
         h('p', { class: 'muted small' }, 'Name the curator and the playlist; the note stays short and about their list. Always send a link that plays without a login.'),
         h('div', { class: 'mgr-three' }, input('Curator', 'curator', 'First name'), input('Playlist', 'playlist', 'Playlist name'), input('Email or DM handle', 'contact', 'name@example.com')),
         curBox,
+        assistantBox({ id: `curator-${song.id}`, task: 'curator', context: () => ({ ...songContext(song, m.band), draft: curBox.value, extra: [pitchUI.curator && `Curator: ${pitchUI.curator}`, pitchUI.playlist && `Playlist: ${pitchUI.playlist}`].filter(Boolean).join('\n') }), onAccept: (text) => ((curBox.value = text), toast('The draft is in the message box. It is not saved: copy it before leaving the page.')), acceptLabel: 'Use as message' }),
         h(
           'div',
           { class: 'row' },

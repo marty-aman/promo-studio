@@ -2,6 +2,7 @@
 import { h, button, toast } from './dom.js';
 import { suggestCaptions, CAPTION_SOURCES, CAPTION_RESEARCHED_ON } from './captions.js';
 import { loadSettings } from './state.js';
+import { assistantBox, projectContext } from './ai/panel-assistant.js';
 
 const state = { platform: 'instagram', pick: null };
 
@@ -29,6 +30,8 @@ export function captionPicker({ project, settings: given, kind = 'video', slides
     count.textContent = `${box.value.length} characters${state.platform === 'tiktok' && box.value.length > limit ? ' (aim for under 150 on TikTok)' : ''} · ${tags} hashtag${tags === 1 ? '' : 's'}${tags > 5 ? ' (Instagram allows 5)' : ''} · first line ${first.length > 60 ? 'is long; keep the hook short' : 'OK'}`;
   };
   box.addEventListener('input', updateCount);
+  // optional: drafts from the owner's own AI key land in the caption box (nothing is sent without a click)
+  const ai = assistantBox({ id: `caption-${kind}`, task: 'caption', context: () => ({ ...projectContext(project), draft: box.value, extra: `For ${state.platform === 'tiktok' ? 'TikTok / Shorts (keep it under 150 characters)' : 'Instagram Reels'}.` }), onAccept: (text) => ((box.value = text), updateCount(), toast('Draft is in the caption box')), acceptLabel: 'Use as caption' });
   const render = () => {
     box.value = textFor(pick);
     updateCount();
@@ -45,6 +48,7 @@ export function captionPicker({ project, settings: given, kind = 'video', slides
       h('p', { class: 'muted tiny' }, pick.why),
       box,
       count,
+      ai,
       h('div', { class: 'row' },
         button('Copy caption', () => navigator.clipboard.writeText(box.value).then(() => toast('Caption copied'), () => toast('Could not copy', 'error')), { iconName: 'copy', variant: 'sm primary' }),
         onUse ? button('Use for sharing', () => onUse(box.value), { variant: 'ghost sm' }) : null),
