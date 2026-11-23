@@ -43,15 +43,20 @@ export function createPhotoStudio({ root, studio }) {
 
   // ---- persistence: the current design lives in the store; the rest in `saved`
   let saveTimer = null;
-  const persist = () => {
+  let savePending = false;
+  const writeNow = () => {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      const d = { ...store.get(), updatedAt: new Date().toISOString() };
-      saved.docs = saved.docs.map((x) => (x.id === d.id ? d : x));
-      if (!saved.docs.some((x) => x.id === d.id)) saved.docs.push(d);
-      saved.current = d.id;
-      if (!saveDesigns(saved)) toast('Could not save designs (browser storage full?)', 'error');
-    }, 300);
+    savePending = false;
+    const d = { ...store.get(), updatedAt: new Date().toISOString() };
+    saved.docs = saved.docs.map((x) => (x.id === d.id ? d : x));
+    if (!saved.docs.some((x) => x.id === d.id)) saved.docs.push(d);
+    saved.current = d.id;
+    if (!saveDesigns(saved)) toast('Could not save designs (browser storage full?)', 'error');
+  };
+  const persist = () => {
+    savePending = true;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(writeNow, 300);
   };
   const openDoc = (doc, { isNew = false } = {}) => {
     const cur = store.get();
@@ -989,6 +994,8 @@ export function createPhotoStudio({ root, studio }) {
   const lastExport = { files: [] };
   return {
     store,
+    /** Save a change that is still waiting for its short delay (the page is closing or hiding). */
+    flush: () => savePending && writeNow(),
     show() {
       renderLeft();
       renderBar();
