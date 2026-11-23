@@ -7,6 +7,7 @@ import { combinedAgenda, combinedNext, viewOf, photoStyle } from './artists.js';
 import { setTaskDone } from './todoauto.js';
 
 const KIND = { show: ['ticket', 'Show'], release: ['disc', 'Release'], shoot: ['film', 'Shoot'], post: ['share', 'Post'], task: ['check', 'Task'], event: ['calendar', 'Event'] };
+const kindOf = (k) => KIND[k] || KIND.task; // an unknown kind from an agenda source shows as a task
 
 const inDays = (n) => (n === 0 ? 'today' : n === 1 ? 'tomorrow' : n < 0 ? `${-n} days ago` : `in ${n} days`);
 
@@ -98,7 +99,7 @@ export function buildHome(ctx) {
               'ul',
               {},
               d.items.map((it) =>
-                h('li', {}, h('button', { type: 'button', class: `mgr-item ${it.kind}`, onclick: () => openItem(ctx, it) }, h('span', { class: 'mgr-kind' }, icon(KIND[it.kind][0], 14), KIND[it.kind][1]), h('span', { class: 'mgr-item-t' }, it.title), h('span', { class: 'muted tiny' }, all ? `${it.artist} · ${it.sub}` : it.sub))),
+                h('li', {}, h('button', { type: 'button', class: `mgr-item ${it.kind}`, onclick: () => openItem(ctx, it) }, h('span', { class: 'mgr-kind' }, icon(kindOf(it.kind)[0], 14), kindOf(it.kind)[1]), h('span', { class: 'mgr-item-t' }, it.title), h('span', { class: 'muted tiny' }, all ? `${it.artist} · ${it.sub}` : it.sub))),
               ),
             ),
           ),
@@ -114,11 +115,11 @@ export function buildHome(ctx) {
         h(
           'ul',
           { class: 'mgr-list' },
-          late.slice(0, 8).map(({ song, show, pitch, followup, task, due, artistId, artist }) =>
+          late.slice(0, 8).map(({ song, show, pitch, followup, task, due, artistId, artist, source }) =>
             h(
               'li',
               { class: 'mgr-row' },
-              all && artistId !== m.artistId ? h('span', { class: 'mgr-artist-dot small', title: artist, 'aria-hidden': 'true' }, (artist || '?')[0].toUpperCase()) : ctx.form.check(`late-${task.id}`, false, (d) => {
+              source ? null : all && artistId !== m.artistId ? h('span', { class: 'mgr-artist-dot small', title: artist, 'aria-hidden': 'true' }, (artist || '?')[0].toUpperCase()) : ctx.form.check(`late-${task.id}`, false, (d) => {
                 if (followup) {
                   const x = d.shows.find((s) => s.id === show.id);
                   if (x) x.followedUp = true;
@@ -132,8 +133,8 @@ export function buildHome(ctx) {
                 const t = song ? d.songs.find((s) => s.id === song.id)?.release.find((x) => x.id === task.id) : d.shows.find((s) => s.id === show.id)?.todo.find((x) => x.id === task.id);
                 if (t) setTaskDone(t, true);
               }, `Mark “${task.text}” done`),
-              h('button', { type: 'button', class: 'link', onclick: () => (song ? open(artistId, 'songs', song.id, pitch ? 'pitch' : 'release') : open(artistId, 'shows', show.id)) }, task.text),
-              h('span', { class: 'muted tiny' }, `${all ? `${artist} · ` : ''}${song ? `“${song.title}”` : `Show: ${show.venue || 'venue TBD'}`} · due ${niceDate(due, { weekday: false })}`),
+              h('button', { type: 'button', class: 'link', onclick: () => (source ? open(artistId, source.ref.page, source.ref.id, source.ref.tab) : song ? open(artistId, 'songs', song.id, pitch ? 'pitch' : 'release') : open(artistId, 'shows', show.id)) }, task.text),
+              h('span', { class: 'muted tiny' }, `${all ? `${artist} · ` : ''}${source ? source.sub || '' : song ? `“${song.title}”` : `Show: ${show.venue || 'venue TBD'}`} · due ${niceDate(due, { weekday: false })}`),
             ),
           ),
         ),

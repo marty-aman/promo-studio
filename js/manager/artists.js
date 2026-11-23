@@ -5,8 +5,8 @@
 import { MANAGER_KEY, normalizeManager, newManager, agenda, nextUp, mid } from './model.js';
 
 export const WORKSPACE_VERSION = 2;
-export const ARTIST_KEYS = ['band', 'songs', 'covers', 'shows', 'posts', 'money', 'photos', 'photoFolders', 'tours', 'stats', 'releases', 'events'];
-export const SHARED_KEYS = ['venues', 'bands', 'contacts', 'playlists', 'playlistsOff', 'seeded'];
+export const ARTIST_KEYS = ['band', 'songs', 'covers', 'shows', 'posts', 'money', 'photos', 'photoFolders', 'tours', 'stats', 'releases', 'events', 'outreach', 'merch', 'fans', 'captionBank', 'availability'];
+export const SHARED_KEYS = ['venues', 'bands', 'contacts', 'playlists', 'playlistsOff', 'seeded', 'opportunities'];
 
 const pick = (o, keys) => Object.fromEntries(keys.map((k) => [k, o[k]]));
 
@@ -134,7 +134,13 @@ export function saveWorkspace(ws) {
 }
 
 /** Backups hold every artist. Old single-artist backups still restore (as one artist). */
-export const workspaceBackup = (ws, mediaNames = null) => JSON.stringify({ promoStudioManager: WORKSPACE_VERSION, savedAt: new Date().toISOString(), ...ws, ...(mediaNames && Object.keys(mediaNames).length ? { mediaNames } : {}) }, null, 1);
+export const workspaceBackup = (ws, mediaNames = null, opts = {}) => {
+  // workspaceBackup(ws, { withoutFans: true }) also works: an options object in the second place
+  if (mediaNames && mediaNames.withoutFans !== undefined && opts && !Object.keys(opts).length) [mediaNames, opts] = [null, mediaNames];
+  const out = opts && opts.withoutFans ? { ...ws, artists: ws.artists.map((a) => ({ ...a, fans: [] })) } : ws;
+  return workspaceJson(out, mediaNames);
+};
+const workspaceJson = (ws, mediaNames) => JSON.stringify({ promoStudioManager: WORKSPACE_VERSION, savedAt: new Date().toISOString(), ...ws, ...(mediaNames && Object.keys(mediaNames).length ? { mediaNames } : {}) }, null, 1);
 /** The file names a backup carries for the media its songs and photos use (id -> [name, path, kind]), or {}. */
 export function backupMediaNames(text) {
   try {

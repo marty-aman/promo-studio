@@ -2,13 +2,14 @@
 // bands, contacts, posts (with their stats) and money. Kept in this browser (localStorage) and
 // backed up as a JSON file. Pure functions so they can be unit tested.
 
-import { newFiles, normalizeFiles, VIDEO_STATUSES } from './files.js';
+import { newFiles } from './files.js';
+import { normalizeSong, idList } from './songnorm.js';
+import { normalizeShow } from './showsnorm.js';
 import { normalizePhotos, normalizeFolders } from './photos.js';
 import { normalizeTours } from './tours.js';
 import { newStats, normalizeStats } from './stats.js';
-import { normalizeReleases, normalizeSections } from './releases.js';
+import { normalizeReleases } from './releases.js';
 import { normalizeCovers } from './covers.js';
-import { normalizeLyricTiming } from './lyrictiming.js';
 import { releaseTaskDone, showTaskDone } from './todoauto.js';
 
 export const MANAGER_KEY = 'pvm.manager.v1';
@@ -158,6 +159,9 @@ export function eventDates(ev, from, to) {
 /** "19:00–21:00", "from 19:00", or '' for all day. */
 export const eventTime = (ev) => (ev.allDay || !ev.start ? '' : ev.end ? `${ev.start}–${ev.end}` : `from ${ev.start}`);
 
+/** The list keys added by the scaffold: arrays of plain objects with a string id. Builds own the item shapes. */
+const NEW_LISTS = ['outreach', 'merch', 'fans', 'captionBank', 'availability', 'opportunities'];
+
 export function newManager() {
   return {
     version: MANAGER_VERSION,
@@ -178,6 +182,12 @@ export function newManager() {
     events: [], // your own calendar events: { id, title, date, start, end, allDay, location, note, kind, repeat, until }
     playlists: [], // your own playlists and curators (shared by every artist)
     playlistsOff: [], // built-in playlist ids you hid
+    outreach: [], // pitches and contacts to chase (G1); item shapes belong to the build that owns the key
+    merch: [], // merch items and stock (G4)
+    fans: [], // this artist's fan list (G5); the one key a backup can leave out (workspaceBackup withoutFans)
+    captionBank: [], // saved captions (G5)
+    availability: [], // member availability polls (G3)
+    opportunities: [], // grants, festivals and contests, shared by every artist (G5)
     seeded: {},
   };
 }
@@ -186,13 +196,10 @@ export function newManager() {
 export function normalizeManager(raw) {
   const base = newManager();
   if (!raw || typeof raw !== 'object') return base;
-  const list = (x) => (Array.isArray(x) ? x.filter((y) => y && typeof y === 'object' && typeof y.id === 'string') : []);
+  const list = idList;
   const m = { ...base, ...raw, band: { ...base.band, ...(raw.band || {}) } };
   for (const k of ['songs', 'shows', 'venues', 'bands', 'contacts', 'posts', 'money']) m[k] = list(raw[k]);
-  m.songs = m.songs.map((s) => {
-    const d = newSong(s.title);
-    return { ...d, ...s, lyrics: typeof s.lyrics === 'string' ? s.lyrics : '', lyricTiming: normalizeLyricTiming(s.lyricTiming), instrumental: s.instrumental === true, videoStatus: VIDEO_STATUSES.some(([k]) => k === s.videoStatus) ? s.videoStatus : '', sections: normalizeSections(s.sections), coverId: typeof s.coverId === 'string' ? s.coverId : null, releaseId: typeof s.releaseId === 'string' ? s.releaseId : '', track: +s.track || 0, sound: { ...d.sound, ...(s.sound || {}), moods: Array.isArray(s.sound?.moods) ? s.sound.moods : [] }, press: { ...d.press, ...(s.press || {}), edits: { ...(s.press?.edits || {}) } }, pitches: list(s.pitches), files: normalizeFiles(s.files), links: { ...d.links, ...(s.links || {}) }, shoot: { ...d.shoot, ...(s.shoot || {}) }, release: Array.isArray(s.release) ? s.release : d.release };
-  });
+  m.songs = m.songs.map((s) => normalizeSong(s, newSong(s.title)));
   m.photos = normalizePhotos(raw.photos);
   m.photoFolders = normalizeFolders(raw.photoFolders);
   for (const p of m.photos) if (p.folder && !m.photoFolders.some((f) => f.id === p.folder)) p.folder = '';
@@ -205,9 +212,10 @@ export function normalizeManager(raw) {
   m.band.epkPhotos = Array.isArray(m.band.epkPhotos) ? m.band.epkPhotos.filter((x) => typeof x === 'string').slice(0, 4) : [];
   m.playlists = list(raw.playlists);
   m.playlistsOff = Array.isArray(raw.playlistsOff) ? raw.playlistsOff.filter((x) => typeof x === 'string') : [];
-  m.shows = m.shows.map((s) => ({ ...newShow(), ...s, posterId: typeof s.posterId === 'string' && s.posterId ? s.posterId : null, settlement: { ...newShow().settlement, ...(s.settlement || {}), shares: s.settlement && s.settlement.shares && typeof s.settlement.shares === 'object' && !Array.isArray(s.settlement.shares) ? { ...s.settlement.shares } : {} } }));
+  m.shows = m.shows.map((s) => normalizeShow(s, newShow()));
   m.covers = normalizeCovers(raw.covers);
   m.events = normalizeEvents(raw.events);
+  for (const k of NEW_LISTS) m[k] = list(raw[k]); // unknown fields on each item are kept
   m.seeded = raw.seeded && typeof raw.seeded === 'object' ? raw.seeded : {};
   return m;
 }
@@ -241,6 +249,32 @@ export function parseBackup(text) {
   delete raw.promoStudioManager;
   delete raw.savedAt;
   return normalizeManager(raw);
+}
+
+/**
+ * Agenda sources: how a feature adds its own dated items without editing agenda().
+ * registerAgendaSource((m, from, to, inRange) => items) where `to` is the first day NOT in range,
+ * `inRange(d)` says whether a date is in [from, to), and each item is the same shape agenda() makes:
+ * { date, kind: 'task', key, title, sub, ref: { page, id, tab? } }. Use kind 'task' (an unknown kind
+ * is shown as a task) and a distinct `key`.
+ * RULE: a source must skip released and cancelled things (a released song, a cancelled show, a
+ * declined or finished outreach) so they never show as late or upcoming.
+ * overdueTasks() runs the same sources with from = '' and to = today, and keeps items dated before
+ * today; it returns each as { task: { id: key, text: title }, due: date, source: item }.
+ * A source that throws is skipped, never breaks the agenda.
+ */
+export const AGENDA_SOURCES = [];
+export function registerAgendaSource(fn) {
+  if (typeof fn === 'function' && !AGENDA_SOURCES.includes(fn)) AGENDA_SOURCES.push(fn);
+  return fn;
+}
+function safeSource(fn, m, from, to, inRange) {
+  try {
+    const r = fn(m, from, to, inRange);
+    return Array.isArray(r) ? r.filter((it) => it && typeof it.date === 'string' && it.date) : [];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -281,8 +315,10 @@ export function agenda(m, from, days = 14) {
   for (const ev of m.events || []) {
     for (const date of eventDates(ev, from, to)) out.push({ date, kind: 'event', evKind: ev.kind, key: ev.id, title: ev.title || 'Event', sub: [EVENT_KINDS.find(([k]) => k === ev.kind)?.[1], eventTime(ev), ev.location].filter(Boolean).join(' · '), time: ev.allDay ? '' : ev.start, ref: { page: 'calendar', id: ev.id } });
   }
+  for (const fn of AGENDA_SOURCES) out.push(...safeSource(fn, m, from, to, inRange));
   const order = { show: 0, release: 1, shoot: 2, event: 3, post: 4, task: 5 };
-  return out.sort((a, b) => a.date.localeCompare(b.date) || order[a.kind] - order[b.kind]);
+  const rank = (k) => (k in order ? order[k] : order.task);
+  return out.sort((a, b) => a.date.localeCompare(b.date) || rank(a.kind) - rank(b.kind));
 }
 
 /** When to chase a venue you pitched a show to: a week after pitching, while it's still Pitched. '' when not. */
@@ -342,6 +378,8 @@ export function overdueTasks(m, today) {
       if (!showTaskDone(show, t) && due < today) out.push({ show, song: null, task: t, due });
     }
   }
+  const inLate = (d) => !!d && d < today;
+  for (const fn of AGENDA_SOURCES) for (const it of safeSource(fn, m, '', today, inLate)) if (it.date < today) out.push({ show: null, song: null, source: it, task: { id: it.key || it.title, text: it.title }, due: it.date });
   return out.sort((a, b) => a.due.localeCompare(b.due));
 }
 
