@@ -9,8 +9,10 @@ import { epkCredits, addPhotos, pinnedPage, loadPageSize, savePageSize } from '.
 import { pager } from './page-photos.js';
 import { THEMES } from '../themes.js';
 import { photoStyle, photoPos, nudgePhoto } from './artists.js';
+import { linkBioTab } from './page-linkbio.js';
 
 export const epkUI = { photos: [], reposition: false, page: 1, size: 0 };
+const EPK_TABS = [['kit', 'Press kit'], ['link', 'Link page']];
 
 const PAGE_NAMES = { epk: 'Press kit', photos: 'Photos', stats: 'Streaming stats', songs: 'Songs & releases', shows: 'Shows' };
 /** The health check: what a booker or blog looks for, each with a one-line fix and where to make it. */
@@ -180,6 +182,17 @@ export function buildEPK(ctx) {
     return h('button', { type: 'button', class: `mgr-photo${on ? ' on' : ''}`, 'aria-pressed': on ? 'true' : 'false', 'data-id': im.id, onclick: () => togglePhoto(im.id) }, im.thumb ? h('img', { loading: 'lazy', decoding: 'async', src: im.thumb, alt: '' }) : null, h('span', {}, im.name), im.id === b.photoId ? h('em', { class: 'mgr-photo-tag' }, 'Profile photo') : null);
   };
 
+  const tab = ctx.view.tab === 'link' ? 'link' : 'kit';
+  const tabs = h('div', { class: 'mgr-tabs', role: 'tablist' }, EPK_TABS.map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': k === tab ? 'true' : 'false', class: `mgr-tab${k === tab ? ' on' : ''}`, 'data-k': `epk-tab-${k}`, onclick: () => ctx.setTab(k) }, l)));
+  if (tab === 'link')
+    return h(
+      'div',
+      { class: 'mgr-page wide' },
+      h('header', { class: 'mgr-head' }, h('div', {}, h('h1', {}, 'Press kit (EPK)'), h('p', { class: 'muted' }, 'A link-in-bio page: one file you host anywhere, with a QR code and a printable flyer.'))),
+      tabs,
+      h('div', { role: 'tabpanel' }, linkBioTab(ctx)),
+    );
+
   return h(
     'div',
     { class: 'mgr-page wide' },
@@ -189,6 +202,7 @@ export function buildEPK(ctx) {
       h('div', {}, h('h1', {}, 'Press kit (EPK)'), h('p', { class: 'muted' }, 'Your band’s profile, bio and links. Download it as a one-page press kit for venues, blogs and playlist curators.')),
       h('div', { class: 'row' }, button('Copy short bio', copyBio, { iconName: 'copy', variant: 'sm', disabled: !b.bio }), button('Export PDF', pdf, { iconName: 'print', variant: 'sm', title: 'Print it, or pick “Save as PDF” as the printer' }), button('Download press kit', save, { iconName: 'download', variant: 'sm primary' })),
     ),
+    tabs,
     h(
       'div',
       { class: 'mgr-cols' },

@@ -1,1 +1,23 @@
 /* Manager: linkbio. Owned by the build that adds it; app.css stays untouched. */
+/* The Link page tab on the Press kit page (js/manager/page-linkbio.js). */
+.lb .lb-checks { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 6px 0 10px; }
+.lb .lb-check { display: flex; align-items: center; gap: 8px; margin: 8px 0; cursor: pointer; }
+.lb .lb-check input:disabled + span { color: var(--muted); cursor: default; }
+.lb .lb-btns { display: grid; gap: 8px; margin: 6px 0 10px; }
+.lb .lb-btn-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto auto auto; gap: 6px; align-items: center; }
+.lb .lb-btn-row input { min-width: 0; width: 100%; }
+.lb .lb-bad { grid-column: 1 / -1; color: var(--danger, #e05252); }
+.lb .lb-steps { margin: 6px 0 12px; padding-left: 20px; }
+.lb .lb-steps li { margin: 4px 0; }
+.lb .lb-qr-wrap { display: flex; gap: 16px; align-items: flex-start; margin-top: 12px; flex-wrap: wrap; }
+.lb .lb-qr { flex: none; width: 168px; min-height: 168px; border-radius: 10px; background: var(--panel-2, rgba(255, 255, 255, 0.04)); border: 1px dashed var(--border); }
+.lb .lb-qr:has(svg) { background: #fff; border: 0; }
+.lb .lb-qr svg { display: block; width: 168px; height: 168px; }
+.lb .lb-qr-wrap > div:last-child { flex: 1; min-width: 200px; }
+.lb .lb-prev-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.lb .lb-frame { width: 100%; height: 640px; border: 1px solid var(--border); border-radius: 12px; background: #000; display: block; margin: 8px 0; }
+@media (max-width: 700px) {
+  .lb .lb-btn-row { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+  .lb .lb-btn-row input[type='url'] { grid-column: 1 / -1; grid-row: 2; }
+  .lb .lb-frame { height: 520px; }
+}
