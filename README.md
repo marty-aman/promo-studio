@@ -183,6 +183,26 @@ applied, won or passed. A starter list of 14 calls and grants for a heavy band i
 is added once (checked 23 Nov 2026, each with its source link; deadlines that couldn't be confirmed are
 left blank). Dates change, so always confirm on the organiser's site; nothing here updates itself.
 
+### Split sheets and the caption bank
+
+**Splits** (a tab on each song's page) records who wrote the song and each writer's share: name, role
+(lyrics, music, both, producer, other), share in %, PRO or society, and an optional email. **Add band
+members** starts from the band's member list, and **Split evenly** gives equal shares that add up to exactly
+100 (three writers get 33.34 / 33.33 / 33.33). The running total turns into a warning when the shares don't add
+up to 100. Tick **Everyone has signed** yourself once the signed copies are back; the app does not collect
+signatures. **Print split sheet (PDF)** prints the title, date, writers, shares and a signature line per
+writer, with the note "This is a record of what the writers agree, not legal advice. Each writer signs and
+keeps a copy." Emails are printed only when **Include email addresses** is ticked. Song cards and the Overview
+show **Split signed** or **Split missing** (hover for why: no writers, not 100%, or not signed).
+
+**Captions** (a tab on the Content page) is a bank of captions to reuse: text, hashtags, app, kind (hook,
+teaser, release, show, behind the scenes, other) and an optional song. Search covers the text and hashtags;
+filter by app, kind or song. **Copy** puts the text and hashtags on the clipboard and counts a use. The star
+on a Schedule row saves that post's hook line (or title) to the bank, linked to the post. **Best performers**
+marks the top three captions by the median views of the posts they were used on (linked by the star, or with
+the same text as a post's hook line or title) and says when there is too little data (fewer than 2 captions
+or 3 posts with views). Both are stored per artist in this browser and go into backups.
+
 ## How it's laid out
 
 The rail on the left has one **Start** tab for ideas, then a tab for each kind of thing you build:

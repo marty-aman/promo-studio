@@ -1,1 +1,43 @@
 /* Manager: misc. Owned by the build that adds it; app.css stays untouched. */
+
+/* G6 split sheets (song page, Splits tab) */
+.g6-split-chip.ok { color: var(--ok); border-color: currentColor; }
+.g6-split-chip.miss { color: var(--accent); border-color: currentColor; }
+button.g6-split-chip { cursor: pointer; font: inherit; background: none; }
+.g6-writers td { vertical-align: middle; }
+.g6-writers .g6-share { white-space: nowrap; }
+.g6-sharebox { display: inline-flex; align-items: center; gap: 4px; width: 100%; }
+.g6-writers .g6-sharebox input { width: 5.5em; flex: none; margin: 0; }
+.g6-writers select { min-width: 10em; }
+.g6-total { margin: 8px 0; font-weight: 600; }
+.g6-total.ok { color: var(--ok); }
+.g6-signed { margin: 10px 0 4px; }
+
+/* G6 caption bank (Content page, Captions tab) */
+.g6-captions .mgr-cols { align-items: start; }
+.g6-cap-add textarea { width: 100%; }
+.g6-cap-addrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 8px 0; }
+.g6-cap-filters input[type='search'] { min-width: 14em; flex: 1; }
+.g6-caps { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.g6-cap { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.g6-cap.top { border-color: var(--accent); }
+.g6-cap-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.g6-cap-tags { margin: 0; color: var(--accent); overflow-wrap: anywhere; }
+.g6-cap-rank { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--accent); }
+.g6-cap-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: auto; }
+.g6-cap-btns { margin-left: auto; display: inline-flex; gap: 4px; align-items: center; }
+.g6-cap-bestlist { margin: 4px 0 8px; padding-left: 20px; }
+.g6-cap-bestlist li { margin: 4px 0; overflow-wrap: anywhere; }
+.g6-cap-undo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.g6-rowbtns { white-space: nowrap; }
+@media (max-width: 600px) {
+  /* each writer becomes a small card: name and role, share and PRO, email and remove */
+  .g6-writers thead { display: none; }
+  .g6-writers, .g6-writers tbody { display: block; }
+  .g6-writers tr { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .g6-writers td { display: block; padding: 0; border: 0; }
+  .g6-writers td input, .g6-writers td select { width: 100%; min-width: 0; }
+  .g6-writers .g6-sharebox input { flex: 1; width: auto; }
+  .g6-caps { grid-template-columns: 1fr; }
+  .g6-cap-filters input[type='search'] { min-width: 0; width: 100%; }
+}
