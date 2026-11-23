@@ -1,6 +1,6 @@
 // Calendar export, the press kit (EPK) and the money ledger. Pure functions, unit tested.
-import { agenda, addDays, parseDate, isoDate, niceDate, mid } from './model.js';
-import { combinedAgenda, viewOf } from './artists.js';
+import { agenda, addDays, parseDate, isoDate, niceDate, mid, EVENT_KINDS } from './model.js';
+import { combinedAgenda, viewOf, photoStyleCss } from './artists.js';
 
 // ---- calendar
 
@@ -43,8 +43,15 @@ const fold = (line) => {
 };
 
 /**
+ * A calendar item's UID: its kind, what it belongs to, its own id for tasks, and its artist. One
+ * release day and one shoot per song, one event per show and post, so no date is needed.
+ */
+export const icsUid = (it) => `${it.kind}-${it.ref.id}${it.key ? `-${it.key}` : ''}${it.artistId ? `-${it.artistId}` : ''}@promo-studio`;
+
+/**
  * Everything in the manager as an .ics calendar (Google, Apple and Outlook calendars import it):
- * shows at their set time, shoots at call time, everything else as all-day items.
+ * shows at their set time, shoots at call time, your own events at their times (weekly ones repeat),
+ * everything else as all-day items.
  */
 export function managerICS(m, { from = '', days = 400, stamp = new Date(), ws = null } = {}) {
   const start = from || addDays(isoDate(new Date()), -30);
@@ -53,14 +60,14 @@ export function managerICS(m, { from = '', days = 400, stamp = new Date(), ws = 
   const views = ws ? Object.fromEntries(ws.artists.map((a) => [a.id, viewOf(ws, a.id)])) : null;
   const dt = `${stamp.toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Band Manager//Band manager//EN', `X-WR-CALNAME:${icsEsc(ws ? 'All artists · manager' : `${m.band.name || 'Band'} · manager`)}`, 'CALSCALE:GREGORIAN'];
-  items.forEach((it) => {
+  items.filter((it) => it.kind !== 'event').forEach((it) => {
     const src = views ? views[it.artistId] : m;
     const show = it.kind === 'show' && src.shows.find((s) => s.id === it.ref.id);
     const song = it.kind === 'shoot' && src.songs.find((s) => s.id === it.ref.id);
     const time = show ? show.setTime || show.doors : song ? song.shoot.callTime : '';
-    // the UID comes from what the item is (never its place in the list), so a calendar app that
-    // imports the file again updates the same events instead of adding copies
-    lines.push('BEGIN:VEVENT', `UID:${it.kind}-${it.ref.id}${it.key ? `-${it.key}` : ''}-${icsDay(it.date)}${it.artistId ? `-${it.artistId}` : ''}@promo-studio`, `DTSTAMP:${dt}`);
+    // the UID says what the item is (never its date or its place in the list), so a calendar app
+    // that imports the file again updates the same events, moved ones included, instead of adding copies
+    lines.push('BEGIN:VEVENT', `UID:${icsUid(it)}`, `DTSTAMP:${dt}`);
     if (time && /^\d{2}:\d{2}$/.test(time)) {
       const [hh, mm] = time.split(':').map(Number);
       // an hour for a set, 8 for a shoot, running past midnight onto the next day when it has to
@@ -74,6 +81,29 @@ export function managerICS(m, { from = '', days = 400, stamp = new Date(), ws = 
     if (show && show.venue) lines.push(fold(`LOCATION:${icsEsc([show.venue, show.city].filter(Boolean).join(', '))}`));
     lines.push('END:VEVENT');
   });
+  // your own events go in as they are (a weekly one as one repeating event), not one per day
+  const endDay = addDays(start, days);
+  const events = ws ? ws.artists.flatMap((a) => (views[a.id].events || []).map((ev) => ({ ev, artistId: a.id, artist: a.band.name || 'Artist' }))) : (m.events || []).map((ev) => ({ ev }));
+  for (const { ev, artistId, artist } of events) {
+    const inRange = ev.repeat ? ev.date < endDay && (!ev.until || ev.until >= start) : ev.date >= start && ev.date < endDay;
+    if (!inRange) continue;
+    lines.push('BEGIN:VEVENT', `UID:event-${ev.id}${artistId ? `-${artistId}` : ''}@promo-studio`, `DTSTAMP:${dt}`);
+    const timed = !ev.allDay && /^\d{2}:\d{2}$/.test(ev.start || '');
+    if (timed) {
+      const mins = (t) => +t.slice(0, 2) * 60 + +t.slice(3, 5);
+      const s = mins(ev.start);
+      // no end: an hour; an end before the start runs past midnight
+      const e = /^\d{2}:\d{2}$/.test(ev.end || '') && ev.end !== ev.start ? mins(ev.end) + (mins(ev.end) < s ? 1440 : 0) : s + 60;
+      const eT = `${String(Math.floor((e % 1440) / 60)).padStart(2, '0')}:${String(e % 60).padStart(2, '0')}`;
+      lines.push(`DTSTART:${icsLocal(ev.date, ev.start)}`, `DTEND:${icsLocal(addDays(ev.date, Math.floor(e / 1440)), eT)}`);
+    } else lines.push(`DTSTART;VALUE=DATE:${icsDay(ev.date)}`, `DTEND;VALUE=DATE:${icsDay(addDays(ev.date, 1))}`);
+    if (ev.repeat === 'weekly') lines.push(`RRULE:FREQ=WEEKLY${ev.until ? `;UNTIL=${icsDay(ev.until)}${timed ? 'T235959' : ''}` : ''}`);
+    lines.push(fold(`SUMMARY:${icsEsc(`${artistId ? `${artist}: ` : ''}${ev.title || 'Event'}`)}`));
+    const desc = [(EVENT_KINDS.find(([k]) => k === ev.kind) || [])[1], ev.note].filter(Boolean).join('\n');
+    if (desc) lines.push(fold(`DESCRIPTION:${icsEsc(desc)}`));
+    if (ev.location) lines.push(fold(`LOCATION:${icsEsc(ev.location)}`));
+    lines.push('END:VEVENT');
+  }
   lines.push('END:VCALENDAR');
   return `${lines.join('\r\n')}\r\n`;
 }
@@ -96,8 +126,8 @@ export function epkHTML(m, { today = isoDate(new Date()), photos = [], credits =
   const members = (b.members || []).filter((x) => x && x.name);
   const songLink = (s) => safeUrl(s.links.spotify) || safeUrl(s.links.youtube) || safeUrl(s.links.bandcamp) || safeUrl(s.links.apple);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(b.name)} · Press kit</title>
-<style>body{margin:0;font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;background:#0b0b0d;color:#ecebe6}main{max-width:820px;margin:0 auto;padding:40px 24px 64px}h1{font-size:44px;line-height:1.05;margin:0 0 6px;letter-spacing:-.01em}h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#d33;margin:36px 0 10px}.sub{color:#a9a7a0;margin:0 0 18px}.links a{display:inline-block;margin:0 10px 8px 0;padding:6px 12px;border:1px solid #444;border-radius:99px;color:#ecebe6;text-decoration:none}.photos{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:24px 0}.avatar{width:120px;height:120px;border-radius:20px;object-fit:cover;display:block;margin:0 0 18px}.photos figure{margin:0}.photos img{width:100%;border-radius:8px;display:block}.photos figcaption{font-size:12px;color:#a9a7a0;margin-top:4px}ul{padding-left:20px}li{margin:4px 0}blockquote{margin:10px 0;padding:8px 16px;border-left:3px solid #d33;color:#d8d6cf}blockquote cite{display:block;color:#a9a7a0;font-style:normal;font-size:14px;margin-top:4px}a{color:#f2b8b8}.contact{padding:16px;border:1px solid #333;border-radius:10px}</style></head><body><main>
-${safeImg(avatar) ? `<img class="avatar" src="${safeImg(avatar)}" alt="${esc(b.name)}">` : ''}<h1>${esc(b.name)}</h1>
+<style>body{margin:0;font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;background:#0b0b0d;color:#ecebe6}main{max-width:820px;margin:0 auto;padding:40px 24px 64px}h1{font-size:44px;line-height:1.05;margin:0 0 6px;letter-spacing:-.01em}h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#d33;margin:36px 0 10px}.sub{color:#a9a7a0;margin:0 0 18px}.links a{display:inline-block;margin:0 10px 8px 0;padding:6px 12px;border:1px solid #444;border-radius:99px;color:#ecebe6;text-decoration:none}.photos{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:24px 0}.avatar{width:120px;height:120px;border-radius:20px;overflow:hidden;margin:0 0 18px}.avatar img{width:100%;height:100%;display:block}.photos figure{margin:0}.photos img{width:100%;border-radius:8px;display:block}.photos figcaption{font-size:12px;color:#a9a7a0;margin-top:4px}ul{padding-left:20px}li{margin:4px 0}blockquote{margin:10px 0;padding:8px 16px;border-left:3px solid #d33;color:#d8d6cf}blockquote cite{display:block;color:#a9a7a0;font-style:normal;font-size:14px;margin-top:4px}a{color:#f2b8b8}.contact{padding:16px;border:1px solid #333;border-radius:10px}</style></head><body><main>
+${safeImg(avatar) ? `<div class="avatar"><img src="${safeImg(avatar)}" alt="${esc(b.name)}" style="${photoStyleCss(b.photoPos)}"></div>` : ''}<h1>${esc(b.name)}</h1>
 <p class="sub">${esc([b.genres, b.city].filter(Boolean).join(' · '))}${b.similar ? ` · for fans of ${esc(b.similar)}` : ''}</p>
 ${links.length ? `<p class="links">${links.map(([l, u]) => `<a href="${esc(u)}">${esc(l)}</a>`).join('')}</p>` : ''}
 ${photos.map(safeImg).filter(Boolean).length ? `<div class="photos">${photos.map((p, i) => [safeImg(p), credits[i]]).filter(([p]) => p).map(([p, c]) => `<figure><img src="${p}" alt="${esc(b.name)} press photo">${c ? `<figcaption>${esc(c)}</figcaption>` : ''}</figure>`).join('')}</div>` : ''}
@@ -127,30 +157,34 @@ export const MONEY_CATS = [['show', 'Shows'], ['merch', 'Merch'], ['streaming', 
 export const newEntry = (kind = 'expense', date = isoDate(new Date())) => ({ id: mid('money'), date, kind, amount: '', category: kind === 'income' ? 'show' : 'other', songId: '', showId: '', note: '' });
 
 const amt = (v) => (v === '' || v == null || Number.isNaN(+v) ? 0 : +v);
-/** A show whose settlement is real money: played, or its day has come and it wasn't cancelled. */
-export const showSettled = (s, today) => s.status === 'played' || (s.status !== 'cancelled' && !!s.date && s.date <= today);
+/**
+ * A show whose pay and merch are real money: marked played, or confirmed and its day is over (today's
+ * show counts from tomorrow). Ideas, pitches and holds that never got played don't count.
+ */
+export const showSettled = (s, today) => s.status === 'played' || (s.status === 'confirmed' && !!s.date && s.date < today);
 
 /**
  * Every money line: the ledger plus show settlements (pay and merch in, costs out), so the totals
- * include shows without typing them twice. Shows still to come (or cancelled) don't count yet;
- * see expectedShowMoney for what upcoming shows should bring in.
+ * include shows without typing them twice. Pay and merch count once a show is settled (showSettled);
+ * costs count right away. See expectedShowMoney for what upcoming shows should bring in.
  */
 export function moneyLines(m, today = isoDate(new Date())) {
   const out = m.money.map((e) => ({ ...e, amount: amt(e.amount), from: 'ledger' }));
   for (const s of m.shows) {
-    if (!showSettled(s, today)) continue;
     const st = s.settlement || {};
     const base = { date: s.date, showId: s.id, songId: '', from: 'show', note: s.venue || 'Show' };
+    // costs are money already spent (a deposit, the van), so they count as soon as they're typed
+    if (amt(st.costs)) out.push({ ...base, id: `${s.id}-costs`, kind: 'expense', category: 'travel', amount: amt(st.costs) });
+    if (!showSettled(s, today)) continue;
     if (amt(st.pay)) out.push({ ...base, id: `${s.id}-pay`, kind: 'income', category: 'show', amount: amt(st.pay) });
     if (amt(st.merch)) out.push({ ...base, id: `${s.id}-merch`, kind: 'income', category: 'merch', amount: amt(st.merch) });
-    if (amt(st.costs)) out.push({ ...base, id: `${s.id}-costs`, kind: 'expense', category: 'travel', amount: amt(st.costs) });
   }
   return out.filter((e) => e.amount > 0).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
 
-/** Pay already typed in for upcoming (not cancelled) shows, e.g. guarantees: { total, shows }. */
+/** Pay already typed in for shows still to come (today or later, or no date yet; not cancelled), e.g. guarantees: { total, shows }. */
 export function expectedShowMoney(m, today = isoDate(new Date())) {
-  const shows = m.shows.filter((s) => !showSettled(s, today) && s.status !== 'cancelled' && amt((s.settlement || {}).pay) > 0);
+  const shows = m.shows.filter((s) => !showSettled(s, today) && s.status !== 'cancelled' && (!s.date || s.date >= today) && amt((s.settlement || {}).pay) > 0);
   return { total: shows.reduce((a, s) => a + amt(s.settlement.pay), 0), shows };
 }
 
@@ -168,7 +202,15 @@ export function memberSplit(net, members = [], { fund = '', shares = {} } = {}) 
   const w = list.map((x) => (shares && shares[x.id] !== undefined && shares[x.id] !== '' ? Math.max(0, amt(shares[x.id])) : 1));
   const total = w.reduce((a, b) => a + b, 0);
   const left = net - kept;
-  return { fund: total ? kept : cents(net), members: list.map((x, i) => ({ id: x.id, name: x.name, share: w[i], amount: total ? cents((left * w[i]) / total) : 0 })) };
+  if (!total) return { fund: cents(net), members: list.map((x, i) => ({ id: x.id, name: x.name, share: w[i], amount: 0 })) };
+  const out = list.map((x, i) => ({ id: x.id, name: x.name, share: w[i], amount: cents((left * w[i]) / total) }));
+  // rounding to cents can leave a cent or two over (or short): the first paid member takes it, so it adds up
+  const rest = cents(left - out.reduce((a, x) => a + x.amount, 0));
+  if (rest) {
+    const first = out.find((x) => x.share > 0);
+    first.amount = cents(first.amount + rest);
+  }
+  return { fund: kept, members: out };
 }
 
 /** One line for the band chat: "Split: $45 each (4 members) · band fund $60". '' when there's nothing to split. */

@@ -4,7 +4,7 @@ import { h, icon, button, toast, download, pickFiles, onDateCommit } from '../do
 import { createStore } from '../state.js';
 import { openDriveSetup } from '../gdrive.js';
 import { todayISO } from './model.js';
-import { loadWorkspace, saveWorkspace, viewOf, mergeView, addArtist, removeArtist, artistList, workspaceBackup, parseWorkspaceBackup, backupMediaNames } from './artists.js';
+import { loadWorkspace, saveWorkspace, viewOf, mergeView, addArtist, removeArtist, restoreArtist, artistList, photoStyle, workspaceBackup, parseWorkspaceBackup, backupMediaNames } from './artists.js';
 import { relinkButton } from '../relink.js';
 import { referencedIds } from '../mediamatch.js';
 import { buildHome } from './page-home.js';
@@ -25,6 +25,8 @@ const VIEW_KEY = 'pvm.manager.view.v1';
 export const BACKUP_INFO_KEY = 'pvm.manager.backupInfo.v1';
 export const BACKUP_NUDGE_DAYS = 14;
 // the workspace as it was just before the last Restore (so a wrong file can be undone)
+// (the 2026-11 build kept a copy of the workspace here on Restore; it's no longer written, and an
+// old leftover is removed on load so it doesn't hold storage)
 const BEFORE_RESTORE_KEY = 'pvm.manager.beforeRestore';
 const readBackupInfo = () => {
   try {
@@ -115,6 +117,12 @@ export function formKit(update) {
 
 export function createManager({ root, studio }) {
   let ws = loadWorkspace();
+  let edits = 0; // edits made in this tab (for "Undo restore" to say what it would undo)
+  try {
+    localStorage.removeItem(BEFORE_RESTORE_KEY);
+  } catch {
+    /* storage blocked */
+  }
   saveWorkspace(ws); // an older single-artist save is rewritten as a workspace right away
   const store = createStore(viewOf(ws));
   const current = () => (ws = mergeView(ws, store.get())); // the workspace with the open artist's edits folded in
@@ -178,17 +186,17 @@ export function createManager({ root, studio }) {
         const next = parseWorkspaceBackup(text);
         const songs = next.artists.reduce((n, a) => n + a.songs.length, 0);
         if (!confirm(`Replace everything in the manager with this backup (${next.artists.length} artist${next.artists.length > 1 ? 's' : ''}, ${songs} songs)? You can undo this right after.`)) return;
-        // keep what's here now, so the restore can be undone (and survives a reload in this browser)
+        // keep what's here now (in memory only: a second copy in storage would double the Manager's
+        // footprint), so the restore can be undone while the undo bar is up
         const before = JSON.parse(JSON.stringify(current()));
-        try {
-          localStorage.setItem(BEFORE_RESTORE_KEY, JSON.stringify(before));
-        } catch {
-          /* too big to keep a second copy: the undo below still works until the tab closes */
-        }
         studio.learnNames && studio.learnNames(backupMediaNames(text)); // so files this browser doesn't have can be asked for by name
         replaceWorkspace(next);
+        const editsAt = edits;
         toast('Backup restored');
         offerUndo('Backup restored.', 'Undo restore', () => {
+          // undoing puts back exactly what you had before; changes made since the restore go with it
+          const since = edits - editsAt;
+          if (since && !confirm(`Undo the restore? The ${since} change${since === 1 ? '' : 's'} you made since restoring will be undone too.`)) return;
           replaceWorkspace(before);
           toast('Put back what you had before the restore.');
         });
@@ -203,7 +211,7 @@ export function createManager({ root, studio }) {
   /** The artist's profile photo, or its first letter when it has none. */
   const avatar = (a, cls = '') => {
     const ph = a.photoId && studio.mediaInfo ? studio.mediaInfo(a.photoId) : null;
-    return ph ? h('span', { class: `mgr-artist-dot photo ${cls}`, 'aria-hidden': 'true' }, h('img', { src: ph.url, alt: '' })) : h('span', { class: `mgr-artist-dot ${cls}`, 'aria-hidden': 'true' }, (a.name[0] || '?').toUpperCase());
+    return ph ? h('span', { class: `mgr-artist-dot photo ${cls}`, 'aria-hidden': 'true' }, h('img', { src: ph.url, alt: '', style: photoStyle(a.photoPos) })) : h('span', { class: `mgr-artist-dot ${cls}`, 'aria-hidden': 'true' }, (a.name[0] || '?').toUpperCase());
   };
   root.replaceChildren(h('div', { class: 'mgr-side' }, h('div', {}, switcher, nav), tools), main, saveError, undoBar);
   renderBackupNote();
@@ -235,10 +243,7 @@ export function createManager({ root, studio }) {
     replaceWorkspace(removeArtist(w, id));
     go('home');
     offerUndo(`Deleted ${a.band.name || 'the artist'}.`, 'Undo delete', () => {
-      // put the artist back, keeping anything changed since in the other artists
-      const now = current();
-      const back = { ...now, artists: [...before.artists.map((x) => (x.id === id ? x : now.artists.find((y) => y.id === x.id) || x)), ...now.artists.filter((y) => !before.artists.some((x) => x.id === y.id))], current: id };
-      replaceWorkspace(back);
+      replaceWorkspace(restoreArtist(before, current(), id));
       go('home');
       toast(`${a.band.name || 'The artist'} is back.`);
     });
@@ -276,6 +281,8 @@ export function createManager({ root, studio }) {
     render(true);
   };
   window.addEventListener('popstate', (e) => {
+    // Back pressed in the Video or Photo Studio: leave the hidden Manager where it was
+    if (root.hidden) return;
     const v = parseViewHash(location.hash) || (e.state && e.state.mgrView) || null;
     if (!v || !MANAGER_PAGES.some((p) => p.id === v.page)) return;
     view = { ...view, ...v, ...(v.page === 'songs' && v.id ? { songId: v.id } : {}) };
@@ -355,10 +362,12 @@ export function createManager({ root, studio }) {
 
   let saveTimer = null;
   let asked = false;
-  store.subscribe(() => {
+  store.subscribe((_, meta) => {
     render();
     status.textContent = 'Saving…';
-    if (!asked) {
+    if (meta && meta.type === 'update') edits++;
+    // only a real edit (not an artist switch, a restore or an undo) counts as the first one
+    if (!asked && meta && meta.type === 'update') {
       asked = true;
       // ask the browser not to clear this site's storage on its own (no prompt in most browsers)
       if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
@@ -366,12 +375,7 @@ export function createManager({ root, studio }) {
     }
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      let ok = saveWorkspace(current());
-      if (!ok && localStorage.getItem(BEFORE_RESTORE_KEY)) {
-        // the copy kept for "Undo restore" is the first thing to give up for room
-        localStorage.removeItem(BEFORE_RESTORE_KEY);
-        ok = saveWorkspace(current());
-      }
+      const ok = saveWorkspace(current());
       status.textContent = ok ? 'Saved in this browser' : 'Not saved: storage full';
       status.classList.toggle('bad', !ok);
       if (!ok && saveError.hidden) toast('Could not save your change in this browser. Back up now.', 'error', 8000);

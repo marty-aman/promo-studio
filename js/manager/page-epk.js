@@ -6,8 +6,68 @@ import { exportPDF } from './pdf.js';
 import { EPK_LINKS, epkHTML, shortBio } from './extras.js';
 import { epkCredits, addPhotos } from './photos.js';
 import { THEMES } from '../themes.js';
+import { photoStyle, photoPos, nudgePhoto } from './artists.js';
 
-export const epkUI = { photos: [] };
+export const epkUI = { photos: [], reposition: false };
+
+const setPos = (ctx, pos) => ctx.update((d) => (d.band.photoPos = photoPos(pos)), 'photoPos');
+
+/**
+ * The profile photo in its frame. With Reposition on: drag the photo to move it, arrow keys nudge
+ * it (Shift for bigger steps), + and − zoom. The drag shows live and saves once, when you let go.
+ */
+function photoFrame(ctx, b, ph) {
+  const img = h('img', { src: ph.url, alt: `${b.name || 'Artist'} profile photo`, style: photoStyle(b.photoPos), draggable: 'false' });
+  if (!epkUI.reposition) return h('div', { class: 'mgr-profile-img' }, img);
+  const frame = h('div', { class: 'mgr-profile-img edit', tabindex: '0', role: 'group', 'data-k': 'epk-photo-frame', 'aria-label': 'Profile photo framing. Drag the photo or use the arrow keys to move it; plus and minus zoom.' }, img);
+  let start = null;
+  frame.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    frame.focus();
+    frame.setPointerCapture(e.pointerId);
+    start = { x: e.clientX, y: e.clientY, pos: photoPos(ctx.store.get().band.photoPos), cur: null };
+  });
+  frame.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    const r = frame.getBoundingClientRect();
+    start.cur = nudgePhoto(start.pos, e.clientX - start.x, e.clientY - start.y, r.width, r.height);
+    Object.assign(img.style, photoStyle(start.cur));
+  });
+  const end = () => {
+    if (start && start.cur) setPos(ctx, start.cur);
+    start = null;
+  };
+  frame.addEventListener('pointerup', end);
+  frame.addEventListener('pointercancel', end);
+  frame.addEventListener('keydown', (e) => {
+    const p = photoPos(ctx.store.get().band.photoPos);
+    const step = e.shiftKey ? 10 : 2;
+    const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    if (moves[e.key]) {
+      e.preventDefault();
+      // an arrow moves the photo the way it points (the focal point goes the other way)
+      setPos(ctx, { ...p, x: p.x - moves[e.key][0], y: p.y - moves[e.key][1] });
+    } else if (e.key === '+' || e.key === '=' || e.key === '-') {
+      e.preventDefault();
+      setPos(ctx, { ...p, zoom: p.zoom + (e.key === '-' ? -0.1 : 0.1) });
+    }
+  });
+  return frame;
+}
+
+/** The zoom slider (1x to 3x) and Reset, under the photo while repositioning. */
+function photoControls(ctx, b) {
+  const p = photoPos(b.photoPos);
+  const zoom = h('input', { type: 'range', min: '1', max: '3', step: '0.05', value: String(p.zoom), 'aria-label': 'Zoom', 'data-k': 'epk-photo-zoom' });
+  const label = h('span', { class: 'muted tiny mono' }, `${p.zoom.toFixed(2)}×`);
+  zoom.addEventListener('input', () => {
+    const img = document.querySelector('.mgr-profile-img.edit img');
+    if (img) Object.assign(img.style, photoStyle({ ...p, zoom: +zoom.value }));
+    label.textContent = `${(+zoom.value).toFixed(2)}×`;
+  });
+  zoom.addEventListener('change', () => setPos(ctx, { ...photoPos(ctx.store.get().band.photoPos), zoom: +zoom.value }));
+  return h('div', { class: 'mgr-photo-pos' }, h('label', { class: 'mf inline' }, h('span', { class: 'mf-l' }, 'Zoom'), zoom, label), button('Reset', () => ctx.update((d) => delete d.band.photoPos), { variant: 'sm ghost', title: 'Centre the photo at 1×' }), h('span', { class: 'muted tiny' }, 'Drag the photo, or click it and use the arrow keys.'));
+}
 
 export function buildEPK(ctx) {
   const m = ctx.store.get();
@@ -89,7 +149,11 @@ export function buildEPK(ctx) {
           h('h2', {}, 'The band'),
           (() => {
             const ph = b.photoId && ctx.studio.mediaInfo(b.photoId);
-            const setPhoto = (id) => ctx.update(B((x) => (x.photoId = id || null)));
+            // a new photo starts centred at 1x
+            const setPhoto = (id) => ctx.update(B((x) => {
+              x.photoId = id || null;
+              delete x.photoPos;
+            }));
             const upload = async () => {
               const files = await pickFiles('image/*,.jpg,.jpeg,.png,.webp', false);
               if (!files.length) return;
@@ -98,6 +162,7 @@ export function buildEPK(ctx) {
               ctx.update((d) => {
                 addPhotos(d, added);
                 d.band.photoId = added[0].id;
+                delete d.band.photoPos;
               });
               toast('Profile photo set. It’s also on the Photos page.');
             };
@@ -107,13 +172,14 @@ export function buildEPK(ctx) {
             return h(
               'div',
               { class: 'mgr-profile' },
-              h('div', { class: 'mgr-profile-img' }, ph ? h('img', { src: ph.url, alt: `${b.name || 'Artist'} profile photo` }) : (b.name || '?')[0].toUpperCase()),
+              ph ? photoFrame(ctx, b, ph) : h('div', { class: 'mgr-profile-img' }, (b.name || '?')[0].toUpperCase()),
               h(
                 'div',
                 {},
                 h('strong', {}, 'Profile photo'),
                 h('p', { class: 'muted tiny' }, 'Shown in the artist menu, on Home and at the top of the press kit. A square photo works best.'),
-                h('div', { class: 'row' }, button(ph ? 'Upload a new one' : 'Upload a photo', upload, { iconName: 'upload', variant: 'sm primary' }), pick, ph ? button('Remove', () => setPhoto(null), { variant: 'sm ghost' }) : null),
+                h('div', { class: 'row' }, button(ph ? 'Upload a new one' : 'Upload a photo', upload, { iconName: 'upload', variant: 'sm primary' }), pick, ph ? button(epkUI.reposition ? 'Done' : 'Reposition', () => ((epkUI.reposition = !epkUI.reposition), ctx.refresh()), { iconName: epkUI.reposition ? 'check' : 'hand', variant: 'sm', title: 'Move and zoom the photo inside its frame' }) : null, ph ? button('Remove', () => setPhoto(null), { variant: 'sm ghost' }) : null),
+                ph && epkUI.reposition ? photoControls(ctx, b) : null,
               ),
             );
           })(),
