@@ -175,7 +175,8 @@ test('show to-dos show up on Home and in the overdue list', () => {
   const a = agenda(m, '2026-11-18', 14);
   assert.ok(a.some((x) => x.kind === 'task' && /Advance the show/.test(x.title)));
   const late = overdueTasks(m, '2026-11-18');
-  assert.ok(late.some((x) => x.show && /Pitch the venue/.test(x.task.text)));
+  // the show is confirmed, so "Pitch the venue" ticks itself (todoauto.js); the deal isn't noted, so this one is late
+  assert.ok(late.some((x) => x.show && /Confirm the lineup/.test(x.task.text)));
 });
 
 // ---- content and insights

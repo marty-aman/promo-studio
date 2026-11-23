@@ -4,6 +4,7 @@ import { agenda, overdueTasks, nextUp, releaseProgress, daysBetween, niceDate, n
 import { showTodo } from './planner.js';
 import { findings } from './content.js';
 import { combinedAgenda, combinedNext, viewOf, photoStyle } from './artists.js';
+import { setTaskDone } from './todoauto.js';
 
 const KIND = { show: ['ticket', 'Show'], release: ['disc', 'Release'], shoot: ['film', 'Shoot'], post: ['share', 'Post'], task: ['check', 'Task'], event: ['calendar', 'Event'] };
 
@@ -62,7 +63,7 @@ export function buildHome(ctx) {
 
   const nextRelease = release
     ? (() => {
-        const p = releaseProgress(release);
+        const p = releaseProgress(release, all ? viewOf(ws, cn.release.artistId) : m);
         return card('disc', 'Next release', [
           h('strong', {}, `“${release.title}”`),
           h('span', {}, `${niceDate(release.releaseDate)} · ${inDays(daysBetween(today, release.releaseDate))}`),
@@ -129,7 +130,7 @@ export function buildHome(ctx) {
                   return;
                 }
                 const t = song ? d.songs.find((s) => s.id === song.id)?.release.find((x) => x.id === task.id) : d.shows.find((s) => s.id === show.id)?.todo.find((x) => x.id === task.id);
-                if (t) t.done = true;
+                if (t) setTaskDone(t, true);
               }, `Mark “${task.text}” done`),
               h('button', { type: 'button', class: 'link', onclick: () => (song ? open(artistId, 'songs', song.id, pitch ? 'pitch' : 'release') : open(artistId, 'shows', show.id)) }, task.text),
               h('span', { class: 'muted tiny' }, `${all ? `${artist} · ` : ''}${song ? `“${song.title}”` : `Show: ${show.venue || 'venue TBD'}`} · due ${niceDate(due, { weekday: false })}`),

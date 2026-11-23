@@ -6,6 +6,7 @@ import { driveButton } from '../gdrive.js';
 import { managerAutoSync } from '../ai/panel-lyricsync.js';
 import { SONG_STATUSES, TASK_CATS, newSong, taskDue, releaseProgress, releaseChecklist, niceDate, daysBetween, mid, deleteSong, markPreReleaseDone, isPreReleaseMoot } from './model.js';
 import { hookLines, planPosts } from './ideas.js';
+import { releaseTaskState, releaseTaskDone, setTaskDone } from './todoauto.js';
 import { buildShootTab } from './page-shoot.js';
 import { pressTab, playlistsTab, pitchTab } from './page-press.js';
 import { pitchStats } from './press.js';
@@ -93,7 +94,7 @@ function songList(ctx) {
             'div',
             { class: 'mgr-grid' },
             songs.map((s) => {
-              const p = releaseProgress(s);
+              const p = releaseProgress(s, m);
               const days = s.releaseDate ? daysBetween(ctx.today(), s.releaseDate) : null;
               const rel = s.releaseId && releases.find((x) => x.id === s.releaseId);
               return h(
@@ -230,7 +231,7 @@ async function uploadSong(ctx, song, S, files = null) {
 function overviewTab(ctx, song, S) {
   const f = ctx.form;
   const audio = ctx.studio.audioFiles();
-  const p = releaseProgress(song);
+  const p = releaseProgress(song, ctx.store.get());
   const posts = ctx.store.get().posts.filter((x) => x.songId === song.id);
   return h(
     'div',
@@ -361,6 +362,16 @@ function timingSection(ctx, song, S) {
   );
 }
 
+/**
+ * Under a task that ticks itself: "Done automatically: <reason>", or, when you unticked it, that it's turned off
+ * with a link to let it tick itself again. Shared by the song and show to-do lists.
+ */
+export function autoNote(st, turnOn, ctx) {
+  if (!st.auto || st.manual) return null;
+  if (!st.off) return h('span', { class: 'mgr-auto muted tiny', 'data-auto': 'on' }, icon('check', 12), `Done automatically: ${st.auto}. Untick it to mark it not done.`);
+  return h('span', { class: 'mgr-auto muted tiny', 'data-auto': 'off' }, `Marked not done by you (it would tick itself: ${st.auto}). `, h('button', { type: 'button', class: 'link', onclick: () => ctx.update(turnOn) }, 'Let it tick itself again'));
+}
+
 function releaseTab(ctx, song, S) {
   const f = ctx.form;
   const today = ctx.today();
@@ -371,23 +382,26 @@ function releaseTab(ctx, song, S) {
   });
   const addTask = () => ctx.update(S((s) => s.release.push({ id: mid('task'), offset: 0, date: today, cat: 'other', text: 'New task', done: false })));
   const reset = () => confirm('Put back the standard checklist? Tasks you added are kept; ticked standard tasks are reset.') && ctx.update(S((s) => (s.release = [...s.release.filter((t) => t.date), ...releaseChecklist()])));
+  const m = ctx.store.get();
   const rows = tasks.map((t) => {
+    const st = releaseTaskState(song, t, m);
     const due = taskDue(song, t);
-    const late = !t.done && due && due < today && !isPreReleaseMoot(song, t);
+    const late = !st.done && due && due < today && !isPreReleaseMoot(song, t);
     return h(
       'li',
-      { class: `mgr-task${t.done ? ' done' : ''}${late ? ' late' : ''}` },
-      f.check(`done-${t.id}`, t.done, T(t.id, (x, v) => (x.done = v)), `Done: ${t.text}`),
+      { class: `mgr-task${st.done ? ' done' : ''}${late ? ' late' : ''}` },
+      f.check(`done-${t.id}`, st.done, T(t.id, (x, v) => setTaskDone(x, v, st.auto)), st.done && !st.manual ? `Mark not done: ${t.text}` : `Done: ${t.text}`),
       h('span', { class: 'mgr-when' }, due ? niceDate(due, { weekday: false }) : t.offset === 0 ? 'Release day' : `${Math.abs(t.offset)} days ${t.offset < 0 ? 'before' : 'after'}`),
       f.text(`task-${t.id}`, '', t.text, T(t.id, (x, v) => (x.text = v)), { aria: `Task: ${t.text}` }),
       h('span', { class: 'mgr-chip' }, TASK_CATS[t.cat] || 'Other'),
       t.date ? f.text(`tdate-${t.id}`, '', t.date, T(t.id, (x, v) => (x.date = v)), { type: 'date', aria: `Due date: ${t.text}` }) : null,
       iconButton('trash', `Delete “${t.text}”`, () => ctx.update(S((s) => (s.release = s.release.filter((x) => x.id !== t.id)))), 'ghost'),
+      autoNote(st, T(t.id, (x) => delete x.autoOff), ctx),
     );
   });
-  const p = releaseProgress(song);
+  const p = releaseProgress(song, ctx.store.get());
   // offered once the song is out (or its date has passed) and run-up tasks are still open
-  const preLeft = song.status === 'released' || (song.releaseDate && song.releaseDate <= today) ? song.release.filter((t) => !t.done && !t.date && (t.offset || 0) <= 0).length : 0;
+  const preLeft = song.status === 'released' || (song.releaseDate && song.releaseDate <= today) ? song.release.filter((t) => !releaseTaskDone(song, t, m) && !t.date && (t.offset || 0) <= 0).length : 0;
   return h(
     'section',
     { class: 'mgr-sect' },

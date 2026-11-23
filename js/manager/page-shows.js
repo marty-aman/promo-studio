@@ -8,7 +8,8 @@ import { showSheetHTML, stageSetlistHTML } from './docs.js';
 import { setlistTimes, songSeconds, fmtTime } from './setlist.js';
 import { setlistSongs, addCover } from './covers.js';
 import { coverPicker } from './page-cover.js';
-import { songsUI } from './page-songs.js';
+import { songsUI, autoNote } from './page-songs.js';
+import { showTaskState, showTaskDone, setTaskDone } from './todoauto.js';
 import { parseTime } from './releases.js';
 import { memberSplit, splitText } from './extras.js';
 
@@ -227,17 +228,19 @@ function showPage(ctx, show) {
   const todoBox = h(
     'section',
     { class: 'mgr-sect' },
-    h('h2', {}, `To do · ${todo.filter((t) => t.done).length}/${todo.length}`),
+    h('h2', {}, `To do · ${todo.filter((t) => showTaskDone(show, t)).length}/${todo.length}`),
     todo.length
       ? h('ul', { class: 'mgr-tasks' }, todo.map((t) => {
           const due = todoDue(show, t);
+          const st = showTaskState(show, t);
           return h(
             'li',
-            { class: `mgr-task todo${t.done ? ' done' : ''}${!t.done && due && due < today ? ' late' : ''}` },
-            f.check(`todo-${t.id}`, t.done, T(t.id, (x, v) => (x.done = v)), `Done: ${t.text}`),
+            { class: `mgr-task todo${st.done ? ' done' : ''}${!st.done && due && due < today ? ' late' : ''}` },
+            f.check(`todo-${t.id}`, st.done, T(t.id, (x, v) => setTaskDone(x, v, st.auto)), st.done && !st.manual ? `Mark not done: ${t.text}` : `Done: ${t.text}`),
             h('span', { class: 'mgr-when' }, due ? niceDate(due, { weekday: false }) : t.offset === 0 ? 'Show day' : `${Math.abs(t.offset)} d ${t.offset < 0 ? 'before' : 'after'}`),
             f.text(`todot-${t.id}`, '', t.text, T(t.id, (x, v) => (x.text = v)), { aria: `To-do: ${t.text}` }),
             iconButton('trash', `Delete “${t.text}”`, () => ctx.update(S((s) => (s.todo = s.todo.filter((x) => x.id !== t.id)))), 'ghost'),
+            autoNote(st, T(t.id, (x) => delete x.autoOff), ctx),
           );
         }))
       : h('p', { class: 'muted small' }, 'No to-do list for this show.'),
