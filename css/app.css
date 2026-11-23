@@ -832,6 +832,8 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .mgr-photo img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; }
 .mgr-photo span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mgr-photo.on { border-color: var(--accent); }
+.mgr-photo .mgr-photo-tag { font-style: normal; font-size: 10px; color: var(--muted); }
+.mgr-photos-pinned { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed var(--border); }
 /* Photos page */
 .mgr-photos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 10px; }
 .mgr-ph { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); min-width: 0; align-content: start; }
