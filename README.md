@@ -978,3 +978,16 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 ### Mobile: Photo Studio
 
 On a phone or tablet (window up to 1100px wide) the Photo Studio puts the canvas first and moves the side panels into a sheet above a bottom toolbar: Add, Layers, Style, Templates, Export. Undo and redo stay at the top. Buttons over the canvas replace the keyboard actions (style, edit text, crop, duplicate, forward, back, lock, delete). One finger moves a layer, pulls a handle or turns the knob; two fingers pinch to zoom the view and pan; double-tap text to edit it. While cropping, one finger slides the photo inside its frame and a pinch zooms it. Layers reorder with the grip on each row. Photos far bigger than the screen are drawn from a smaller copy while editing; exports use the original. Code: `js/photo/gesture.js` (touch maths, unit tested in `test/photo-touch.test.js`) and `css/mobile-photo.css`.
+
+### Mobile: Tab Studio
+
+On a phone, a tablet or any touch screen (`(max-width: 1100px), (pointer: coarse)`), Tab Studio switches to a touch layout. A desktop window with a mouse keeps the classic layout. In the touch layout:
+
+- Bars wrap to the screen width. Only the part on screen is drawn, so a 200+ bar tab scrolls smoothly. Tracks → View → "One long line" brings back the sideways scroll.
+- Pinch the tab, or use A− / A+ in Tracks, to change its size.
+- A playback bar sits at the bottom: previous and next bar, Play/Stop, Loop (1, 2, 4 or 8 bars), speed (50–125 %), Tracks and Edit.
+- Tap a beat on a string to select it. Tap it again, press and hold, or press Edit to open the edit pad, which has fret keys 0–24, lengths, techniques, bar and beat tools, arrows, clear, and undo/redo. Swipe sideways to move one beat, or swipe further to move a bar. Tap a bar number to play from that bar.
+- The Tracks sheet picks the track (phones show one at a time), mutes tracks, adds instruments and holds the view settings.
+- Sound starts after the first tap, because mobile browsers block it until then.
+
+Code: `js/tablayout.js` (pure layout and gesture helpers, unit tested) and `css/mobile-tab.css`.

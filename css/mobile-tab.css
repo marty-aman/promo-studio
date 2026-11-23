@@ -1,0 +1,129 @@
+/* Tab Studio on phones, tablets and touch screens. Everything here hangs off .ts-touch, which
+   js/page-tabstudio.js sets at (max-width: 1100px) or (pointer: coarse), so a desktop window keeps its layout. */
+
+.tab-studio.ts-touch {
+  --ts-dock: 64px;
+  --ts-side: 0px;
+  padding: 12px max(12px, env(safe-area-inset-right)) calc(var(--ts-dock) + 28px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  max-width: none;
+  overflow-x: clip;
+}
+.tab-studio.ts-touch.ts-pad-open { padding-right: calc(max(12px, env(safe-area-inset-right)) + var(--ts-side)); }
+
+/* big, finger-sized controls; no double-tap zoom on them */
+.ts-touch .btn, .ts-touch select, .ts-touch input, .ts-touch summary, .ts-touch .ts-key, .ts-touch .ts-tbtn { touch-action: manipulation; }
+.ts-touch .btn, .ts-touch .btn.sm { min-height: 44px; min-width: 44px; padding: 8px 12px; font-size: 14px; }
+.ts-touch select, .ts-touch input[type='text'], .ts-touch input[type='number'] { min-height: 44px; font-size: 16px; }
+.ts-touch summary { min-height: 44px; display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 14px; }
+.ts-touch :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.ts-touch .page-head { align-items: center; }
+.ts-touch .page-head h2 { font-size: 20px; }
+.ts-phone .page-head > div > p { display: none; }
+.ts-touch .ts-files select, .ts-touch .ts-title { min-width: 0; max-width: 100%; }
+.ts-touch .ts-files, .ts-touch .ts-song { gap: 8px; }
+.ts-phone .ts-files > select { flex: 1 1 100%; }
+.ts-phone .ts-files > .spacer { display: none; }
+.ts-phone .ts-song > .field:first-child { flex: 1 1 100%; }
+.ts-phone .ts-song .ts-title { width: 100%; }
+.ts-filesong { border: 1px solid var(--border); border-radius: 10px; padding: 0 10px; margin: 10px 0; background: var(--panel); }
+.ts-filesong[open] { padding-bottom: 10px; }
+.ts-filesong > summary { font-weight: 700; }
+.ts-dirty { color: var(--accent); font-weight: 600; }
+
+/* tab from stems: one column on phones */
+.ts-phone .ts-tx .grid2 { grid-template-columns: minmax(0, 1fr); }
+.ts-touch .ts-tx select { width: 100%; max-width: none; }
+
+.ts-trackpick { width: 100%; justify-content: flex-start; margin: 4px 0 6px; font-weight: 700; }
+.ts-touch .ts-status { font-size: 14px; }
+
+/* tracks */
+.ts-touch .ts-head { gap: 8px; }
+.ts-touch .ts-head .ts-name { flex: 1 1 120px; width: auto; min-width: 0; }
+.ts-touch .ts-more { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ts-touch .ts-more select { flex: 1 1 200px; max-width: 100%; }
+.ts-more-btn.on { border-color: var(--accent); }
+
+/* the tab itself: a tap selects, a sideways swipe moves the cursor, pinch resizes; the page still scrolls up and down */
+.ts-touch .ts-canvas { touch-action: pan-y; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; cursor: default; }
+.ts-touch .ts-scroll:not(.ts-wrap) .ts-canvas { touch-action: pan-x pan-y; }
+.ts-touch .ts-scroll { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.ts-scroll.ts-wrap { overflow: hidden; }
+.ts-wrap .ts-spacer { width: 100%; }
+.ts-wrap .ts-canvas { position: absolute; left: 0; top: 0; }
+
+/* playback bar: fixed at the bottom, big buttons */
+.ts-transport {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  display: grid; grid-template-columns: repeat(7, minmax(44px, 1fr)); gap: 4px;
+  padding: 6px max(8px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--panel-2) 94%, transparent); border-top: 1px solid var(--border-strong);
+  backdrop-filter: blur(6px);
+}
+.ts-tbtn {
+  min-height: 52px; min-width: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--raised); color: var(--text); font: 600 12px/1.1 var(--font-ui);
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent; cursor: pointer; padding: 4px 2px; white-space: nowrap; overflow: hidden;
+}
+.ts-tbtn.play { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.ts-tbtn.on:not(.play) { border-color: var(--accent); color: var(--accent); }
+.ts-tbtn.play.on { background: #ff5c6c; border-color: #ff5c6c; color: #111; }
+.ts-tbtn:active { transform: scale(0.97); }
+
+/* edit pad: a bottom sheet over the playback bar (docked open on tablets) */
+.ts-pad {
+  position: fixed; left: 0; right: 0; bottom: var(--ts-transport-h, 66px); z-index: 29;
+  padding: 8px max(8px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left));
+  background: var(--panel); border-top: 1px solid var(--border-strong); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+  max-height: 52dvh; overflow-y: auto; overscroll-behavior: contain;
+}
+.ts-pad[hidden] { display: none; }
+.ts-pad-status { margin: 0 0 6px; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ts-pad-nav { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(44px, 1fr); gap: 4px; }
+.ts-pad-tabs { display: flex; gap: 4px; margin: 6px 0; overflow-x: auto; }
+.ts-pad-tab { flex: 1 0 auto; min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--muted); font: 600 14px var(--font-ui); touch-action: manipulation; cursor: pointer; }
+.ts-pad-tab.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.ts-pad-keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 4px; }
+.ts-pad-keys.tech, .ts-pad-keys.beats, .ts-pad-keys.drums { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.ts-key {
+  min-height: 46px; min-width: 44px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--raised); color: var(--text);
+  font: 700 17px var(--font-ui); touch-action: manipulation; -webkit-tap-highlight-color: transparent; cursor: pointer;
+}
+.ts-key.word { font-size: 14px; font-weight: 600; }
+.ts-key.nav { font-size: 18px; }
+.ts-key.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.ts-key.danger { color: #ff8a96; }
+.ts-key:active { transform: scale(0.96); }
+
+/* phone landscape: the pad goes to the right-hand side so the tab keeps some height */
+@media (max-height: 499px) {
+  .ts-pad { left: auto; top: 52px; bottom: var(--ts-transport-h, 66px); width: min(46vw, 380px); max-height: none; border-top: 0; border-left: 1px solid var(--border-strong); }
+  .ts-tbtn { min-height: 44px; flex-direction: row; gap: 4px; }
+  .ts-pad-keys { grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); }
+  .ts-pad-nav { grid-auto-flow: row; grid-template-columns: repeat(4, minmax(44px, 1fr)); }
+}
+
+/* tracks sheet */
+.ts-sheet-back { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.5); }
+.ts-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-height: 85dvh; overflow-y: auto; overscroll-behavior: contain;
+  padding: 12px max(14px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  background: var(--panel); border-top: 1px solid var(--border-strong); border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
+}
+@media (min-width: 700px) { .ts-sheet { left: 50%; right: auto; width: 560px; transform: translateX(-50%); } }
+.ts-sheet-head { display: flex; align-items: center; justify-content: space-between; }
+.ts-sheet-head h3 { margin: 0; font-size: 18px; }
+.ts-sheet h4 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.ts-sheet-tracks { display: grid; gap: 6px; margin-top: 8px; }
+.ts-sheet-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.ts-pick { min-height: 52px; display: grid; grid-template-columns: 22px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 8px; align-items: center; text-align: left; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--raised); color: var(--text); font: 600 15px var(--font-ui); cursor: pointer; touch-action: manipulation; }
+.ts-pick > .icon { grid-row: 1 / 3; }
+.ts-pick.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.ts-pick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ts-sheet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+.ts-seg { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.ts-seg-label { min-width: 52px; color: var(--muted); font-weight: 600; }
+.ts-zoom { min-width: 52px; text-align: center; font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) { .ts-tbtn:active, .ts-key:active { transform: none; } }
