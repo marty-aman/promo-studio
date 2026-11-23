@@ -1,6 +1,6 @@
 // Pure editing helpers for the Video Studio: split, duplicate, copy and paste of timeline items, platform
 // safe areas and level maths. Every function works on a project (or a draft of one) and touches no browser API.
-import { layoutClips, timelineToSong, wordTimings, splitClip, clamp, uid } from './core.js';
+import { layoutClips, timelineToSong, wordTimings, savedWordTimes, splitClip, clamp, uid } from './core.js';
 import { findClip } from './state.js';
 
 const MIN = 0.05; // a piece shorter than this is not worth making
@@ -69,10 +69,16 @@ export function splitItem(d, sel, t, makeId = uid) {
     const words = String(item.text).split(/\s+/).filter(Boolean);
     if (words.length > 1) {
       const frac = local / (item.end - item.start);
-      const timing = wordTimings(item.text);
+      const saved = savedWordTimes(item); // Auto-sync's word times: split where the words really are
+      const timing = saved ? saved.map((w) => ({ start: (w.start - item.start) / (item.end - item.start), end: (w.end - item.start) / (item.end - item.start) })) : wordTimings(item.text);
       const k = clamp(timing.filter((w) => (w.start + w.end) / 2 < frac).length, 1, words.length - 1);
+      const kept = saved ? item.words : null;
       item.text = words.slice(0, k).join(' ');
       b.text = words.slice(k).join(' ');
+      if (kept) {
+        item.words = kept.slice(0, k);
+        b.words = kept.slice(k);
+      }
     }
   }
   b.end = item.end;

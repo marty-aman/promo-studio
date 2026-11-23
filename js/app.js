@@ -885,6 +885,8 @@ manager = createManager({
       ui.openTab('video');
     },
     /** A library file's details, or null when it was removed from the library. */
+    /** A library file's audio/video data, for features that listen to it on this device (Auto-sync lyrics). */
+    mediaBlob: (id) => (media.get(id) || {}).blob || null,
     mediaInfo(id) {
       const m = id && media.get(id);
       if (!m) return null;

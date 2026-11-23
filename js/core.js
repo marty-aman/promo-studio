@@ -159,6 +159,44 @@ export function wordTimings(text) {
   });
 }
 
+const plainWord = (s) => String(s).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+
+/**
+ * The word times saved on a lyric line (line.words = [{ w, t, end? }], song time), when they still fit it:
+ * the same words as the line's text, in order, and inside the line (a little slack). Otherwise null, and the
+ * caller falls back to the proportional wordTimings(). Returns [{ word, start, end }] in song time.
+ */
+export function savedWordTimes(line) {
+  if (!line || !Array.isArray(line.words) || !line.words.length) return null;
+  const words = String(line.text || '').split(/\s+/).filter(Boolean);
+  if (words.length !== line.words.length) return null;
+  const start = line.start ?? 0;
+  const end = line.end ?? start + 1;
+  let prev = -Infinity;
+  for (let i = 0; i < words.length; i++) {
+    const k = line.words[i];
+    if (!k || typeof k.t !== 'number' || !Number.isFinite(k.t) || k.t < prev) return null;
+    if (plainWord(k.w) !== plainWord(words[i])) return null;
+    prev = k.t;
+  }
+  if (line.words[0].t < start - 0.5 || prev > end + 0.5) return null;
+  return words.map((word, i) => {
+    const t = line.words[i].t;
+    const nextT = i + 1 < words.length ? line.words[i + 1].t : end;
+    const own = typeof line.words[i].end === 'number' && line.words[i].end > t ? line.words[i].end : nextT;
+    return { word, start: t, end: Math.max(t + 0.04, Math.min(own, Math.max(nextT, t + 0.04))) };
+  });
+}
+
+/** savedWordTimes() as fractions 0..1 of the line's length (what the text animations use), or null. */
+export function savedWordFractions(line) {
+  const w = savedWordTimes(line);
+  if (!w) return null;
+  const d = Math.max(0.05, line.end - line.start);
+  const f = (t) => Math.max(0, Math.min(1, (t - line.start) / d));
+  return w.map((x) => ({ word: x.word, start: f(x.start), end: f(x.end) }));
+}
+
 /** Parse LRC ("[mm:ss.xx] line"). Supports multiple stamps per line and [offset:]. */
 export function parseLRC(text, makeId = () => uid('lyr')) {
   const entries = [];
@@ -218,7 +256,9 @@ export function toLRC(lyrics, meta = {}) {
 export function shiftLyrics(lyrics, delta) {
   return lyrics.map((l) => {
     const d = Math.max(delta, -l.start);
-    return { ...l, start: +(l.start + d).toFixed(3), end: +(l.end + d).toFixed(3) };
+    const out = { ...l, start: +(l.start + d).toFixed(3), end: +(l.end + d).toFixed(3) };
+    if (Array.isArray(l.words)) out.words = l.words.map((k) => ({ ...k, t: +(k.t + d).toFixed(3), ...(typeof k.end === 'number' ? { end: +(k.end + d).toFixed(3) } : {}) }));
+    return out;
   });
 }
 

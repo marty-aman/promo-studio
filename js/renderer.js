@@ -6,6 +6,7 @@ import {
   activeLyric,
   timelineToSong,
   wordTimings,
+  savedWordFractions,
   fadeGain,
   ctaText,
   noise,
@@ -261,8 +262,8 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
   ctx.scale(scale * ex.scale, scale * scaleY * ex.scale);
 
   // progress through the line for per-word effects (finish slightly before the end)
-  const prog = clamp(life / Math.max(0.2, dur * 0.92), 0, 1);
-  const timings = wordTimings(t);
+  const prog = style.wordFracs ? clamp(life / Math.max(0.2, dur), 0, 1) : clamp(life / Math.max(0.2, dur * 0.92), 0, 1);
+  const timings = style.wordFracs || wordTimings(t);
   const totalChars = t.replace(/\s+/g, '').length;
   const reveal = anim === 'typewriter' ? Math.floor(clamp(life / Math.max(0.3, Math.min(dur * 0.6, totalChars * 0.06)), 0, 1) * totalChars) : Infinity;
   const glitching = anim === 'glitch' && (life < 0.35 || noise(frame * 3.1) > 0.93);
@@ -1066,6 +1067,7 @@ function drawTexts(ctx, W, H, texts, t, beat = 0, releaseDate = '') {
         outDuration: tx.outDuration,
         opacity: tx.opacity,
         rotate: tx.rotate,
+        wordFracs: tx.words ? savedWordFractions(tx) : null,
       },
       t - tx.start,
       tx.end - tx.start,
@@ -1088,7 +1090,7 @@ function drawLyrics(ctx, W, H, project, t, beat = 0) {
     line.text,
     (W * (line.x ?? s.x ?? 50)) / 100,
     (H * y) / 100,
-    { ...s, sizePx: (W * s.size) / 100, maxW: (W * s.maxWidth) / 100, opacity: line.opacity, rotate: line.rotate },
+    { ...s, sizePx: (W * s.size) / 100, maxW: (W * s.maxWidth) / 100, opacity: line.opacity, rotate: line.rotate, wordFracs: savedWordFractions(line) },
     ts - line.start,
     line.end - line.start,
     beat,

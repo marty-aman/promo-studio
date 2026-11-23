@@ -1,6 +1,6 @@
 // Whole-song lyric displays: a scrolling lyric sheet, a kinetic typography poster and a 3D word tunnel.
 // They replace the one-line-at-a-time lyric when lyricStyle.display is set.
-import { wordTimings } from './core.js';
+import { wordTimings, savedWordTimes } from './core.js';
 import { glowPass } from './canvasfx.js';
 import { lineStyle } from './linestyle.js';
 
@@ -57,6 +57,8 @@ export function lastStarted(lines, ts) {
 
 /** Absolute (song-time) start/end of each word in a line. */
 export function wordTimes(line) {
+  const saved = savedWordTimes(line); // times from Auto-sync, when the line has them
+  if (saved) return saved;
   const d = Math.max(0.05, line.end - line.start);
   return wordTimings(line.text).map((w) => ({ word: w.word, start: line.start + w.start * d, end: line.start + w.end * d }));
 }
