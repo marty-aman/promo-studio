@@ -36,6 +36,7 @@ import { bgRemoveSection } from './panel-bgremove.js';
 import { studioAutoSync } from './ai/panel-lyricsync.js';
 import { reframeSection } from './panel-reframe.js';
 import { qualityBadges, weakToggle, qualitySection } from './panel-quality.js';
+import { findMomentBox } from './ai/panel-search.js';
 import { buildSuggestPanel, hasNewSuggestions } from './panel-suggest.js';
 import { captionPicker } from './panel-captions.js';
 import { lyricIdeasAssistant } from './ai/panel-assistant.js';
@@ -146,14 +147,15 @@ export function createPanels({ store, engine, ui }) {
       ui.openTab('stock');
       ui.refreshPanels(true);
     },
-    addClip(rec, at = null) {
+    /** `from`/`len`: start that many seconds into the video and keep `len` seconds (Find a moment). */
+    addClip(rec, at = null, { from = 0, len = null } = {}) {
       store.update((d) => {
         const clip = {
           id: uid('clip'),
           mediaId: rec.id,
           kind: rec.kind,
-          in: 0,
-          duration: rec.kind === 'image' ? 3 : +Math.min(rec.duration || 5, 6).toFixed(2),
+          in: rec.kind === 'video' ? from : 0,
+          duration: rec.kind === 'image' ? 3 : len != null ? len : +Math.min(rec.duration || 5, 6).toFixed(2),
           speed: 1,
           fit: 'cover',
           zoom: 1,
@@ -583,6 +585,7 @@ export function createPanels({ store, engine, ui }) {
       {},
       fold('video-clips', 'My clips', { hint: 'Upload and arrange your footage' }, buildMedia(b)),
       fold('video-songs', 'From your songs', { open: false, hint: 'Music videos, footage, tabs and stems saved on your songs' }, () => buildSongFiles()),
+      fold('video-find', 'Find a moment', { open: false, hint: 'Describe it, find it in your footage' }, () => findMomentBox({ addClip: (rec, o) => actions.addClip(rec, null, o), songFiles: () => (ui.songFiles ? ui.songFiles() : []), currentSongId: () => store.get().managerSongId || '' })),
       fold('video-stock', 'Stock video', { open: false, hint: 'Pexels, Pixabay, Wikimedia' }, () => buildStock()),
       fold('video-youtube', 'From your YouTube channel', { open: false, hint: 'Videos you posted' }, buildYouTubeImport()),
       fold(

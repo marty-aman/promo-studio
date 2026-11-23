@@ -24,6 +24,16 @@ export const MODELS = {
     // the files the download is made of, for the cache check and the size line
     files: ['onnx/encoder_model_quantized.onnx', 'onnx/decoder_model_merged_quantized.onnx'],
   },
+  // Find a moment (js/ai/searchindex.js). TinyCLIP (Microsoft, MIT): one ONNX file holds the image and text towers,
+  // 23.2 MB at q8 against 146.5 MB for CLIP ViT-B/32. Less accurate than B/32 (see docs/ai-search.md).
+  tinyclip: {
+    id: 'onnx-community/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M-ONNX',
+    task: 'zero-shot-image-classification',
+    label: 'TinyCLIP (pictures and words)',
+    approxMB: 23,
+    dtype: 'q8',
+    files: ['onnx/model_quantized.onnx'],
+  },
 };
 export const DEFAULT_ASR = 'whisper-base';
 
@@ -65,6 +75,9 @@ async function lib() {
   }
   return libPromise;
 }
+
+/** The loaded Transformers.js module, for features that call a model's parts directly (RawImage, Tensor). */
+export const runtimeLibrary = () => lib();
 
 const spec = (model) => MODELS[model] || { id: model, task: ASR_TASK, label: model, approxMB: 0, dtype: undefined, files: [] };
 
@@ -131,7 +144,7 @@ export async function loadPipeline(task, model = DEFAULT_ASR, { onProgress, cons
     loaded.delete(key);
     if (e && e.code) throw e;
     const quota = isQuota(e);
-    if (quota) reportSaveFail('the speech model'); // the app's storage-full message
+    if (quota) reportSaveFail(s.task === ASR_TASK ? 'the speech model' : `the model “${s.label}”`); // the app's storage-full message
     const err = new Error(quota ? 'This browser has no room to keep the model. Free some space (the storage message says how) and try again.' : `The model could not be loaded: ${(e && e.message) || e}`);
     err.code = quota ? 'quota' : 'load';
     err.cause = e;

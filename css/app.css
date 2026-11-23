@@ -1570,3 +1570,19 @@ body.exporting .workspace .stage { opacity: 1; }
 .q-timeline .q-strip { position: absolute; top: 0; bottom: 0; }
 .q-timeline .q-used { position: absolute; top: -2px; bottom: -2px; border: 1px solid #fff; border-radius: 2px; }
 .q-list { margin: 4px 0 6px 16px; padding: 0; }
+
+/* == ai-search == */
+.find-moment { display: grid; gap: 8px; }
+.find-moment select { width: 100%; min-width: 0; }
+.find-row input { flex: 1; min-width: 0; }
+.find-list { display: grid; gap: 8px; }
+.find-card, .find-best { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 4px 8px; align-items: center; }
+.find-card > .row { grid-column: 2; flex-wrap: wrap; gap: 6px; }
+.find-card img, .find-best img, .find-noimg { width: 96px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; background: #000; display: block; }
+.find-card img { grid-row: span 2; }
+.find-info { display: grid; gap: 2px; min-width: 0; }
+.find-info .row { flex-wrap: wrap; gap: 6px; }
+.find-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.find-bar { height: 4px; border-radius: 2px; background: rgba(127, 127, 127, 0.25); overflow: hidden; }
+.find-bar > i { display: block; height: 100%; background: var(--accent, #e03131); }
+.find-best { border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
