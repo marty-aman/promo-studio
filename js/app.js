@@ -1398,6 +1398,9 @@ async function boot() {
   rebuildInspector();
   timeline.render();
   engine.seek(0);
+  // Pick the workspace before the first await, so the first paint is the Manager home (or the workspace the
+  // link asks for) and never the Video Studio while fonts and media are still loading. Set again below once loaded.
+  setMode(mode);
   // Bundled fonts must be loaded before canvas text uses them.
   await Promise.all(FONTS.map((f) => document.fonts.load(`40px "${f.id}"`).catch(() => {})));
   engine.render();

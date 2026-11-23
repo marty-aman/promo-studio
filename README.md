@@ -4,7 +4,8 @@ A band manager and a video editor for short promos (Reels, TikTok, Shorts), in o
 Switch between them at the top: **Manager** plans songs, releases, shows, tours and content; **Video Studio**
 makes the promos; **Photo Studio** makes images; **Tab Studio** writes and fixes Guitar Pro tabs. On a narrow
 window the inactive workspace buttons show only their icon. The app opens on the Manager (a link ending in
-`#studio` opens the Video Studio, `#photo` the Photo Studio, `#tabstudio` Tab Studio). The
+`#studio` opens the Video Studio, `#photo` the Photo Studio, `#tabstudio` Tab Studio), and shows that workspace from
+the first paint, while fonts and media are still loading, so the Video Studio no longer flashes up first. The
 badge next to the switch shows the band and song you're working on; click it to open the song. Everything runs in your browser. Your files are not uploaded anywhere; projects and
 media are saved in the browser (localStorage + IndexedDB) and restored when you come back.
 
