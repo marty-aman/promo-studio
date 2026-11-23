@@ -21,6 +21,7 @@ import { releaseCard } from './page-releases.js';
 import { coverOf, setRelease, releaseTypeLabel, sectionSpans, newRelease, parseTime, fmtTime } from './releases.js';
 import { splitsTab, splitChip } from './page-splits.js';
 import { rolloutUI, rolloutToggle, songRolloutView, addStepsButton } from './page-rollout.js';
+import { spotifyScoreBox } from './page-spotifypop.js';
 
 const TABS = [
   ['overview', 'Overview'],
@@ -301,7 +302,7 @@ function overviewTab(ctx, song, S) {
       ),
       f.text(`notes-${song.id}`, 'Notes', song.notes, S((s, v) => (s.notes = v)), { rows: 4, placeholder: 'Story behind the song, who wrote what, studio notes…' }),
     ),
-    linksSection(ctx, song, S),
+    h('div', { class: 'sp-col' }, linksSection(ctx, song, S), spotifyScoreBox(ctx, song, S)),
   );
 }
 
