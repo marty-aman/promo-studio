@@ -4,7 +4,7 @@ import { loadSettings, saveSettings } from '../state.js';
 import { niceDate, mid } from './model.js';
 import { planPosts } from './ideas.js';
 import { POST_STATUSES } from './page-songs.js';
-import { FORMATS, PLATFORMS, GROUPINGS, formatLabel, parseLink, isYouTube, fetchYouTubeStats, postMetrics, compare, findings, importRows, matchImport } from './content.js';
+import { FORMATS, PLATFORMS, GROUPINGS, formatLabel, parseLink, isYouTube, fetchYouTubeStats, postMetrics, compare, findings, importRows, matchImport, bestThisMonth } from './content.js';
 import { buildOutreach } from './page-outreach.js'; // also registers the outreach follow-ups in the agenda
 import { captionsTab, saveToBank } from './page-captions.js';
 
@@ -105,7 +105,14 @@ export function buildContent(ctx) {
   // ---- what works best
   const all = m.posts.filter((p) => !ui.song || p.songId === ui.song);
   const fd = findings(all);
-  const groups = compare(all, ui.by);
+  const groups = compare(all, ui.by, { songs: m.songs });
+  const month = bestThisMonth(all, ctx.today(), m.songs);
+  const monthBox = h(
+    'div',
+    { class: 'mgr-plan-monthbox', 'data-k': 'best-month' },
+    h('h3', { class: 'mgr-h3' }, `Best this month${month.label ? ` · ${month.label}` : ''}`),
+    month.n ? h('ul', { class: 'mgr-findings' }, month.lines.map((l) => h('li', { class: l.kind === 'n' ? 'muted' : l.kind }, icon(l.kind === 'n' ? 'activity' : 'star', 14), h('span', {}, l.text)))) : h('p', { class: 'muted small' }, 'No posts with stats dated this month yet.'),
+  );
   const maxScore = Math.max(...groups.map((g) => g.score), 1e-9);
   const bySel = h('select', { 'aria-label': 'Compare by' }, Object.entries(GROUPINGS).map(([k, g]) => h('option', { value: k, selected: ui.by === k }, g.label)));
   bySel.addEventListener('change', () => ((ui.by = bySel.value), re()));
@@ -116,11 +123,15 @@ export function buildContent(ctx) {
     fd.ready
       ? h('ul', { class: 'mgr-findings' }, fd.lines.map((l) => h('li', { class: l.kind }, icon(l.kind === 'worst' ? 'activity' : 'sparkle', 14), h('span', {}, l.text))))
       : h('p', { class: 'muted small' }, `Add stats to at least 3 posts to see which kinds work best (${fd.count} so far). YouTube and Shorts links fetch their own stats; for TikTok and Instagram, copy the numbers from the post’s insights or import the app’s CSV export.`),
+    monthBox,
+    !groups.length && fd.count
+      ? h('div', {}, h('div', { class: 'row' }, h('span', { class: 'muted small' }, 'Compare by'), bySel), h('p', { class: 'muted small', 'data-k': 'compare-empty' }, ui.by === 'hashtag' ? 'None of the posts with stats has a #hashtag in its title, hook or idea yet.' : ui.by === 'song' ? 'None of the posts with stats belongs to a song.' : 'Nothing to compare this way yet.'))
+      : null,
     groups.length
       ? h(
           'div',
           {},
-          h('div', { class: 'row' }, h('span', { class: 'muted small' }, 'Compare by'), bySel),
+          h('div', { class: 'row' }, h('span', { class: 'muted small' }, 'Compare by'), bySel, ui.by === 'hashtag' ? h('span', { class: 'muted tiny' }, 'A post with several hashtags counts once in each.') : null),
           h(
             'table',
             { class: 'mgr-table mgr-compare' },

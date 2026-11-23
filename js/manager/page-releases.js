@@ -4,6 +4,7 @@ import { h, icon, button, iconButton, toast } from '../dom.js';
 import { newSong, niceDate } from './model.js';
 import { RELEASE_TYPES, releaseTypeLabel, tracklist, setRelease, moveTrack, deleteRelease, coverOf, fmtTime } from './releases.js';
 import { coverPicker } from './page-cover.js';
+import { releaseRolloutSection } from './page-rollout.js';
 import { normUPC, lookupUPC, matchTrack, prettyISRC } from './isrc.js';
 
 /** The last UPC lookup per release (not saved). */
@@ -203,5 +204,6 @@ function releasePage(ctx, r) {
         h('p', { class: 'muted tiny' }, 'A song without its own cover shows this release’s cover.'),
       ),
     ),
+    releaseRolloutSection(ctx, r),
   );
 }

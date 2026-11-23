@@ -20,6 +20,7 @@ import { coverPicker } from './page-cover.js';
 import { releaseCard } from './page-releases.js';
 import { coverOf, setRelease, releaseTypeLabel, sectionSpans, newRelease, parseTime, fmtTime } from './releases.js';
 import { splitsTab, splitChip } from './page-splits.js';
+import { rolloutUI, rolloutToggle, songRolloutView, addStepsButton } from './page-rollout.js';
 
 const TABS = [
   ['overview', 'Overview'],
@@ -408,10 +409,10 @@ function releaseTab(ctx, song, S) {
   return h(
     'section',
     { class: 'mgr-sect' },
-    h('h2', {}, `Release checklist · ${p.done}/${p.total}`),
+    h('div', { class: 'mgr-sect-head' }, h('h2', {}, `Release checklist · ${p.done}/${p.total}`), rolloutToggle(ctx)),
     song.releaseDate ? h('p', { class: 'muted small' }, `Counted back from ${niceDate(song.releaseDate)}. Change the release date above and every date moves with it.`) : h('p', { class: 'warn-list' }, 'Set a release date above to put dates on these tasks.'),
-    h('ul', { class: 'mgr-tasks' }, rows),
-    h('div', { class: 'row' }, button('Add a task', addTask, { iconName: 'plus', variant: 'sm' }), preLeft ? button(`Mark everything before release day done (${preLeft})`, () => ctx.update(S((s) => markPreReleaseDone(s))), { iconName: 'check', variant: 'sm ghost', title: 'For a song that is already out: tick the run-up tasks so only what’s left after release stays open' }) : null, button('Put back the standard checklist', reset, { variant: 'sm ghost' })),
+    rolloutUI.view === 'weeks' ? songRolloutView(ctx, song, S) : h('ul', { class: 'mgr-tasks' }, rows),
+    h('div', { class: 'row' }, button('Add a task', addTask, { iconName: 'plus', variant: 'sm' }), preLeft ? button(`Mark everything before release day done (${preLeft})`, () => ctx.update(S((s) => markPreReleaseDone(s))), { iconName: 'check', variant: 'sm ghost', title: 'For a song that is already out: tick the run-up tasks so only what’s left after release stays open' }) : null, addStepsButton(ctx, song, S), button('Put back the standard checklist', reset, { variant: 'sm ghost' })),
   );
 }
 
