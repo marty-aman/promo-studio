@@ -20,6 +20,7 @@ import { projectStore } from './projectstore.js';
 import { configureRelink, refreshRelink, relinkButton, openRelink, missingFor } from './relink.js';
 import { Engine, exportVideo } from './engine.js';
 import { createTimeline } from './timeline.js';
+import { setExportSide } from './panel-exportrange.js';
 import { SLIDER_STEPS, zoomToSlider, sliderToZoom, anchorScroll } from './tlzoom.js';
 import { createPanels } from './panels.js';
 import { h, icon, iconButton, button, toast, setFold, Binder, download, tablistKeys } from './dom.js';
@@ -591,7 +592,7 @@ function leftSignature() {
   const has = (...ids) => ids.includes(ui.tab);
   if (has('audio')) parts.push(p.song && p.song.mediaId, !!p.beats, p.audioTracks.map((a) => `${a.id}:${a.start}:${a.duration}`).join('|'));
   if (ui.tab === 'text') parts.push(p.texts.map((t) => `${t.id}:${t.text}:${t.start}:${t.end}`).join('|'));
-  if (ui.tab === 'export') parts.push(p.clips.length, !!p.song, p.endCard.coverMediaId, p.duration, p.endCard.enabled, p.name, p.endCard.title, p.endCard.artist, p.endCard.cta, p.endCard.subtext);
+  if (ui.tab === 'export') parts.push(p.clips.length, !!p.song, p.endCard.coverMediaId, p.duration, p.endCard.enabled, JSON.stringify(p.exportRange), p.name, p.endCard.title, p.endCard.artist, p.endCard.cta, p.endCard.subtext);
   if (has('video')) parts.push(p.clips.length);
   if (has('start')) parts.push(loadRecent().map((r) => r.id).join(','));
   if (has('start')) parts.push(loadTemplatesCount(), p.clips.length, p.template, p.layout, p.lyrics.length, p.theme ? `${p.theme.id}:${p.theme.custom}` : '');
@@ -1074,6 +1075,10 @@ window.addEventListener('keydown', (e) => {
     case 'S':
       ui.split();
       break;
+    case 'i':
+    case 'I':
+      if (!e.altKey && !e.shiftKey) setExportSide(store, 'start', engine.t);
+      break;
     case 'Delete':
     case 'Backspace':
       if (ui.selection) {
@@ -1097,7 +1102,8 @@ window.addEventListener('keydown', (e) => {
       break;
     case 'o':
     case 'O':
-      if (overlaySupported(store.get().aspect)) cycleOverlay();
+      if (e.shiftKey) setExportSide(store, 'end', engine.t);
+      else if (overlaySupported(store.get().aspect)) cycleOverlay();
       break;
     default:
   }

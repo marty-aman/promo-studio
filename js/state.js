@@ -1,5 +1,6 @@
 // Project state, undo/redo history and browser persistence (localStorage + IndexedDB).
 import { uid } from './core.js';
+import { cleanRange } from './exportrange.js';
 
 export const FONTS = [
   { id: 'Bebas Neue', label: 'Bebas Neue (tall caps)' },
@@ -85,6 +86,7 @@ export function newProject() {
     name: 'New promo',
     aspect: '9:16',
     duration: 20,
+    exportRange: null, // { start, end } of the exported part (null side = the edit's own); null = the whole edit
     background: '#000000',
     clips: [],
     song: null, // { mediaId, offset, volume, fadeIn, fadeOut }
@@ -282,6 +284,7 @@ export function normalizeProject(p) {
     ...base,
     ...p,
     layers,
+    exportRange: cleanRange(p),
     layerVis: p.layerVis || {},
     lyricStyle: { ...base.lyricStyle, ...p.lyricStyle },
     endCard: { ...base.endCard, ...p.endCard },
