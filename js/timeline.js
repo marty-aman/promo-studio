@@ -2,13 +2,14 @@
 import { layoutClips, songToTimeline, timelineToSong, snap, clamp, formatTime, maxClipDuration, ctaText } from './core.js';
 import { media, videoWaveform } from './media.js';
 import { isVisible } from './state.js';
-import { h, icon } from './dom.js';
+import { h, icon, toast } from './dom.js';
 import { kfTarget } from './panel-kf.js';
 import { allKeys, moveKey, removeKey, EASES, KEY_EPS, snapToBeat, propInfo } from './keyframes.js';
 import { markTimed } from './manager/lyrictiming.js';
 import { qualityMarks } from './panel-quality.js';
 import { pinchZoom, pinchScroll, edgeZone } from './mobilelogic.js';
 import { ZOOM_MAX, TAIL_SEC, MAX_LENGTH, zoomMin, fitZoom, rulerSteps, rulerLabel, showBeats, LABEL_MIN_PX, THUMB_MIN_PX, WAVE_MAX_PX } from './tlzoom.js';
+import { keyOf, inGroup, toggleIn, spans, planMove, applyMove } from './multimove.js';
 
 const HEAD_W = 112;
 
@@ -22,21 +23,25 @@ export function createTimeline({ root, store, engine, ui }) {
 
   let drag = null; // active drag operation
   let preview = null; // transient visual offset for clip reordering
+  let groupKeys = null; // keys (multimove keyOf) of the blocks in a multi-selection, while there is one
+  let groupPreview = null; // { plan } while a group is dragged: drawn shifted, written to the edit on release
 
   const pps = () => ui.pxPerSec;
   const x2t = (clientX) => (clientX - content.getBoundingClientRect().left) / pps();
+  const group = () => (ui.group && ui.group.length > 1 ? ui.group : null);
 
   function snapCandidates(excludeId) {
     const p = store.get();
+    const ex = (id) => (excludeId instanceof Set ? excludeId.has(id) : id === excludeId);
     const c = [0, p.duration, engine.t];
-    for (const l of layoutClips(p.clips)) c.push(l.start, l.end);
+    for (const l of layoutClips(p.clips)) if (!ex(l.clip.id)) c.push(l.start, l.end);
     for (const L of p.layers || []) {
-      if (L.type === 'video') for (const oc of L.clips) if (oc.id !== excludeId) c.push(oc.start, oc.start + oc.duration);
-      if (L.type === 'viz' && L.id !== excludeId) c.push(L.start || 0);
+      if (L.type === 'video') for (const oc of L.clips) if (!ex(oc.id)) c.push(oc.start, oc.start + oc.duration);
+      if (L.type === 'viz' && !ex(L.id)) c.push(L.start || 0);
     }
-    for (const l of p.lyrics) if (l.id !== excludeId) c.push(songToTimeline(l.start, p.song), songToTimeline(l.end, p.song));
-    for (const tx of p.texts) if (tx.id !== excludeId) c.push(tx.start, tx.end);
-    for (const a of p.audioTracks) if (a.id !== excludeId) c.push(a.start, a.start + a.duration);
+    for (const l of p.lyrics) if (!ex(l.id)) c.push(songToTimeline(l.start, p.song), songToTimeline(l.end, p.song));
+    for (const tx of p.texts) if (!ex(tx.id)) c.push(tx.start, tx.end);
+    for (const a of p.audioTracks) if (!ex(a.id)) c.push(a.start, a.start + a.duration);
     if (p.endCard.enabled) c.push(p.duration - p.endCard.duration);
     if (p.beats) for (const b of p.beats.beats) c.push(songToTimeline(b, p.song));
     return c;
@@ -52,16 +57,19 @@ export function createTimeline({ root, store, engine, ui }) {
       style = { ...style };
       delete style.backgroundImage;
     }
+    // part of a multi-selection: outlined, and drawn shifted while the group is dragged
+    const grouped = !!(groupKeys && data && groupKeys.has(keyOf(selFor(data.kind, data.id))));
+    if (grouped && groupPreview && groupPreview.plan.delta) style = { ...style, transform: `translateX(${groupPreview.plan.delta * pps()}px)` };
     const el = h(
       'div',
       {
-        class: `tl-block ${cls}${selected ? ' selected' : ''}${thin ? ' thin' : ''}`,
+        class: `tl-block ${cls}${selected ? ' selected' : ''}${grouped ? ' grouped' : ''}${grouped && groupPreview ? ' dragging' : ''}${thin ? ' thin' : ''}`,
         style: { left: `${left}px`, width: `${Math.max(4, width)}px`, ...(left < 0 && !thin ? { paddingLeft: `${8 - left}px` } : {}), ...style },
         dataset: data,
         title: label,
         role: 'button',
         tabindex: '0',
-        'aria-pressed': selected ? 'true' : 'false',
+        'aria-pressed': selected || grouped ? 'true' : 'false',
       },
       thin ? null : h('span', { class: 'tl-label' }, label),
       sub && !thin ? h('span', { class: 'tl-sub' }, sub) : null,
@@ -171,6 +179,9 @@ export function createTimeline({ root, store, engine, ui }) {
     content.replaceChildren();
     heads.replaceChildren(h('div', { class: 'tl-head ruler-head' }, formatTime(engine.t)));
     const sel = ui.selection;
+    const grp = group();
+    groupKeys = grp ? new Set(grp.map(keyOf)) : null;
+    if (ui.groupShown) ui.groupShown(grp ? grp.length : 0);
     const rows = [];
     const addRow = (name, cls, height, fill, opt = {}) => {
       const hidden = opt.layer ? opt.layer.visible === false : opt.vis ? !isVisible(p, opt.vis) : false;
@@ -563,6 +574,7 @@ export function createTimeline({ root, store, engine, ui }) {
     clearPress();
     drag = null;
     preview = null;
+    groupPreview = null;
     const f = fingers();
     gesture = { pps0: ui.pxPerSec, dist0: f.dist, cy0: f.cy, st0: scroller.scrollTop, tc: x2t(f.cx) };
     render();
@@ -574,6 +586,28 @@ export function createTimeline({ root, store, engine, ui }) {
     scroller.scrollTop = gesture.st0 - (f.cy - gesture.cy0);
   }
   const selFor = (kind, id) => (kind === 'oclip' ? { type: 'clip', id } : kind === 'layer' || kind === 'vizrange' ? { type: 'layer', id } : { type: kind, id });
+  /** The multi-selection, or the single selected block as a group of one (what Shift-click adds to). */
+  const currentGroup = () => (ui.group && ui.group.length ? ui.group : ui.selection && !['song', 'endcard'].includes(ui.selection.type) ? [ui.selection] : []);
+  let marqueeEl = null;
+  function drawMarquee(d, cx, cy) {
+    if (!marqueeEl) marqueeEl = h('div', { class: 'tl-marquee', 'aria-hidden': 'true' });
+    const cr = content.getBoundingClientRect();
+    const x1 = Math.min(d.x0, cx);
+    const x2 = Math.max(d.x0, cx);
+    const y1 = Math.min(d.y0, cy);
+    const y2 = Math.max(d.y0, cy);
+    Object.assign(marqueeEl.style, { left: `${x1 - cr.left}px`, top: `${y1 - cr.top}px`, width: `${x2 - x1}px`, height: `${y2 - y1}px` });
+    if (!marqueeEl.isConnected) content.append(marqueeEl);
+    d.hits = [];
+    for (const b of content.querySelectorAll('.tl-block')) {
+      const { kind, id } = b.dataset;
+      if (!kind || kind === 'song' || kind === 'endcard') continue;
+      const r = b.getBoundingClientRect();
+      const hit = r.right >= x1 && r.left <= x2 && r.bottom >= y1 && r.top <= y2;
+      b.classList.toggle('marquee-hit', hit);
+      if (hit) d.hits.push(selFor(kind, id));
+    }
+  }
   function blockMenu(x, y, kind, id) {
     document.querySelector('.kf-menu')?.remove();
     ui.select(selFor(kind, id));
@@ -627,10 +661,18 @@ export function createTimeline({ root, store, engine, ui }) {
       drag = { op: 'duration', x0: e.clientX, orig: p.duration };
       return;
     }
+    // Shift/Ctrl/Cmd-click (or the Select button, for touch) adds blocks to a multi-selection or takes them out
+    const picking = (!isTouchEv(e) && (e.shiftKey || e.ctrlKey || e.metaKey)) || !!ui.multiSelect;
     if (!blockEl) {
       // a finger on empty track space scrolls (a tap still moves the playhead); the ruler and the playhead scrub
       const onRuler = e.target.closest('[data-track]')?.dataset.track === 'ruler';
-      if (isTouchEv(e) && !onRuler && Math.abs(e.clientX - playhead.getBoundingClientRect().left) > 22) {
+      const nearHead = Math.abs(e.clientX - playhead.getBoundingClientRect().left) <= (isTouchEv(e) ? 22 : 6);
+      if (!onRuler && !nearHead && (!isTouchEv(e) || ui.multiSelect)) {
+        // empty track space: a click moves the playhead, a drag draws a box that selects every block it touches
+        drag = { op: 'marquee', x0: e.clientX, y0: e.clientY, t0, moved: false, keep: picking, base: picking ? currentGroup() : [] };
+        return;
+      }
+      if (isTouchEv(e) && !onRuler && !nearHead) {
         drag = { op: 'pan', x0: e.clientX, y0: e.clientY, sl: scroller.scrollLeft, st: scroller.scrollTop, t0, moved: false };
         return;
       }
@@ -641,6 +683,15 @@ export function createTimeline({ root, store, engine, ui }) {
       return;
     }
     const { kind, id } = blockEl.dataset;
+    const groupable = kind !== 'song' && kind !== 'endcard';
+    const bsel = selFor(kind, id);
+    if (picking && groupable) edge = undefined;
+    const grp = group();
+    if (groupable && !edge && (picking || (grp && inGroup(grp, bsel)))) {
+      // a block of the multi-selection: a drag moves the whole group, a click (with Shift/Ctrl/Cmd) toggles it
+      drag = { op: 'gmove', kind, id, sel: bsel, x0: e.clientX, y0: e.clientY, moved: false, toggle: picking, inG: !!(grp && inGroup(grp, bsel)) };
+      return;
+    }
     const base = { kind, id, x0: e.clientX, y0: e.clientY, moved: false, edge };
     if (isTouchEv(e)) {
       const cx = e.clientX;
@@ -705,6 +756,36 @@ export function createTimeline({ root, store, engine, ui }) {
     }
     // a finger wobbles more than a mouse: it needs a bigger move before a tap turns into a drag
     const slop = isTouchEv(e) ? 8 : 3;
+    if (drag.op === 'marquee') {
+      if (!drag.moved && Math.hypot(dx, e.clientY - drag.y0) < slop + 1) return;
+      drag.moved = true;
+      drawMarquee(drag, e.clientX, e.clientY);
+      return;
+    }
+    if (drag.op === 'gmove') {
+      if (!drag.moved && Math.abs(dx) < slop) return;
+      drag.moved = true;
+      const g = group();
+      if (!drag.inG || !g) return; // Shift-dragging a block outside the group moves nothing
+      const p = store.get();
+      const me = spans(p, [drag.sel])[0];
+      if (!me) return;
+      let dt = dx / s;
+      if (!me.main) {
+        // snap the dragged block's start, else its end, to edges, the playhead or beats (the group's own blocks excluded)
+        const ex = new Set(g.map((x) => x.id));
+        const a = me.start + dt;
+        let na = snapT(a, ex);
+        if (na === a) {
+          const b = snapT(me.end + dt, ex);
+          if (b !== me.end + dt) na = b - (me.end - me.start);
+        }
+        dt = na - me.start;
+      }
+      groupPreview = { plan: planMove(p, g, dt) };
+      render();
+      return;
+    }
     if (!drag.moved && Math.abs(dx) < slop) return;
     if (!drag.moved) clearPress();
     drag.moved = true;
@@ -860,6 +941,35 @@ export function createTimeline({ root, store, engine, ui }) {
       }
       return;
     }
+    if (d0.op === 'marquee') {
+      if (marqueeEl) marqueeEl.remove();
+      if (e.type !== 'pointerup') return render();
+      if (!d0.moved) {
+        engine.seek(Math.max(0, d0.t0));
+        if (!d0.keep) ui.select(null);
+        return;
+      }
+      let list = d0.base;
+      for (const hs of d0.hits || []) if (!inGroup(list, hs)) list = [...list, hs];
+      return ui.setGroup(list);
+    }
+    if (d0.op === 'gmove') {
+      const gp = groupPreview;
+      groupPreview = null;
+      const g = group();
+      if (!d0.moved) {
+        if (e.type !== 'pointerup') return render();
+        return d0.toggle ? ui.setGroup(toggleIn(currentGroup(), d0.sel)) : ui.select(d0.sel);
+      }
+      if (!gp || !g || e.type !== 'pointerup') return render();
+      if (gp.plan.error) {
+        toast(gp.plan.error);
+        return render();
+      }
+      if (!gp.plan.delta && gp.plan.insertAt == null) return render();
+      store.update((d) => applyMove(d, g, gp.plan)); // the whole group in one undo step
+      return render();
+    }
     if (d0.op === 'scrub' || d0.op === 'duration') return;
     if (!d0.moved) {
       if (d0.kind === 'oclip') ui.select({ type: 'clip', id: d0.id });
@@ -892,7 +1002,9 @@ export function createTimeline({ root, store, engine, ui }) {
     if (b && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
       e.stopPropagation();
-      ui.select({ type: b.dataset.kind, id: b.dataset.id });
+      const bs = selFor(b.dataset.kind, b.dataset.id);
+      if (e.shiftKey && !['song', 'endcard'].includes(bs.type)) ui.setGroup(toggleIn(currentGroup(), bs));
+      else ui.select(bs);
     }
   });
 

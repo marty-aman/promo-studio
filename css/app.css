@@ -230,6 +230,11 @@ body.dropping::after { content: 'Drop to add to your library'; position: fixed; 
 .tl-block:active { cursor: grabbing; }
 .tl-block.selected { outline: 2px solid #fff; outline-offset: -1px; z-index: 2; }
 .tl-block.dragging { opacity: 0.85; z-index: 4; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
+/* a multi-selection: every block outlined in the accent colour, the one in the inspector in white on top */
+.tl-block.grouped, .tl-block.marquee-hit { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.08); }
+.tl-block.grouped.selected { outline-color: #fff; box-shadow: 0 0 0 2px var(--accent), inset 0 0 0 999px rgba(255, 255, 255, 0.08); }
+.tl-marquee { position: absolute; z-index: 6; border: 1px dashed var(--accent); background: rgba(255, 255, 255, 0.07); pointer-events: none; }
+.tl-toolbar .btn.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .tl-content .tl-block.thin { padding: 0; }
 .tl-content .tl-block.thin .tl-handle { width: 3px; }
 .tl-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; position: relative; }
