@@ -488,6 +488,7 @@ export function cancelReframe() {
  * Resolves { plan, src } or { plan: { found: false } }; throws on a model or video error.
  */
 async function analyse(clip, rec, frame, opts, job, onFrame) {
+  if (!rec.url && rec.open) rec = (await rec.open()) || rec; // a library file that is not open yet
   const v = document.createElement('video');
   v.muted = true;
   v.playsInline = true;

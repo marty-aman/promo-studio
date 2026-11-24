@@ -4,7 +4,13 @@
 import { h, button, iconButton, toast, pickFiles } from '../dom.js';
 import { driveButton } from '../gdrive.js';
 import { relinkNotice } from '../relink.js';
-import { media as mediaLib } from '../media.js';
+import { media as mediaLib, ensureLoaded } from '../media.js';
+
+/** A player for a library file that may not be open yet: its address is filled in once the file is open. */
+function withSrc(el, m) {
+  ensureLoaded(m.id).then((r) => r && r.url && el.src !== r.url && (el.src = r.url)); // also marks it as used by this screen
+  return el;
+}
 import { qualityBadges, weakToggle } from '../panel-quality.js';
 import { describeSyncPoint } from '../clipsync.js';
 import { savedVideoSync, setVideoSync, clearVideoSync, savedTabSync, clearTabSync, describeTabSync, savedOn } from '../songsync.js';
@@ -153,7 +159,7 @@ export function filesTab(ctx, song, S) {
       ),
       s.name ? h('span', { class: 'muted tiny', title: m.name }, m.name) : null,
       h('label', { class: 'mgr-stem-part' }, h('span', { class: 'muted tiny' }, 'Part'), ctx.form.select(`stem-role-${s.id}`, '', s.role, STEM_ROLES, edit((y, v) => (y.role = v)))),
-      h('audio', { controls: true, preload: 'none', src: m.url, 'aria-label': `Play ${name}` }),
+      withSrc(h('audio', { controls: true, preload: 'none', src: m.url || undefined, 'aria-label': `Play ${name}` }), m),
       h(
         'div',
         { class: 'row' },
@@ -218,7 +224,7 @@ export function filesTab(ctx, song, S) {
       ? h(
           'div',
           { class: 'mgr-file video' },
-          h('video', { controls: true, preload: 'metadata', src: vm.url, poster: vm.thumb || undefined, playsinline: true, 'aria-label': `Play ${vm.name}` }),
+          withSrc(h('video', { controls: true, preload: 'metadata', src: vm.url || undefined, poster: vm.thumb || undefined, playsinline: true, 'aria-label': `Play ${vm.name}` }), vm),
           h('div', { class: 'mgr-file-main' }, h('strong', { title: vm.name }, vm.name), h('span', { class: 'muted tiny' }, len(vm.duration))),
           h(
             'div',
@@ -251,7 +257,7 @@ export function filesTab(ctx, song, S) {
     return h(
       'div',
       { class: 'mgr-clip' },
-      h('div', { class: 'mgr-clip-thumb' }, m.thumb ? h('img', { src: m.thumb, alt: '' }) : null, qualityBadges(mediaLib.get(m.id)), m.kind === 'video' && m.duration ? h('span', { class: 'mgr-clip-len' }, len(m.duration)) : m.kind === 'image' ? h('span', { class: 'mgr-clip-len' }, 'Photo') : null),
+      h('div', { class: 'mgr-clip-thumb' }, m.thumb ? h('img', { src: m.thumb, alt: '' }) : null, qualityBadges(mediaLib.peek(m.id)), m.kind === 'video' && m.duration ? h('span', { class: 'mgr-clip-len' }, len(m.duration)) : m.kind === 'image' ? h('span', { class: 'mgr-clip-len' }, 'Photo') : null),
       h('strong', { title: m.name }, m.name),
       ctx.form.text(`clip-note-${c.id}`, '', c.note, S((x, v) => {
         const y = x.files.footage.find((z) => z.id === c.id);

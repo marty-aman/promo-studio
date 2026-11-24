@@ -1,7 +1,7 @@
 // The Carousel page: suggested Instagram carousels, a slide strip, per-slide looks, captions and
 // download (1080x1350 PNGs in a .zip, or the share sheet on a phone).
 import { h, icon, button, toast, field, download } from './dom.js';
-import { media } from './media.js';
+import { media, ensureLoaded } from './media.js';
 import { renderFrame } from './renderer.js';
 import { layoutClips } from './core.js';
 import { coverPalette } from './backgrounds.js';
@@ -46,7 +46,7 @@ function clipFrame(mediaId, time, onReady) {
   if (!pending.has(key)) {
     const rec = media.get(mediaId);
     if (!rec) return null;
-    pending.set(key, seekVideo(rec.url, time).then((v) => {
+    pending.set(key, (rec.url ? Promise.resolve(rec) : ensureLoaded(mediaId)).then((r) => (r && r.url ? seekVideo(r.url, time) : null)).then((v) => {
       if (!v || !v.videoWidth) return;
       const c = document.createElement('canvas');
       c.width = v.videoWidth;
@@ -76,8 +76,8 @@ function editFrame(store, engine, fraction, onReady) {
     let el = null;
     if (cur) {
       const rec = media.get(cur.clip.mediaId);
-      if (rec && rec.kind === 'video') el = await seekVideo(rec.url, cur.clip.in + (t - cur.start) * (cur.clip.speed || 1));
-      else if (rec) el = rec.el;
+      if (rec && rec.kind === 'video') el = await seekVideo(rec.url || ((await ensureLoaded(rec.id)) || {}).url, cur.clip.in + (t - cur.start) * (cur.clip.speed || 1));
+      else if (rec) el = rec.el || ((await ensureLoaded(rec.id)) || {}).el || null;
     }
     const c = document.createElement('canvas');
     c.width = SLIDE_W;

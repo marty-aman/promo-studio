@@ -465,5 +465,7 @@ export function createManager({ root, studio }) {
     go,
     undo: () => store.canUndo() && store.undo(),
     redo: () => store.canRedo() && store.redo(),
+    /** Download the backup file (the Storage section's reminder). */
+    backUp: () => backUp(),
   };
 }

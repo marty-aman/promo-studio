@@ -1037,6 +1037,7 @@ export function createPhotoStudio({ root, studio }) {
   const missing = () => docMedia(store.get()).filter((id) => !getImage(id));
   /** The finished image(s). `scale` 2 or 3 draws them bigger for print; the library copy and the poster stay 1×. */
   async function images(type, scale = 1) {
+    if (studio.ensure) await studio.ensure(docMedia(store.get()));
     const doc = store.get();
     ensureMattes();
     if ([...mattes.values()].includes('pending')) {
@@ -1052,6 +1053,7 @@ export function createPhotoStudio({ root, studio }) {
     return blobs.map((b, i) => ({ blob: b, name: `${slug(doc.name)}${tag}${canv.length > 1 ? `-${i + 1}` : ''}.${ext}` }));
   }
   async function exportImages(type, separateFiles = false) {
+    if (studio.ensure) await studio.ensure(docMedia(store.get())); // photos not open yet are opened first
     const gone = missing();
     const warn = () => gone.length && toast(`${gone.length === 1 ? 'A photo in this design is' : `${gone.length} photos in this design are`} not in the media library (${gone.map((id) => (studio.fileName && studio.fileName(id)) || 'name unknown').join(', ')}) and left out. Use Replace missing files to put ${gone.length === 1 ? 'it' : 'them'} back.`, 'error', 9000);
     warn();

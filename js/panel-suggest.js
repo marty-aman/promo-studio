@@ -28,18 +28,34 @@ const signature = (inv) => `${inventorySignature(inv)}|${(loadScan() || {}).fetc
 
 let stopPreview = null;
 
+// A suggestion card shows a file that is not open by its small picture; the file opens when the card plays.
+const stills = new Map(); // media id -> <img> of its thumbnail
+function stillOf(rec) {
+  if (!rec || typeof rec.thumb !== 'string') return null;
+  let img = stills.get(rec.id);
+  if (!img || img.src !== rec.thumb) {
+    img = new Image();
+    img.src = rec.thumb;
+    stills.set(rec.id, img);
+  }
+  return img.complete && img.naturalWidth ? img : null;
+}
+
 /** Own video elements per card so previews don't fight the editor's playback. */
 function previewEnv(base, els, onFrame) {
   return {
     ...base,
     preview: true,
     sourceFor: (clip) => {
-      const rec = media.get(clip.mediaId);
+      const rec = media.peek(clip.mediaId); // a still card opens no file
       if (!rec) return null;
-      if (rec.kind === 'image') return rec.el;
+      if (rec.kind === 'image') return rec.el || stillOf(rec);
+      if (!rec.url) return stillOf(rec);
       let el = els.get(rec.id);
-      if (!el) {
+      if (!el || el._url !== rec.url) {
+        // (again when the file was let go and opened since: the old address no longer works)
         el = document.createElement('video');
+        el._url = rec.url;
         el.muted = true;
         el.playsInline = true;
         el.preload = 'auto';
@@ -56,6 +72,7 @@ function previewEnv(base, els, onFrame) {
 function syncPreviewVideos(draft, t, els, playing) {
   const laid = layoutClips(draft.clips);
   const active = laid.find((l) => t >= l.start && t < l.end);
+  if (playing && active && !els.has(active.clip.mediaId)) media.get(active.clip.mediaId); // a playing card opens its clip
   for (const [id, el] of els) {
     const on = active && active.clip.mediaId === id;
     if (!on) {

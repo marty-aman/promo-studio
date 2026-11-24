@@ -30,7 +30,7 @@ export function studioAutoSync({ store, engine, ui, media }) {
       const rec = song && media.get(song.mediaId);
       return { vocal: v && media.get(v.mediaId) ? { mediaId: v.mediaId, name: (media.get(v.mediaId) || {}).name || v.label } : null, mix: rec ? { mediaId: rec.id, name: rec.name } : null };
     },
-    blob: (id) => (media.get(id) || {}).blob || null,
+    blob: (id) => (media.blob ? media.blob(id) : (media.get(id) || {}).blob || null), // read from storage when the file is not open
     apply(res, info) {
       const keepHand = keepHandWords(handLinesHit(sorted(), res.lines));
       store.update((d) => {

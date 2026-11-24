@@ -7,10 +7,10 @@
 // env = { addClip(rec, { from, len }), songFiles(): [{ id, title, video, footage }], currentSongId(): string }
 import { warnDownload } from '../mobilelogic.js';
 import { h, button, toast, download } from '../dom.js';
-import { media, addMedia } from '../media.js';
+import { media, addMedia, ensureLoaded } from '../media.js';
 import { relinkNotice } from '../relink.js';
 import { ensureIndex, runSearch, clearSearch, searchState, searchModelInfo, cachedEntry } from './searchindex.js';
-import { momentClip, relativeMatch, bestFrameIndex } from './clipsearch.js';
+import { momentClip, relativeMatch, bestFrameIndex, hasFile } from './clipsearch.js';
 
 export const EXAMPLES = ['crowd jumping', 'close-up of guitar', 'drummer playing', 'singer at the microphone', 'stage lights and smoke'];
 const CLIP_LEN = 4;
@@ -29,12 +29,12 @@ function repaint() {
 
 /** Which videos a scope searches: 'all' (every library video) or a song id (its music video and raw footage). */
 export function scopeRecords(scope, env) {
-  const vids = (ids) => ids.map((id) => media.get(id)).filter((r) => r && r.kind === 'video' && r.blob);
+  const vids = (ids) => ids.map((id) => media.get(id)).filter((r) => r && r.kind === 'video' && hasFile(r));
   if (scope && scope !== 'all') {
     const s = env.songFiles().find((x) => x.id === scope);
     if (s) return vids([...(s.video ? [s.video.id] : []), ...s.footage.map((f) => f.id)]);
   }
-  return media.all().filter((r) => r.kind === 'video' && r.blob);
+  return media.all().filter((r) => r.kind === 'video' && hasFile(r));
 }
 
 function scopes(env) {
@@ -101,7 +101,8 @@ async function start(env) {
 }
 
 /** A full-size still of a video at `t`, as a PNG blob. */
-async function grabFrame(rec, t) {
+async function grabFrame(rec0, t) {
+  const rec = (await ensureLoaded(rec0.id)) || rec0;
   const v = Object.assign(document.createElement('video'), { muted: true, preload: 'auto', playsInline: true, src: rec.url });
   try {
     await new Promise((res, rej) => ((v.onloadeddata = res), (v.onerror = () => rej(new Error('The video could not be opened.')))));

@@ -254,14 +254,14 @@ const readStore = () => {
 };
 function cacheGet(rec) {
   const e = readStore()[rec.id];
-  const size = rec.blob ? rec.blob.size : 0;
+  const size = rec.size || (rec.blob ? rec.blob.size : 0);
   return e && e.size === size && e.q && e.q.v === 1 ? e.q : null;
 }
 function cachePut(rec, q) {
   try {
     const all = readStore();
     delete all[rec.id];
-    all[rec.id] = { size: rec.blob ? rec.blob.size : 0, q };
+    all[rec.id] = { size: rec.size || (rec.blob ? rec.blob.size : 0), q };
     const keys = Object.keys(all);
     for (const k of keys.slice(0, Math.max(0, keys.length - KEEP))) delete all[k];
     localStorage.setItem(KEY, JSON.stringify(all));
@@ -296,11 +296,14 @@ export function sampleTimes(duration) {
 }
 
 async function analyseVideo(rec) {
+  // a library file that is not open yet is read for this pass only (a background job must not keep it open)
+  const blob = !rec.url && rec.file ? await rec.file() : null;
+  const tmpUrl = blob ? URL.createObjectURL(blob) : null;
   const v = document.createElement('video');
   v.muted = true;
   v.preload = 'auto';
   v.playsInline = true;
-  v.src = rec.url;
+  v.src = rec.url || tmpUrl || '';
   try {
     if (v.readyState < 1 && !(await once(v, 'loadedmetadata', 8000))) return null;
     const dur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : rec.duration;
@@ -340,6 +343,7 @@ async function analyseVideo(rec) {
   } finally {
     v.removeAttribute('src');
     v.load();
+    if (tmpUrl) URL.revokeObjectURL(tmpUrl);
   }
 }
 

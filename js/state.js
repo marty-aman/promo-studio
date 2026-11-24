@@ -361,14 +361,20 @@ function safeSet(key, value, what) {
   }
 }
 
-// IndexedDB keeps the media blobs (videos, images, audio, fonts) between visits.
+// IndexedDB keeps the media blobs (videos, images, audio, fonts) between visits. Version 2 adds a 'meta' store: one
+// small record per file (name, kind, size, length, picture size, thumbnail, waveform) so the app can start without
+// reading any file. The 'media' store is unchanged, so a save from an older version still loads.
 const DB_NAME = 'pvm-media';
 let dbPromise = null;
 function db() {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 1);
-      req.onupgradeneeded = () => req.result.createObjectStore('media', { keyPath: 'id' });
+      const req = indexedDB.open(DB_NAME, 2);
+      req.onupgradeneeded = () => {
+        const d = req.result;
+        if (!d.objectStoreNames.contains('media')) d.createObjectStore('media', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', { keyPath: 'id' });
+      };
       req.onsuccess = () => {
         // let another tab (or a page kept in the browser's back/forward cache) delete or upgrade the database
         req.result.onversionchange = () => {
@@ -377,29 +383,59 @@ function db() {
         };
         resolve(req.result);
       };
-      req.onerror = () => reject(req.error);
+      req.onerror = () => {
+        dbPromise = null;
+        reject(req.error);
+      };
     });
   }
   return dbPromise;
 }
 
-function tx(mode, fn) {
+/** One transaction over `names` (an array of store names); fn gets { media, meta } and may return a request. */
+function tx(names, mode, fn) {
   return db().then(
     (d) =>
       new Promise((resolve, reject) => {
-        const t = d.transaction('media', mode);
-        const result = fn(t.objectStore('media'));
+        const t = d.transaction(names, mode);
+        const stores = Object.fromEntries(names.map((n) => [n, t.objectStore(n)]));
+        const result = fn(stores);
         t.oncomplete = () => resolve(result && 'result' in result ? result.result : undefined);
         t.onerror = () => reject(t.error);
         t.onabort = () => reject(t.error || new Error('The browser could not store the file'));
       }),
   );
 }
+const BOTH = ['media', 'meta'];
 
 export const mediaDB = {
-  /** Resolves once the file is stored; REJECTS when the browser could not store it (storage full), so callers can tell the user. */
-  put: (rec) => tx('readwrite', (s) => s.put(rec)),
-  delete: (id) => tx('readwrite', (s) => s.delete(id)).catch(() => {}),
-  all: () => tx('readonly', (s) => s.getAll()).catch(() => []),
-  clear: () => tx('readwrite', (s) => s.clear()).catch(() => {}),
+  /**
+   * Store a file (and its light record when given), in one go. Resolves once stored; REJECTS when the browser could
+   * not store it (storage full), so callers can tell the user.
+   */
+  put: (rec, meta = null) =>
+    tx(BOTH, 'readwrite', (s) => {
+      s.media.put(rec);
+      if (meta) s.meta.put(meta);
+    }),
+  /** Write only the light record (the file is already stored). */
+  putMeta: (meta) => tx(['meta'], 'readwrite', (s) => s.meta.put(meta)),
+  /** One stored file record ({ id, name, kind, blob, … }) or undefined. */
+  get: (id) => tx(['media'], 'readonly', (s) => s.media.get(id)),
+  /** The ids of every stored file, without reading any file. */
+  keys: () => tx(['media'], 'readonly', (s) => s.media.getAllKeys()),
+  /** Every light record. REJECTS when the store can't be read (the caller then falls back to reading every file). */
+  metas: () => tx(['meta'], 'readonly', (s) => s.meta.getAll()),
+  delete: (id) =>
+    tx(BOTH, 'readwrite', (s) => {
+      s.media.delete(id);
+      s.meta.delete(id);
+    }).catch(() => {}),
+  deleteMeta: (id) => tx(['meta'], 'readwrite', (s) => s.meta.delete(id)).catch(() => {}),
+  all: () => tx(['media'], 'readonly', (s) => s.media.getAll()).catch(() => []),
+  clear: () =>
+    tx(BOTH, 'readwrite', (s) => {
+      s.media.clear();
+      s.meta.clear();
+    }).catch(() => {}),
 };

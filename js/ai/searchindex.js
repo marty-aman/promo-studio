@@ -4,8 +4,12 @@
 // different file under the same id (Replace missing files with another file) is looked at again. Entries of
 // files that are missing are kept (a re-link with the same file needs no new pass) but never searched.
 import { reportSaveFail } from '../state.js';
+import { blobOf, ensureLoaded } from '../media.js';
 import { loadPipeline, modelInfo, runtimeLibrary } from './runtime.js';
-import { sampleTimes, fingerprint, cacheKey, isFresh, normalize, toGray, sharpness, rankMoments, extraScoreFor, promptFor, evictIds, HEAD_BYTES, photoCacheKey, isFreshPhoto, batches, photosToIndex, cosine, PHOTO_BATCH } from './clipsearch.js';
+import { sampleTimes, fingerprint, cacheKey, isFresh, normalize, toGray, sharpness, rankMoments, extraScoreFor, promptFor, evictIds, HEAD_BYTES, photoCacheKey, isFreshPhoto, batches, photosToIndex, cosine, PHOTO_BATCH, hasFile } from './clipsearch.js';
+
+/** The record's file, read from storage when it is not open (nothing is kept open for it). */
+const fileOf = async (rec) => rec.blob || (await blobOf(rec.id));
 
 export const SEARCH_TASK = 'zero-shot-image-classification';
 export const SEARCH_MODEL = 'tinyclip';
@@ -211,8 +215,9 @@ const mem = new Map(); // media id -> entry (this visit)
 
 /** The entry for a record when it is already looked at (memory, then IndexedDB), else null. */
 export async function cachedEntry(rec) {
-  if (!rec || !rec.blob) return null;
-  const key = cacheKey(rec.id, await fileFingerprint(rec.blob), SEARCH_MODEL);
+  const blob = rec && (await fileOf(rec));
+  if (!blob) return null;
+  const key = cacheKey(rec.id, await fileFingerprint(blob), SEARCH_MODEL);
   const m = mem.get(rec.id);
   if (isFresh(m, key)) return m;
   const e = await dbGet(rec.id);
@@ -235,13 +240,17 @@ export async function ensureIndex(recs, { consented = false, signal = null, onPr
   for (const rec of recs) {
     const e = await cachedEntry(rec);
     if (e) entries.push(e);
-    else if (rec.blob) todo.push(rec);
+    else if (hasFile(rec)) todo.push(rec);
   }
   if (!todo.length) return { entries, failed };
   const emb = await embedder({ consented, onProgress: (f, t) => onProgress(f * 0.2, t) });
   for (let n = 0; n < todo.length; n++) {
     if (signal && signal.aborted) throw aborted();
-    const rec = todo[n];
+    const rec = (await ensureLoaded(todo[n].id)) || todo[n]; // a video is played to sample its frames: open it
+    if (!rec.blob) {
+      failed.push({ name: rec.name, msg: 'The file could not be read.' });
+      continue;
+    }
     const key = cacheKey(rec.id, await fileFingerprint(rec.blob), SEARCH_MODEL);
     const label = `Looking at “${rec.name}” (${n + 1} of ${todo.length})…`;
     onProgress(0.2 + (0.8 * n) / todo.length, label);
@@ -306,7 +315,7 @@ const loadStored = () =>
     .then((list) => new Map((list || []).map((e) => [e.id, e])))
     .catch(() => new Map()));
 const fpOf = (rec) => {
-  if (!photoFp.has(rec)) photoFp.set(rec, fileFingerprint(rec.blob, PHOTO_HEAD));
+  if (!photoFp.has(rec)) photoFp.set(rec, fileOf(rec).then((b) => fileFingerprint(b, PHOTO_HEAD)));
   return photoFp.get(rec);
 };
 
@@ -340,11 +349,12 @@ async function photoPreview(rec) {
   const w = rec.width || 0;
   const hh = rec.height || 0;
   const k = w && hh ? Math.min(1, CLIP_SIDE / Math.min(w, hh)) : 0;
+  const blob = await fileOf(rec); // read once from storage; the photo is not kept open
   let bmp;
   try {
-    bmp = k ? await createImageBitmap(rec.blob, { resizeWidth: Math.max(1, Math.round(w * k)), resizeHeight: Math.max(1, Math.round(hh * k)), resizeQuality: 'medium' }) : await createImageBitmap(rec.blob);
+    bmp = k ? await createImageBitmap(blob, { resizeWidth: Math.max(1, Math.round(w * k)), resizeHeight: Math.max(1, Math.round(hh * k)), resizeQuality: 'medium' }) : await createImageBitmap(blob);
   } catch {
-    bmp = await createImageBitmap(rec.blob); // a browser without resize options
+    bmp = await createImageBitmap(blob); // a browser without resize options
   }
   try {
     const s = Math.min(1, CLIP_SIDE / Math.min(bmp.width, bmp.height));
@@ -367,7 +377,7 @@ let warned = false;
 async function photoRun() {
   try {
     while (want) {
-      const recs = want.filter((r) => r && r.blob);
+      const recs = want.filter(hasFile);
       want = null;
       const have = await loadStored();
       // photos looked at before (this browser): check their fingerprint, a few at a time

@@ -2783,7 +2783,14 @@ export function createPanels({ store, engine, ui }) {
       exportState.error = '';
       ui.refreshPanels(true);
       try {
-        const cutsReady = await ensureLayerAnalyses(store.get());
+        const cutsReady = await ensureLayerAnalyses(store.get(), {
+          // files the edit uses that are not open yet are opened first (usually they already are)
+          onLoad: (n, total) => {
+            const lbl = document.querySelector('.export-pct');
+            if (lbl) lbl.textContent = n < total ? `Opening files ${n} of ${total}…` : '0%';
+            ui.exportLabel && ui.exportLabel(n < total ? `Opening files ${n} of ${total}…` : '');
+          },
+        });
         if (cutsReady === false) toast('A background removal could not be prepared, so that clip exports with its original background.', 'error');
         const res = await exportVideo(engine, {
           format: fmt.value,
