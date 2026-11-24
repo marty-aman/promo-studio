@@ -51,6 +51,7 @@ const themeState = { motion: false };
 import { ensureLayerAnalyses, videoWaveform } from './media.js';
 import { syncPoint, autoLineUp, describeSyncPoint, inForSyncPoint } from './clipsync.js';
 import { savedOn, sameVideoSync } from './songsync.js';
+import { placeIn, placeOnPoint, pointToDirection, directionToPoint } from './clipplace.js';
 import { media, addMedia, removeMedia, tabTimeline } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
@@ -2244,10 +2245,28 @@ export function createPanels({ store, engine, ui }) {
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
-    const setIn = (fn) => store.update(c((x, v, d) => {
-      const len = rec.duration || Infinity;
-      x.in = +Math.max(0, Math.min(fn(x), Number.isFinite(len) ? Math.max(0, len - x.duration * (x.speed || 1)) : fn(x))).toFixed(3);
-    }), `sync:${sel.id}`);
+    // where the clip and the song are now: the base a nudge or a whole drag is measured from
+    const placeFrom = (pp = store.get()) => {
+      const f = findClip(pp, sel.id);
+      return { in: f.clip.in || 0, duration: f.clip.duration, speed: f.clip.speed || 1, start: startOf(pp), layer: !!f.layer, songOffset: pp.song.offset || 0, songLen: song.duration, fileLen: rec.duration };
+    };
+    // move the in-point (and, when it has to, the clip's length, an overlay's start or the song's start: see clipplace.js)
+    const place = (r, key = `sync:${sel.id}`) => {
+      store.update((d) => {
+        const x = findClip(d, sel.id).clip;
+        if (!x) return;
+        x.in = r.in;
+        x.duration = r.duration;
+        if (findClip(d, sel.id).layer) x.start = r.start;
+        if (d.song) d.song.offset = r.songOffset;
+      }, key);
+      return r;
+    };
+    const setIn = (fn, from = placeFrom()) => place(placeIn(fn(from), from));
+    const showInfo = () => {
+      const pp = store.get();
+      info.textContent = describeSyncPoint(syncPoint(findClip(pp, sel.id).clip, startOf(pp), pp.song.offset));
+    };
     // drag: moving right makes the video's sound later against the song (an earlier in-point)
     let drag = null;
     cv.addEventListener('pointerdown', (e) => {
@@ -2256,31 +2275,65 @@ export function createPanels({ store, engine, ui }) {
       } catch {
         /* a pointer the browser doesn't track (synthetic): drag without capture */
       }
-      drag = { x: e.clientX, in: findClip(store.get(), sel.id).clip.in || 0, w: cv.getBoundingClientRect().width };
+      drag = { x: e.clientX, from: placeFrom(), w: cv.getBoundingClientRect().width, note: '', key: `syncdrag:${sel.id}:${e.timeStamp}` };
     });
     cv.addEventListener('pointermove', (e) => {
       if (!drag) return;
       const dt = ((e.clientX - drag.x) / drag.w) * span * 2;
-      setIn(() => drag.in - dt);
+      drag.note = place(placeIn(drag.from.in - dt, drag.from), drag.key).note;
       draw();
-      info.textContent = describeSyncPoint(syncPoint(findClip(store.get(), sel.id).clip, startOf(store.get()), store.get().song.offset));
+      showInfo();
     });
-    const end = () => (drag = null);
+    const end = () => {
+      if (drag && drag.note) toast(drag.note, 'info', 6000);
+      drag = null;
+    };
     cv.addEventListener('pointerup', end);
     cv.addEventListener('pointercancel', end);
     const x0 = findClip(p, sel.id).clip;
     const point = syncPoint(x0, startOf(p), p.song.offset);
-    const info = h('p', { class: 'small' }, describeSyncPoint(point));
+    const info = h('p', { class: 'small', 'data-k': 'sync-info' }, describeSyncPoint(point));
     const fps = 30;
-    const nudge = (sec) => setIn((x) => (x.in || 0) + sec);
+    const nudge = (sec) => {
+      const r = setIn((f) => f.in + sec);
+      if (r.note) toast(r.note, 'info', 6000);
+    };
     const auto = () => {
       const pp = store.get();
       const r = autoLineUp(song, rec, findClip(pp, sel.id).clip, startOf(pp), pp.song.offset);
       if (r.error) return toast(r.error, 'error', 5000);
-      setIn(() => r.in);
-      toast(`${describeSyncPoint(r.point)} ${r.sure === 'sure' ? 'A clear match.' : r.sure === 'likely' ? 'A likely match: play it to check.' : 'No clear match: play it, and nudge or drag if it’s off.'} Undo (Ctrl+Z) to go back.`, r.sure === 'unsure' ? 'error' : 'info', 7000);
+      const moved = place(placeOnPoint(r.point, placeFrom(pp)));
+      toast(`${describeSyncPoint(r.point)} ${r.sure === 'sure' ? 'A clear match.' : r.sure === 'likely' ? 'A likely match: play it to check.' : 'No clear match: play it, and nudge or drag if it’s off.'}${moved.note ? ` ${moved.note}` : ''} Undo (Ctrl+Z) to go back.`, r.sure === 'unsure' ? 'error' : 'info', 8000);
       ui.refreshPanels(true);
     };
+    // the plain way in: does the video start before the song (an intro) or partway into it, and by how much
+    const dirNow = pointToDirection(point);
+    const dirSel = h('select', { 'data-k': 'sync-dir', 'aria-label': 'Which starts first', style: { flex: '1 1 12em', width: 'auto', minWidth: '0' } },
+      h('option', { value: 'before' }, 'Video starts before the song'),
+      h('option', { value: 'after' }, 'Video starts after the song'),
+      h('option', { value: 'together' }, 'They start together'));
+    dirSel.value = dirNow.dir;
+    const secIn = h('input', { type: 'number', class: 'num', min: 0, step: 0.01, value: dirNow.sec, 'data-k': 'sync-sec', 'aria-label': 'By how many seconds', style: { width: '5.5em', flex: '0 0 auto' } });
+    secIn.disabled = dirNow.dir === 'together';
+    const applyDir = () => {
+      secIn.disabled = dirSel.value === 'together';
+      const sec = Math.abs(parseFloat(secIn.value) || 0);
+      const r = place(placeOnPoint(directionToPoint(dirSel.value, sec), placeFrom()), `syncdir:${sel.id}`);
+      if (r.note) toast(r.note, 'info', 6000);
+      showInfo();
+    };
+    dirSel.addEventListener('change', applyDir);
+    secIn.addEventListener('change', applyDir);
+    b._reg(() => {
+      const pp = store.get();
+      const x = findClip(pp, sel.id).clip;
+      if (!x || document.activeElement === secIn || document.activeElement === dirSel) return;
+      const now = pointToDirection(syncPoint(x, startOf(pp), pp.song.offset));
+      if (info) info.textContent = describeSyncPoint(syncPoint(x, startOf(pp), pp.song.offset));
+      dirSel.value = now.dir;
+      secIn.value = now.sec;
+      secIn.disabled = now.dir === 'together';
+    });
     // the song's own music video (matched by its file, however it got into the edit): its sync is kept on the song
     // and saved by itself shortly after each change here (see songSync in app.js)
     const mv = ui.songSync ? ui.songSync.video() : null;
@@ -2302,13 +2355,15 @@ export function createPanels({ store, engine, ui }) {
           mv.conflict ? h('p', { class: 'warn-note small' }, 'The song already had a different sync, so it was kept. Save to replace it.') : null,
           h('div', { class: 'row wrap' },
             button(`Save as “${mv.song.title}”’s music video sync`, () => saveMv(true), { variant: mv.conflict ? 'sm primary' : 'sm', title: 'Save where this clip is lined up on the song now (replacing what it had). Templates and section exports use it.' }),
-            mv.saved && !sameVideoSync(mv.saved.offset, mvNow) ? button('Use the saved sync', () => setIn(() => inForSyncPoint(mv.saved.offset, startOf(store.get()), store.get().song.offset)), { variant: 'sm', title: 'Put this clip on the sync saved on the song' }) : null,
+            mv.saved && !sameVideoSync(mv.saved.offset, mvNow) ? button('Use the saved sync', () => { const r = place(placeOnPoint(mv.saved.offset, placeFrom())); if (r.note) toast(r.note, 'info', 6000); }, { variant: 'sm', title: 'Put this clip on the sync saved on the song' }) : null,
           ),
         );
     const hear = h('input', { type: 'checkbox', checked: (x0.volume || 0) > 0 });
     hear.addEventListener('change', () => store.update(c((x) => (x.volume = hear.checked ? 1 : 0))));
     return section(
       'Sound sync',
+      h('p', { class: 'muted small', 'data-k': 'sync-how' }, 'To line a music video up with the song, say which starts first. If the video has an intro before the song comes in, pick “Video starts before the song” and how long the intro is: the clip plays from that far into the video. If the video begins partway into the song, pick “after” and how far in: the clip plays from the video’s start and the song plays from that far in. Then fine-tune by ear.'),
+      h('div', { class: 'row wrap sync-dir' }, dirSel, h('span', { class: 'row', style: { flex: '0 0 auto', gap: '6px', alignItems: 'center', flexWrap: 'nowrap' } }, h('span', { class: 'muted small' }, 'by'), secIn, h('span', { class: 'muted small' }, 's'))),
       h('p', { class: 'muted small' }, 'The song (green) over this video’s own sound (gold), 3 seconds either side of the playhead. Drag sideways to slide the video until the hits line up, or nudge it.'),
       cv,
       h('div', { class: 'sync-legend' }, h('span', {}, h('i', { style: { background: 'rgba(110,231,160,.9)' } }), 'Song'), h('span', {}, h('i', { style: { background: 'rgba(255,214,102,.9)' } }), 'This video'), h('span', {}, 'White line: the playhead')),
@@ -2321,6 +2376,8 @@ export function createPanels({ store, engine, ui }) {
         button('Line it up by listening', auto, { iconName: 'activity', variant: 'sm primary', title: 'Compare the video’s sound with the song and set where it plays from' }),
       ),
       mvState,
+      h('p', { class: 'muted small', 'data-k': 'sync-saved-how' }, 'A song’s saved music video sync (Manager → the song → Files) is the same number: “before the song by 12 s” saves as “the song’s 0:00 is 12 s into the video”. Templates, section exports and new clips of it start the music video there.'),
+      isMv && point < -0.005 ? h('p', { class: 'warn-note small', 'data-k': 'sync-after-note' }, 'A saved sync can’t hold a video that starts after the song yet: saving this one keeps “they start together”.') : null,
       h('label', { class: 'toggle' }, hear, h('span', {}, 'Play the video’s own sound too (to check by ear)')),
     );
   }
@@ -2966,7 +3023,7 @@ export function createPanels({ store, engine, ui }) {
           'Timing',
           ovl ? b.number('Starts at (s on the timeline)', () => G().start, c((x, v) => (x.start = Math.max(0, v))), { min: 0, step: 0.05 }) : null,
           b.number('Length (s)', () => findClip(store.get(), sel.id).clip?.duration, c((x, v) => (x.duration = Math.min(v, maxClipDuration(x, rec ? rec.duration : Infinity)))), { min: 0.2, step: 0.1 }),
-          isVideo ? b.number('Starts from (s into the file)', () => findClip(store.get(), sel.id).clip?.in, c((x, v) => (x.in = Math.min(v, Math.max(0, (rec?.duration || 0) - 0.2)))), { min: 0, step: 0.1 }) : null,
+          isVideo ? b.number('Starts from (s into the file)', () => findClip(store.get(), sel.id).clip?.in, c((x, v) => ((x.in = Math.min(v, Math.max(0, (rec?.duration || 0) - 0.2))), (x.duration = +Math.min(x.duration, maxClipDuration(x, rec ? rec.duration : Infinity)).toFixed(3)))), { min: 0, step: 0.1 }) : null,
           isVideo ? b.select('Speed', () => String(findClip(store.get(), sel.id).clip?.speed || 1), c((x, v) => {
             const sp = parseFloat(v);
             x.duration = +(x.duration * (x.speed || 1) / sp).toFixed(3);
