@@ -586,7 +586,7 @@ function leftSignature() {
       JSON.stringify(p.layerVis || {}),
       p.audioTracks.length,
       ui.selection && ui.selection.id,
-      L && [L.mediaId, L.source, L.track, L.mode, L.style, L.kitFinish, L.followSong, JSON.stringify(L.kitPieces || {}), L.playAudio, L.type === 'video' ? L.clips.length : '', kfSignature(L)].join(','),
+      L && [L.mediaId, L.source, L.track, L.mode, L.style, L.kitFinish, L.tabTheme, L.gameTheme, L.followSong, JSON.stringify(L.kitPieces || {}), L.playAudio, L.type === 'video' ? L.clips.length : '', kfSignature(L)].join(','),
       p.beats && p.beats.bpm,
     );
   }

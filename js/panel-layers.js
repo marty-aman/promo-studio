@@ -21,7 +21,9 @@ export function midiDrumDefaults(midi) {
 }
 import { defaultTabLayer } from './tab.js';
 import { defaultDrumLayer, LANES, DRUM_STYLES, STYLE_PLACEMENT, FIXED_PIECES, KIT_PRESETS, pieceOn, laneColorOf } from './drums.js';
-import { TAB_STYLES, TAB_PLACEMENT, stringColor } from './tabviz.js';
+import { TAB_STYLES, TAB_PLACEMENT, stringColor, TAB_CHROME } from './tabviz.js';
+import { TAB_THEMES, TAB_THEME_LIST, tabThemeFields, applyTabTheme, applyGpThemeEverywhere, tabThemeForGame } from './gpthemes.js';
+import { drawTab } from './tab.js';
 import { REAL_PLACEMENT } from './vizreal.js';
 import { themeById, themeLayer } from './themes.js';
 import { defaultVizLayer, VIZ_STYLES, BLENDS, setVizStyle } from './viz.js';
@@ -115,8 +117,43 @@ const FRAMINGS = {
   full: { label: 'Full frame', apply: (c) => Object.assign(c, { zoom: 1, posX: 0, posY: 0, mask: null }) },
   top: { label: 'Top half', apply: (c) => Object.assign(c, { zoom: 1, posX: 0, posY: -0.5, mask: { shape: 'topHalf', x: 0, y: 0, feather: 0, border: 0, background: 'none' } }) },
   bottom: { label: 'Bottom half', apply: (c) => Object.assign(c, { zoom: 1, posX: 0, posY: 0.5, mask: { shape: 'bottomHalf', x: 0, y: 0, feather: 0, border: 0, background: 'none' } }) },
-  circle: { label: 'Circle', apply: (c) => Object.assign(c, { zoom: 0.55, posX: 0, posY: 0, mask: { shape: 'circle', size: 0.5, x: 0, y: 0, feather: 0.1, border: 0.3, borderColor: '#ffffff', background: 'none' } }) },
 };
+
+// ---- Guitar Pro visualizer themes: swatch and live preview
+const PREVIEW_H = { tab: 90, highway: 220, neck: 120, strings: 110 };
+
+function tabSwatch(id) {
+  const t = TAB_THEMES[id];
+  const sw = t.swatch || { bg: [t.chrome.bg0, t.chrome.bg1], strings: t.strings.slice(0, 6), hi: t.hiColor };
+  return h('span', { class: 'tab-swatch', 'aria-hidden': 'true', style: { background: `linear-gradient(90deg, ${sw.bg[0]}, ${sw.bg[1]})`, borderColor: (t.chrome && t.chrome.edge) || TAB_CHROME.edge } },
+    sw.strings.slice().reverse().map((c) => h('i', { style: { background: c } })),
+    h('b', { style: { background: sw.hi, boxShadow: `0 0 6px ${sw.hi}` } }));
+}
+
+/** A moment with notes on screen: the playhead's when the tab is playing there, else early in the tab. */
+function previewMoment(tl, tabT) {
+  const ev = tl.events;
+  if (!ev.length) return 0;
+  if (ev.some((e) => e.time >= tabT - 0.3 && e.time <= tabT + 1.5)) return tabT;
+  const e = ev[Math.min(ev.length - 1, 6)];
+  return e.time + 0.05;
+}
+
+/** Draw tab layer L with theme `id` (null = as it is now) into canvas c, at about tab time nowT. */
+export function drawTabPreview(c, L, tl, id, nowT = 0) {
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#26272b'; // stands in for the video behind
+  ctx.fillRect(0, 0, c.width, c.height);
+  if (!L || !tl) return;
+  const tabT = previewMoment(tl, nowT);
+  const look = { ...L, ...(id ? tabThemeFields(id) : {}), x: 50, y: 50, width: 100, height: 100, start: 0, end: null, offset: 0, tempoScale: 1 };
+  try {
+    drawTab(ctx, c.width, c.height, look, tl, 1, tabT, Infinity);
+  } catch (e) {
+    console.warn('tab theme preview failed', e);
+  }
+}
 
 /**
  * opts.types: only show and add these layer types (the Video, Visualizer and Guitar Pro tabs each show
@@ -513,6 +550,39 @@ export function buildLayersPanel(b, ctx, opts = {}) {
               o.stringColors = arr;
             }))))
         : null;
+      const themeSection = () => {
+        const cur = L.tabTheme || 'original';
+        const preview = h('canvas', { class: 'gp-theme-preview', width: 360, height: PREVIEW_H[style] || 120, role: 'img', 'aria-label': 'Theme preview' });
+        const draw = (id) => {
+          const x = findLayer(store.get(), L.id);
+          const nowT = x ? (timelineToSong(engine.t, store.get().song) - (x.offset || 0)) * (x.tempoScale || 1) : 0;
+          drawTabPreview(preview, x, tl(), id, nowT);
+        };
+        requestAnimationFrame(() => draw(null));
+        const grid = h('div', { class: 'style-grid gp-themes', role: 'radiogroup', 'aria-label': 'Guitar Pro visualizer theme' }, TAB_THEME_LIST.map(([id, name, blurb]) => {
+          const on = cur === id;
+          const btn = h('button', { type: 'button', role: 'radio', 'aria-checked': on ? 'true' : 'false', class: `style-opt${on ? ' on' : ''}`, 'data-tabtheme': id, onclick: () => store.update(set((x) => applyTabTheme(x, id))) }, tabSwatch(id), h('strong', {}, name), h('span', {}, blurb));
+          for (const ev of ['pointerenter', 'focus']) btn.addEventListener(ev, () => draw(id));
+          for (const ev of ['pointerleave', 'blur']) btn.addEventListener(ev, () => draw(null));
+          return btn;
+        }));
+        return section(
+          'Theme',
+          h('p', { class: 'hint' }, cur === 'project' ? 'Colours come from the project theme. Pick a theme to replace them; the string, number and background colours below stay yours to change.' : 'Colours the background, strings, frets, notes, labels and highlight. Point at a theme to preview it; the colours below stay yours to change.'),
+          preview,
+          grid,
+          h('div', { class: 'row wrap' },
+            TAB_THEMES[cur] ? button('Reset colours to this theme', () => store.update(set((x) => applyTabTheme(x, x.tabTheme || 'original'))), { variant: 'sm ghost' }) : null,
+            TAB_THEMES[cur] ? button('Use on every tab and rhythm game layer', () => {
+              const id = (findLayer(store.get(), L.id) || L).tabTheme || 'original'; // the theme picked since this panel was drawn
+              if (!TAB_THEMES[id]) return;
+              let n = 0;
+              store.update((d) => (n = applyGpThemeEverywhere(d, id)));
+              toast(`“${TAB_THEMES[id].name}” is on ${n} Guitar Pro layer${n === 1 ? '' : 's'}.`);
+            }, { variant: 'sm ghost' }) : null,
+          ),
+        );
+      };
       const fancyLook = () =>
         section(
           'Look',
@@ -540,6 +610,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         h('div', { class: 'lbl' }, 'Style'),
         styleGrid,
         style === 'tab' ? b.segmented('Movement', g('mode', 'scroll'), T((o, v) => (o.mode = v)), [['scroll', 'Scrolling'], ['bars', 'Bar by bar']]) : null,
+        themeSection(),
         syncTools(tl, false),
         visibleRange(),
         style !== 'tab' ? fancyLook() : section(
@@ -731,6 +802,14 @@ export function buildLayersPanel(b, ctx, opts = {}) {
             const cur = findLayer(store.get(), L.id) || L; // the theme picked since this panel was drawn
             store.update((d) => d.layers.forEach((x) => x.type === 'game' && ((x.gameTheme = cur.gameTheme || 'classic'), (x.followTheme = cur.followTheme !== false))));
           }, { variant: 'sm ghost' }),
+          (p.layers || []).some((x) => x.type === 'tab') && L.instrument !== 'drums'
+            ? button('Use the matching look on the tab layers', () => {
+                const cur = findLayer(store.get(), L.id) || L;
+                const id = tabThemeForGame(cur.gameTheme || 'classic');
+                store.update((d) => d.layers.forEach((x) => x.type === 'tab' && applyTabTheme(x, id)));
+                toast(`Tab layers now use “${TAB_THEMES[id].name}”.`);
+              }, { variant: 'sm ghost' })
+            : null,
         ),
         section(
           'Look',

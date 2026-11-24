@@ -735,6 +735,20 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
     shakes when it's played.
 
   Chord names (Em, G, C/G, E5, Am7…) are worked out from the notes.
+  - **Themes** (the layer's *Theme* section in the Guitar Pro tab): Original (the first look: purple night,
+    rainbow strings), Blood & steel (dark metal: black, blood red and bare steel), Blackout (all black and
+    grey), Inferno (charred neck, fire-orange strings), Frostbite (black metal frost), Neon (synthwave pink
+    and cyan), Clean (white strings, one blue accent) and Rosewood (realistic: rosewood board, nickel frets,
+    pearl dots, bronze and steel strings). A theme colours every part of every style: the background and
+    road, strings, frets, nut, inlays and wood, the notes and their fret numbers, labels, chord names and
+    techniques, and the highlight (playing note, hit line, sparks). Each card shows a swatch of its strings
+    and highlight; point at one to see it in the live preview (drawn from your own tab, in the style you
+    picked) before you pick it. The theme is saved with the layer (and in project files, backups and My
+    templates); the string, number and background colours stay yours to change afterwards, and *Reset
+    colours to this theme* puts them back. *Use on every tab and rhythm game layer* puts it on every tab
+    layer and the matching theme on the guitar, bass and keys highways (drum highways keep theirs). A
+    project theme still recolours tab layers, and the picker says so. Edits saved before themes keep their
+    look (they show as Original).
 - **Drum chart:** from a Guitar Pro drum track, a **MIDI file** (.mid), or detected from a drum stem audio file
   (kick, snare, hi-hat). A MIDI file is read with the drum map it was written for (General MIDI, Superior
   Drummer 3, EZdrummer, Addictive Drums 2, GetGood Drums, SSD5, BFD, Roland TD, Alesis… 160 in all), so
@@ -789,10 +803,12 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
   crowd that jumps on the beat; also a background scene). Auto-sync lines it up. Original drawing, no game
   art or logos.
   - **Themes:** Classic, Neon (glowing ring gems, synthwave colours), Inferno (scorched board, diamond gems,
-    fire), 8-bit arcade (square pixel gems, scanlines, a blocky score), Ice (frosted board, icy sparks) and
+    fire), 8-bit arcade (square pixel gems, scanlines, a blocky score), Ice (frosted board, icy sparks), Blood & steel
+    (dark metal: black iron board, blood-red rails and fire, steel gems), Blackout (all black and grey) and
     Mono (black and white with one accent). Each sets the frets, gems, board, rails, flames, HUD font and the
     arena's light colours. With a project theme on, the board, rails and star power take its colours (a
-    switch turns that off). *Use this theme on every highway* matches the others; the Rhythm game template
+    switch turns that off). *Use this theme on every highway* matches the others, and *Use the matching
+    look on the tab layers* gives the tab layers the theme that goes with it; the Rhythm game template
     card has its own theme menu.
 - **Visualizer:** reacts to any audio you give it: a stem (drums, bass, vocals…) or the song.
   Styles: water ripple (bends the picture on each hit), electricity, spectrum bars, circular spectrum,
@@ -1108,6 +1124,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/soundlib.js` | Personal sound library stored in IndexedDB |
 | `js/soundindex.js` | The combined sound list: your clips, the pack and built-ins as one list, renames, tags, stars and filters (unit tested) |
 | `js/tab.js` | Guitar Pro tab parsing (via alphaTab), timing and drawing |
+| `js/gpthemes.js` | Themes for the Guitar Pro visualizers (tab layer styles, matching rhythm game themes) (unit tested) |
 | `js/drums.js` | Drum chart: GP drum tracks, MIDI drums, drum-stem hit detection, lanes / highway / circle drawing |
 | `js/midi.js` | MIDI files: notes, tempo map, bars, and rewriting drum notes in place (unit tested) |
 | `js/drummap.js`, `js/drummaps-data.js` | 160 drum maps, stand-ins, converting drum MIDI between them (unit tested) |

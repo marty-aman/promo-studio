@@ -28,7 +28,9 @@ export function stringColor(layer, strings, line) {
 }
 
 // Colours of the chart itself. Themes set layer.chrome; defaults are the original look.
-export const TAB_CHROME = { bg0: '#07040f', bg1: '#1a0d2e', road: '#0c081c', grid: '#aa8cff', edge: '#c8a0ff', rail: '#c8aaff', wood0: '#2a1a10', wood1: '#3d2616', wood2: '#24160d', fret: '#c9c4ba', nut: '#ece2cf', inlay: '#e9dcc4' };
+export const TAB_CHROME = { bg0: '#07040f', bg1: '#1a0d2e', road: '#0c081c', grid: '#aa8cff', edge: '#c8a0ff', rail: '#c8aaff', wood0: '#2a1a10', wood1: '#3d2616', wood2: '#24160d', fret: '#c9c4ba', nut: '#ece2cf', inlay: '#e9dcc4', ink: '#ffffff', hit: '#ffffff' };
+// Also read when a GP theme sets them: gemInk (fret numbers on the notes) and strIdle (a string at rest);
+// left out here so each style keeps its own original shade.
 const chromeOf = (layer) => ({ ...TAB_CHROME, ...(layer.chrome || {}) });
 
 function rgba(hex, a) {
@@ -162,7 +164,7 @@ function drawHighway(ctx, W, H, layer, tl, tabT) {
       const time = b.time + (b.duration * q) / 4;
       const y = yAt(pOf(time));
       if (y < horizon || y > strike) continue;
-      ctx.strokeStyle = q === 0 ? 'rgba(255,255,255,0.35)' : rgba(C.grid, 0.14);
+      ctx.strokeStyle = q === 0 ? rgba(C.ink, 0.35) : rgba(C.grid, 0.14);
       ctx.beginPath();
       ctx.moveTo(xAt(0, y), y);
       ctx.lineTo(xAt(1, y), y);
@@ -236,7 +238,7 @@ function drawHighway(ctx, W, H, layer, tl, tabT) {
       const cols = ev.notes.map((nt) => colOf(nt.line));
       const x0 = xAt(Math.min(...cols) / n, y);
       const x1 = xAt((Math.max(...cols) + 1) / n, y);
-      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillStyle = rgba(C.ink, 0.08);
       rrect(ctx, x0, y - laneW * 0.36, x1 - x0, laneW * 0.72, laneW * 0.2);
       ctx.fill();
     }
@@ -246,7 +248,7 @@ function drawHighway(ctx, W, H, layer, tl, tabT) {
       const w = laneW * 0.8;
       const h = laneW * 0.52;
       const gg = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2);
-      gg.addColorStop(0, '#ffffff');
+      gg.addColorStop(0, C.hit);
       gg.addColorStop(0.4, col);
       gg.addColorStop(1, rgba(col, 0.8));
       ctx.fillStyle = gg;
@@ -260,13 +262,13 @@ function drawHighway(ctx, W, H, layer, tl, tabT) {
       });
       const txt = label(nt);
       fitFont(ctx, txt, 900, DISPLAY, h * 0.92, w * 0.9);
-      ctx.fillStyle = nt.ghost ? 'rgba(10,6,20,0.6)' : '#0a0614';
+      ctx.fillStyle = rgba(C.gemInk || '#0a0614', nt.ghost ? 0.6 : 1);
       ctx.fillText(txt, x, y + h * 0.04);
       if (layer.showMarks !== false) {
         const mk = markOf(nt);
         if (mk && sc > 0.25) {
           ctx.font = `800 ${Math.round(h * 0.6)}px Inter, system-ui, sans-serif`;
-          ctx.fillStyle = '#ffffff';
+          ctx.fillStyle = C.ink;
           ctx.fillText(mk, x + w * 0.62, y - h * 0.62);
         }
       }
@@ -274,7 +276,7 @@ function drawHighway(ctx, W, H, layer, tl, tabT) {
     if (ev.palmMute && layer.showMarks !== false && sc > 0.25) {
       const xs = ev.notes.map((nt) => xAt((colOf(nt.line) + 0.5) / n, y));
       ctx.font = `800 ${Math.round(laneW * 0.32)}px Inter, system-ui, sans-serif`;
-      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.fillStyle = rgba(C.ink, 0.8);
       ctx.fillText('PM', Math.min(...xs) - laneW * 0.62, y);
     }
   }
@@ -325,7 +327,7 @@ function drawHighway(ctx, W, H, layer, tl, tabT) {
           const seed = Math.round(h.ev.time * 1000) + line * 31 + s;
           const a = -Math.PI * (0.15 + 0.7 * rnd(seed));
           const sp = r * (1 + 2 * rnd(seed + 7));
-          ctx.fillStyle = rgba(s % 3 ? col : '#ffffff', 1 - k);
+          ctx.fillStyle = rgba(s % 3 ? col : C.hit, 1 - k);
           ctx.beginPath();
           ctx.arc(x + Math.cos(a) * sp * k, strike + Math.sin(a) * sp * k + r * k * k, Math.max(1, r * 0.08), 0, Math.PI * 2);
           ctx.fill();
@@ -355,14 +357,14 @@ function drawHighway(ctx, W, H, layer, tl, tabT) {
       const fs = fitFont(ctx, now.name, 900, DISPLAY, bh * 0.085 * (1 + 0.12 * pulse), bw * 0.4);
       const tw = ctx.measureText(now.name).width;
       const py = by + bh * 0.065;
-      ctx.fillStyle = 'rgba(255,255,255,0.14)';
+      ctx.fillStyle = rgba(C.ink, 0.14);
       rrect(ctx, cx - tw / 2 - fs * 0.5, py - fs * 0.62, tw + fs, fs * 1.24, fs * 0.62);
       ctx.fill();
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = C.ink;
       ctx.fillText(now.name, cx, py + fs * 0.04);
     }
     if (next) {
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillStyle = rgba(C.ink, 0.55);
       fitFont(ctx, `→ ${next.name}`, 800, DISPLAY, bh * 0.05, bw * 0.25);
       ctx.textAlign = 'left';
       ctx.fillText(`→ ${next.name}`, cx + bw * 0.16, by + bh * 0.067);
@@ -432,6 +434,7 @@ function drawNeck(ctx, W, H, layer, tl, tabT) {
   const showStrip = layer.showStrip !== false;
   const showChords = layer.showChords !== false;
   const bgA = layer.bgOpacity ?? 0.45;
+  const C = chromeOf(layer);
   if (bgA > 0) {
     ctx.fillStyle = rgba(layer.bg || '#000000', bgA);
     rrect(ctx, bx, by, bw, bh, unit * 0.08);
@@ -451,7 +454,6 @@ function drawNeck(ctx, W, H, layer, tl, tabT) {
 
   // wood
   const wood = ctx.createLinearGradient(0, ny0, 0, ny1);
-  const C = chromeOf(layer);
   wood.addColorStop(0, C.wood0);
   wood.addColorStop(0.5, C.wood1);
   wood.addColorStop(1, C.wood2);
@@ -494,7 +496,7 @@ function drawNeck(ctx, W, H, layer, tl, tabT) {
   }
   ctx.restore();
   // fret numbers under the neck for the marked frets
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillStyle = rgba(C.ink, 0.6);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.font = `700 ${Math.round(Math.max(7, gap * 0.45))}px Inter, system-ui, sans-serif`;
@@ -520,7 +522,7 @@ function drawNeck(ctx, W, H, layer, tl, tabT) {
     const e = s ? s.e : 0;
     const col = stringColor(layer, n, line);
     ctx.lineWidth = Math.max(1, gap * (0.05 + 0.035 * k));
-    ctx.strokeStyle = e > 0 ? rgba(col, 0.55 + 0.45 * e) : 'rgba(220,214,204,0.85)';
+    ctx.strokeStyle = e > 0 ? rgba(col, 0.55 + 0.45 * e) : rgba(C.strIdle || '#dcd6cc', 0.85);
     ctx.beginPath();
     const x0 = nx0 - openW * 0.1;
     if (e > 0.02) {
@@ -592,7 +594,7 @@ function drawNeck(ctx, W, H, layer, tl, tabT) {
       ctx.stroke();
     } else {
       const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, 0, x, y, r);
-      g.addColorStop(0, '#ffffff');
+      g.addColorStop(0, C.hit);
       g.addColorStop(0.45, col);
       g.addColorStop(1, rgba(col, 0.85));
       ctx.globalAlpha *= 0.4 + 0.6 * e;
@@ -600,7 +602,7 @@ function drawNeck(ctx, W, H, layer, tl, tabT) {
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#120a06';
+      ctx.fillStyle = C.gemInk || '#120a06';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font = `900 ${Math.round(r * 1.05)}px ${DISPLAY}`;
@@ -623,13 +625,13 @@ function drawNeck(ctx, W, H, layer, tl, tabT) {
     ctx.textBaseline = 'middle';
     if (now) {
       const pulse = Math.max(0, 1 - (tabT - now.time) / 0.25);
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = C.ink;
       ctx.textAlign = 'center';
       fitFont(ctx, now.name, 900, DISPLAY, bh * 0.18 * (1 + 0.08 * pulse), bw * 0.5);
       ctx.fillText(now.name, bx + bw / 2, by + bh * 0.13);
     }
     if (next) {
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillStyle = rgba(C.ink, 0.5);
       ctx.textAlign = 'right';
       fitFont(ctx, `next ${next.name}`, 800, DISPLAY, bh * 0.08, bw * 0.3);
       ctx.fillText(`next ${next.name}`, bx + bw * 0.97, by + bh * 0.13);
@@ -642,11 +644,11 @@ function drawNeck(ctx, W, H, layer, tl, tabT) {
     const sh = bh * 0.15;
     const sx0 = bx + bw * 0.04;
     const sx1 = bx + bw * 0.96;
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillStyle = rgba(C.ink, 0.08);
     rrect(ctx, sx0, s0, sx1 - sx0, sh, sh * 0.3);
     ctx.fill();
     const lg = sh / (n + 1);
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.strokeStyle = rgba(C.ink, 0.18);
     ctx.lineWidth = 1;
     for (let line = 0; line < n; line++) {
       ctx.beginPath();
@@ -669,12 +671,12 @@ function drawNeck(ctx, W, H, layer, tl, tabT) {
       if (ev.time > tabT + winS) break;
       const x = px + (ev.time - tabT) * pps;
       for (const nt of ev.notes) {
-        ctx.fillStyle = ev.time <= tabT ? 'rgba(255,255,255,0.35)' : stringColor(layer, n, nt.line);
+        ctx.fillStyle = ev.time <= tabT ? rgba(C.ink, 0.35) : stringColor(layer, n, nt.line);
         ctx.fillText(label(nt), x, s0 + lg * (nt.line + 1));
       }
     }
     ctx.restore();
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = C.ink;
     ctx.fillRect(px - 1, s0 + sh * 0.1, 2, sh * 0.8);
   }
 }
@@ -688,13 +690,14 @@ function drawStrings(ctx, W, H, layer, tl, tabT) {
   const radius = unit * 0.14;
   const G = glowPass(ctx, bx, by, bw, bh, unit * 0.05);
   const bgA = layer.bgOpacity ?? 0.5;
+  const C = chromeOf(layer);
   ctx.save();
   rrect(ctx, bx, by, bw, bh, radius);
   ctx.clip();
   frost(ctx, bx, by, bw, bh, Math.max(2, Math.round(unit * 0.08)));
   const sheen = ctx.createLinearGradient(bx, by, bx, by + bh);
-  sheen.addColorStop(0, `rgba(255,255,255,${0.16 + bgA * 0.1})`);
-  sheen.addColorStop(1, `rgba(255,255,255,${0.04 + bgA * 0.05})`);
+  sheen.addColorStop(0, rgba(C.ink, 0.16 + bgA * 0.1));
+  sheen.addColorStop(1, rgba(C.ink, 0.04 + bgA * 0.05));
   ctx.fillStyle = sheen;
   ctx.fillRect(bx, by, bw, bh);
   ctx.fillStyle = rgba(layer.bg || '#000000', bgA * 0.5);
@@ -718,7 +721,7 @@ function drawStrings(ctx, W, H, layer, tl, tabT) {
     const x = xOf(b.time);
     if (x < left || x > right) continue;
     const near = Math.max(0, 1 - Math.abs(x - playX) / (pps * 0.15));
-    ctx.fillStyle = `rgba(255,255,255,${0.12 + 0.35 * near})`;
+    ctx.fillStyle = rgba(C.ink, 0.12 + 0.35 * near);
     ctx.fillRect(x, top, Math.max(1, unit * 0.006), bottom - top);
   }
 
@@ -753,7 +756,7 @@ function drawStrings(ctx, W, H, layer, tl, tabT) {
         c.lineTo(right, y);
       }
     };
-    ctx.strokeStyle = e > 0.02 ? rgba(col, 0.6 + 0.4 * e) : 'rgba(255,255,255,0.45)';
+    ctx.strokeStyle = e > 0.02 ? rgba(col, 0.6 + 0.4 * e) : rgba(C.strIdle || C.ink, 0.45);
     ctx.lineWidth = lw;
     path(ctx);
     ctx.stroke();
@@ -791,7 +794,7 @@ function drawStrings(ctx, W, H, layer, tl, tabT) {
     ctx.globalAlpha = alpha;
     if (ev.notes.length > 1) {
       const ls = ev.notes.map((nt) => nt.line);
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillStyle = rgba(C.ink, 0.18);
       rrect(ctx, x - gap * 0.08, sy(Math.min(...ls)), gap * 0.16, sy(Math.max(...ls)) - sy(Math.min(...ls)), gap * 0.08);
       ctx.fill();
     }
@@ -808,20 +811,20 @@ function drawStrings(ctx, W, H, layer, tl, tabT) {
       rrect(ctx, x, y - hh * 0.25, w * 2, hh * 0.5, hh * 0.25);
       ctx.fill();
       const cg = ctx.createLinearGradient(0, y - hh / 2, 0, y + hh / 2);
-      cg.addColorStop(0, '#ffffff');
+      cg.addColorStop(0, C.hit);
       cg.addColorStop(0.45, col);
       cg.addColorStop(1, rgba(col, 0.8));
       ctx.fillStyle = cg;
       rrect(ctx, x - hh * 0.62, y - hh / 2, w, hh, hh / 2);
       ctx.fill();
-      ctx.fillStyle = '#0b0716';
+      ctx.fillStyle = C.gemInk || '#0b0716';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       fitFont(ctx, label(nt), 900, DISPLAY, hh * 0.92, hh * 1.2);
       ctx.fillText(label(nt), x, y + hh * 0.04);
       if (layer.showMarks !== false && markOf(nt)) {
         ctx.font = `800 ${Math.round(hh * 0.55)}px Inter, system-ui, sans-serif`;
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = C.ink;
         ctx.fillText(markOf(nt), x + hh * 0.75, y - hh * 0.55);
       }
       if (x > left && x < right) {
@@ -840,7 +843,7 @@ function drawStrings(ctx, W, H, layer, tl, tabT) {
 
   // hit line
   const hit = (c, lw) => {
-    c.strokeStyle = '#ffffff';
+    c.strokeStyle = C.hit;
     c.lineWidth = lw;
     c.beginPath();
     c.moveTo(playX, top - gap * 0.2);
@@ -863,21 +866,21 @@ function drawStrings(ctx, W, H, layer, tl, tabT) {
     if (now) {
       const fs = fitFont(ctx, now.name, 900, DISPLAY, bh * 0.13, bw * 0.3);
       const tw = ctx.measureText(now.name).width;
-      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillStyle = rgba(C.ink, 0.2);
       rrect(ctx, x - fs * 0.3, y - fs * 0.55, tw + fs * 0.6, fs * 1.1, fs * 0.55);
       ctx.fill();
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = C.ink;
       ctx.fillText(now.name, x, y + fs * 0.04);
       x += tw + fs;
     }
     if (next) {
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillStyle = rgba(C.ink, 0.6);
       fitFont(ctx, `→ ${next.name}`, 800, DISPLAY, bh * 0.09, bw * 0.25);
       ctx.fillText(`→ ${next.name}`, x, y);
     }
   }
   ctx.restore();
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.strokeStyle = rgba(C.ink, 0.35);
   ctx.lineWidth = Math.max(1, unit * 0.008);
   rrect(ctx, bx + 0.5, by + 0.5, bw - 1, bh - 1, radius);
   ctx.stroke();
