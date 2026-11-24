@@ -902,6 +902,16 @@ Center for what is rising today. The trend list lives in `js/inspiration.js`.
   working). A limiter (−2 dB, 20:1) keeps a loud song, clip sound and effects from clipping in the preview and in
   the export; Export has a switch for it.
 
+### Time readout (Video Studio)
+
+- Next to the play button the player shows two times, each with the edit's length: **time** (m:ss.hundredths,
+  h:mm:ss.hundredths from an hour on, the same as the timeline ruler) and **sec.frame** (seconds.frame at the
+  edit's 30 fps: 12.15 is second 12, frame 15; frames go 0 to 29, the same frames the arrow keys and the Sound sync
+  nudge step through).
+- Click a label to swap which time is the bigger line; the choice is kept in this browser.
+- The sec.frame value is a seek box: type 12.15 (seconds.frame), 12 (seconds) or 1:02 / 1:02.50 (a clock time) and
+  press Enter to jump there; Escape leaves it. A frame of 30 or more is refused.
+
 ### Timeline zoom (Video Studio)
 
 - Edits can be up to an hour long (the **Length** box and the end handle on the ruler; it was 10 minutes).
@@ -1118,6 +1128,8 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `vendor/alphatab/` | alphaTab 1.9.0 parser (MPL-2.0), loaded only when a tab is used |
 | `js/engine.js` | Playback clock, media sync, Web Audio mix, export |
 | `js/timeline.js` | Multi-track timeline UI |
+| `js/timecode.js` | Time readout maths: clock time, seconds.frame, and the seek box parser (unit tested) |
+| `js/timereadout.js` | The player's two-line time readout and seek box |
 | `js/tlzoom.js` | Timeline zoom maths: zoom limits from the edit's length, fit, the log slider, ruler spacing (unit tested) |
 | `js/multimove.js` | Multi-selection on the timeline: rows, select all, the group move plan (clamps, main-track slots), delete, copy, paste and duplicate of a group (unit tested) |
 | `js/panels.js` | Tool panels and inspector |

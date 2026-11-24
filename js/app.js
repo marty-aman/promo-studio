@@ -1,5 +1,5 @@
 // App shell: layout, wiring, keyboard shortcuts and autosave.
-import { ASPECTS, clipAt, layoutClips, splitClip, formatTime, clamp, linesFromText, timelineToSong, uid, detectBeats } from './core.js';
+import { ASPECTS, clipAt, layoutClips, splitClip, clamp, linesFromText, timelineToSong, uid, detectBeats } from './core.js';
 import { gameParts, applySongTemplate } from './songtemplates.js';
 import { syncLayer } from './layersync.js';
 import { describeSyncPoint, inForSyncPoint } from './clipsync.js';
@@ -37,6 +37,7 @@ import { makeLayer, makeOverlayClip, setSongTabs } from './panel-layers.js';
 import { studioSongFiles, studioSongContext, addStems, addTabs } from './manager/files.js';
 import { applyTheme, themeById } from './themes.js';
 import { loadSettings } from './state.js';
+import { createTimeReadout } from './timereadout.js';
 import { findSong, titleFromFile, fetchLyrics } from './lyricsfetch.js';
 import { findCover } from './manager/covers.js';
 import { configureTodoAuto } from './manager/todoauto.js';
@@ -52,7 +53,6 @@ const app = document.getElementById('app');
 const canvas = h('canvas', { class: 'preview', 'aria-label': 'Video preview' });
 const stageInner = h('div', { class: 'stage-inner' }, canvas);
 const stage = h('div', { class: 'stage' }, stageInner);
-const timeLabel = h('span', { class: 'time' });
 const playBtn = h('button', { type: 'button', class: 'play-btn', 'aria-label': 'Play' }, icon('play', 22));
 const loopBtn = iconButton('repeat', 'Loop playback', () => {
   engine.loop = !engine.loop;
@@ -81,13 +81,14 @@ const toggleSafe = () => {
 // level meter: the mix before the limiter, so a red top means the limiter is working
 const meterFillEl = h('i', {});
 const meterEl = h('div', { class: 'meter', role: 'img', 'aria-label': 'Output level', title: 'Output level (the limiter holds the sound under 0 dB)' }, meterFillEl);
+const timeReadout = createTimeReadout({ engine: { get t() { return engine.t; }, seek: (t) => engine.seek(t) }, store, toast });
 const transport = h(
   'div',
   { class: 'transport' },
   iconButton('skipBack', 'Go to start (Home)', () => engine.seek(0)),
   playBtn,
   iconButton('skipFwd', 'Go to end (End)', () => engine.seek(store.get().duration)),
-  timeLabel,
+  timeReadout.el,
   loopBtn,
   h('label', { class: 'overlay-pick' }, icon('eye', 16), overlaySel),
   safeBtn,
@@ -753,13 +754,14 @@ engine.on(() => {
     if (inspBinder) inspBinder.refresh();
     if (leftBinder && ui.selection && ui.selection.type === 'layer') leftBinder.refresh();
   }
-  timeLabel.textContent = `${formatTime(engine.t)} / ${formatTime(store.get().duration)}`;
+  timeReadout.update();
   playBtn.replaceChildren(icon(engine.playing ? 'pause' : 'play', 22));
   playBtn.setAttribute('aria-label', engine.playing ? 'Pause' : 'Play');
   timeline.movePlayhead();
   if (!engine.playing && panels.sync.active) panels.stopSync();
 });
 playBtn.addEventListener('click', () => engine.toggle());
+timeReadout.update();
 
 // ------------------------------------------------------------ export lock and level meter
 let locked = false;
@@ -899,6 +901,7 @@ canvas.addEventListener('keydown', (e) => {
   store.update((d) => moveBy(d, sel, engine.t, positionAt(d, sel, engine.t), dx, dy), `pnudge-${sel.id}`);
 });
 store.subscribe(() => paintSelBox());
+store.subscribe(() => timeReadout.update()); // the length can change without the playhead moving
 engine.on(() => paintSelBox());
 ui.onSelect = paintSelBox;
 
