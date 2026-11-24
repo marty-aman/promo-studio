@@ -1178,6 +1178,19 @@ On a phone, a tablet or any touch screen (`(max-width: 1100px), (pointer: coarse
 
 Code: `js/tablayout.js` (pure layout and gesture helpers, unit tested) and `css/mobile-tab.css`.
 
+### Reading Guitar Pro files
+
+alphaTab reads the file (Guitar Pro 3–8, GPX, MusicXML). Promo Studio then plays it the way alphaTab and Guitar Pro do:
+repeats, first/second endings and D.C. / D.S. / To Coda / Fine are followed in the same order (`playbackOrder` in
+`js/tab.js` is a port of alphaTab's player), simile (%) bars repeat the bar before, and tempo changes mid-bar count.
+Tab Studio keeps time signature changes, repeats, endings, jumps, sections, capo, tuplets, grace notes, ties, let ring,
+harmonics, tremolo picking and bends, plays repeats like the video, and saves them back. Drum voices (hands and feet)
+are joined into one line, and every drum sound in the file gets a row. When something can't be shown or saved exactly
+(a sound the drum chart has no lane for, tremolo picking counted once, a bar longer than its time signature, staccato),
+an **Import check** note above the tab says what and where. Checked against alphaTab's own player on 185 real Guitar Pro
+files from alphaTab's test data; 18 of them and three PyGuitarPro-written files are kept in `test/fixtures/gp` for
+`test/gpreader.test.js`.
+
 ### Mobile: Video Studio and shell
 
 The app works on phones and tablets with touch. Windows wider than about 1100 px with a mouse are unchanged.

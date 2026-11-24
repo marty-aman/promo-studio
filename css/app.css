@@ -389,6 +389,14 @@ body.dropping::after { content: 'Drop to add to your library'; position: fixed; 
 .ts-canvas { display: block; position: sticky; left: 0; outline: none; cursor: cell; }
 .ts-canvas:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
 .ts-issues { margin-top: 8px; color: var(--muted); }
+.ts-import { margin: 6px 0 8px; padding: 6px 10px; border: 1px solid var(--border, #2a2c36); border-left: 3px solid var(--accent, #ffd400); border-radius: 8px; background: var(--panel-2, #1d1f27); }
+.ts-import summary { cursor: pointer; }
+.ts-import ul { margin: 6px 0 2px; padding-left: 18px; }
+.ts-import li { margin: 2px 0; overflow-wrap: anywhere; }
+.ts-import-kind { display: inline-block; min-width: 64px; font-weight: 600; }
+.ts-import-kind.skipped { color: #ff8c9a; }
+.ts-import-kind.guessed { color: var(--accent, #ffd400); }
+.ts-import-kind.changed { color: #7cc4ff; }
 .ts-empty { padding: 30px; border: 1px dashed var(--border-strong); border-radius: 10px; text-align: center; display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .ts-songtab { flex-wrap: wrap; gap: 8px; align-items: center; }
 .ts-songtab select { width: auto; flex: 0 1 auto; max-width: 100%; min-width: 0; }
