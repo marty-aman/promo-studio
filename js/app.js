@@ -8,6 +8,7 @@ import { savedVideoSync, setVideoSync, sameVideoSync, savedTabSync, setTabSync, 
 import { createStore, newProject, loadProject, saveProject, FONTS, findClip, loadRecent, saveRecent, setSaveFailHandler } from './state.js';
 import { splitItem, splitClipAt, duplicateItem, copyItem, pasteItem, safeRect, meterFill, meterHold } from './studioedit.js';
 import { liveGroup, inGroup, rowOf, allItems, planMove, applyMove, deleteGroup, copyGroup, pasteGroup, duplicateGroup } from './multimove.js';
+import { toggleOff, isOff, canTurnOff, OFF_KEY } from './itemoff.js';
 import { makeProjectFile, parseProjectFile, projectFileName, pushRecent, hasContent } from './projectfile.js';
 import { createVideoProjects } from './projects-video.js';
 import { readProjects } from './projectlib.js';
@@ -235,6 +236,7 @@ const ui = {
     if (g.length < 2) return this.select(g[0] || null);
     this.select(g[g.length - 1]);
     this.group = g;
+    rebuildInspector(); // its off/on button covers the whole group
     timeline.render();
   },
   /** Ctrl+A: every block on the selected block's row; again (or with nothing selected), every block on the timeline. */
@@ -389,6 +391,13 @@ const ui = {
     ui.select(r.sel);
   },
   clipboard: null,
+  /** E: turn the selection (or `sels`) off, or back on when all of it is off, without deleting it. One undo step. */
+  toggleOff(sels) {
+    const list = sels || (this.group.length > 1 ? this.group : this.selection ? [this.selection] : []);
+    const r = applyEdit((d) => toggleOff(d, list));
+    if (r.error) return toast(r.error);
+    toast(`${r.count > 1 ? `${r.count} items are` : 'It is'} ${r.off ? 'off, still on the timeline' : 'on again'}. Ctrl+Z undoes it.`);
+  },
   /** New project: the current edit goes to Earlier projects first, and Ctrl+Z brings it back. */
   newProject() {
     const cur = store.get();
@@ -615,7 +624,7 @@ function inspSignature() {
     (s.type === 'audio' && p.audioTracks.some((c) => c.id === s.id)) ||
     s.type;
   const tg = kfTarget(p, s);
-  return `${s.type}#${s.id}#${exists}#${tg ? kfSignature(tg.item) : ''}`;
+  return `${s.type}#${s.id}#${exists}#${tg ? kfSignature(tg.item) : ''}#${ui.group.length > 1 ? ui.group.map((g) => isOff(p, g)).join('') : isOff(p, s)}`;
 }
 
 function keepScroll(el, fn) {
@@ -633,9 +642,33 @@ function rebuildLeft() {
   keepScroll(leftPanel, () => leftPanel.replaceChildren(h('h2', { class: 'panel-title' }, tab.label), tab.build(leftBinder)));
   leftSig = leftSignature();
 }
+/** Above the selection's settings: turn it (or the whole multi-selection) off or on, and what off means for it. */
+function offBar() {
+  const p = store.get();
+  const list = (ui.group.length > 1 ? ui.group : ui.selection ? [ui.selection] : []).filter((s) => canTurnOff(p, s));
+  if (!list.length) return null;
+  const off = list.every((s) => isOff(p, s));
+  const many = list.length > 1;
+  const s = list[0];
+  const main = !many && s.type === 'clip' && p.clips.some((c) => c.id === s.id);
+  const note = !off
+    ? null
+    : many
+      ? 'These are off: they stay on the timeline with their timing, keyframes and settings, and the preview, export and sound skip them.'
+      : main
+        ? 'Off: it keeps its place on the Video track, so the clips after it don’t move. The video shows black there, with no clip sound, in the preview and the export.'
+        : `Off: it stays on the timeline with its timing${s.type === 'song' || s.type === 'endcard' ? '' : ', keyframes'} and settings, and the preview and the export skip it.`;
+  const label = `${off ? 'Turn on' : 'Turn off'}${many ? ` ${list.length} selected` : ''}`;
+  return h(
+    'div',
+    { class: `off-bar${off ? ' is-off' : ''}` },
+    button(label, () => ui.toggleOff(list), { iconName: off ? 'eye' : 'eyeOff', variant: 'sm', title: `${label} without deleting (${OFF_KEY}). Ctrl+Z undoes it.` }),
+    note ? h('p', { class: 'muted tiny' }, note) : null,
+  );
+}
 function rebuildInspector() {
   inspBinder = new Binder(store);
-  keepScroll(inspector, () => inspector.replaceChildren(panels.buildInspector(inspBinder)));
+  keepScroll(inspector, () => inspector.replaceChildren(...[offBar(), panels.buildInspector(inspBinder)].filter(Boolean)));
   inspSig = inspSignature();
 }
 
@@ -1049,6 +1082,10 @@ window.addEventListener('keydown', (e) => {
       break;
     case 'Z':
       if (e.shiftKey && !e.altKey) ui.zoomToFit();
+      break;
+    case 'e':
+    case 'E':
+      if (!e.altKey) ui.toggleOff();
       break;
     case 'g':
     case 'G':

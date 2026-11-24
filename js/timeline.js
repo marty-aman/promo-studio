@@ -2,6 +2,7 @@
 import { layoutClips, songToTimeline, timelineToSong, snap, clamp, formatTime, maxClipDuration, ctaText, hasSongParts } from './core.js';
 import { media, videoWaveform } from './media.js';
 import { isVisible } from './state.js';
+import { OFF_KEY, isOff } from './itemoff.js';
 import { h, icon, toast } from './dom.js';
 import { kfTarget } from './panel-kf.js';
 import { allKeys, moveKey, removeKey, EASES, KEY_EPS, snapToBeat, propInfo } from './keyframes.js';
@@ -12,6 +13,7 @@ import { ZOOM_MAX, TAIL_SEC, MAX_LENGTH, zoomMin, fitZoom, rulerSteps, rulerLabe
 import { keyOf, inGroup, toggleIn, spans, planMove, applyMove } from './multimove.js';
 
 const HEAD_W = 112;
+const EYE_MIN_PX = 56; // narrower blocks keep all their width for grabbing (E and the menu still turn them off)
 
 export function createTimeline({ root, store, engine, ui }) {
   const heads = h('div', { class: 'tl-heads' });
@@ -50,7 +52,7 @@ export function createTimeline({ root, store, engine, ui }) {
 
   // ------------------------------------------------------------ rendering
 
-  function block({ cls, left, width, label, sub, selected, data, handles = 'both', style = {} }) {
+  function block({ cls, left, width, label, sub, selected, data, handles = 'both', style = {}, off = null }) {
     // zoomed far out a block can be a few px wide: no text, no thumbnail (its name stays in the tooltip)
     const thin = width < LABEL_MIN_PX;
     if (width < THUMB_MIN_PX && style.backgroundImage) {
@@ -63,17 +65,22 @@ export function createTimeline({ root, store, engine, ui }) {
     const el = h(
       'div',
       {
-        class: `tl-block ${cls}${selected ? ' selected' : ''}${grouped ? ' grouped' : ''}${grouped && groupPreview ? ' dragging' : ''}${thin ? ' thin' : ''}`,
+        class: `tl-block ${cls}${selected ? ' selected' : ''}${grouped ? ' grouped' : ''}${grouped && groupPreview ? ' dragging' : ''}${thin ? ' thin' : ''}${off ? ' off' : ''}`,
         style: { left: `${left}px`, width: `${Math.max(4, width)}px`, ...(left < 0 && !thin ? { paddingLeft: `${8 - left}px` } : {}), ...style },
         dataset: data,
-        title: label,
+        title: off ? `${label} (turned off: press ${OFF_KEY} or its eye to turn it back on)` : label,
         role: 'button',
         tabindex: '0',
         'aria-pressed': selected || grouped ? 'true' : 'false',
       },
-      thin ? null : h('span', { class: 'tl-label' }, label),
+      thin ? null : h('span', { class: 'tl-label' }, off ? h('b', { class: 'tl-offtag' }, 'off') : null, label),
       sub && !thin ? h('span', { class: 'tl-sub' }, sub) : null,
     );
+    // the eye turns this block off or on (itemoff.js); a block that's off says so even when not selected
+    if (off != null && width >= EYE_MIN_PX) {
+      const what = off ? 'Turn on' : 'Turn off';
+      el.append(h('button', { type: 'button', class: 'tl-offbtn', title: `${what} (${OFF_KEY}). It stays on the timeline.`, 'aria-label': `${what} ${label}`, 'aria-pressed': off ? 'false' : 'true', onpointerdown: (e) => e.stopPropagation(), onclick: (e) => (e.stopPropagation(), ui.toggleOff([selFor(data.kind, data.id)])) }, icon(off ? 'eyeOff' : 'eye', 12)));
+    }
     if (handles === 'both' || handles === 'left') el.append(h('div', { class: 'tl-handle l', dataset: { edge: 'l' } }));
     if (handles === 'both' || handles === 'right') el.append(h('div', { class: 'tl-handle r', dataset: { edge: 'r' } }));
     return el;
@@ -252,6 +259,7 @@ export function createTimeline({ root, store, engine, ui }) {
               sub: `${c.duration.toFixed(1)}s`,
               selected: sel && sel.type === 'clip' && sel.id === c.id,
               data: { kind: 'oclip', id: c.id, layer: L.id },
+              off: !!c.disabled,
               style: rec && rec.thumb ? { backgroundImage: `linear-gradient(rgba(10,40,30,.55),rgba(10,40,30,.55)), url(${rec.thumb})` } : {},
             });
             clipWave(el, rec, c, c.duration * s);
@@ -319,6 +327,7 @@ export function createTimeline({ root, store, engine, ui }) {
           sub: `${l.clip.duration.toFixed(1)}s${l.clip.speed && l.clip.speed !== 1 ? ` · ${l.clip.speed}×` : ''}`,
           selected: sel && sel.type === 'clip' && sel.id === l.clip.id,
           data: { kind: 'clip', id: l.clip.id },
+          off: !!l.clip.disabled,
           style: rec && rec.thumb ? { backgroundImage: `linear-gradient(rgba(10,20,40,.55),rgba(10,20,40,.55)), url(${rec.thumb})` } : {},
         });
         if (preview && preview.id === l.clip.id) {
@@ -343,6 +352,7 @@ export function createTimeline({ root, store, engine, ui }) {
             label: tx.text || '(empty)',
             selected: sel && sel.type === 'text' && sel.id === tx.id,
             data: { kind: 'text', id: tx.id },
+            off: !!tx.disabled,
             style: { top: `${2 + tl.map.get(tx.id) * 26}px`, height: '24px' },
           }),
         );
@@ -364,6 +374,7 @@ export function createTimeline({ root, store, engine, ui }) {
             label: l.style ? `✦ ${l.text}` : l.text,
             selected: sel && sel.type === 'lyric' && sel.id === l.id,
             data: { kind: 'lyric', id: l.id },
+            off: !!l.disabled,
           }),
         );
       }
@@ -424,6 +435,7 @@ export function createTimeline({ root, store, engine, ui }) {
           label: rec ? rec.name : media.missingLabel(a.mediaId, 'audio'),
           selected: sel && sel.type === 'audio' && sel.id === a.id,
           data: { kind: 'audio', id: a.id },
+          off: !!a.disabled,
         });
         if (rec) el.prepend(waveformCanvas(rec, a.in, a.in + a.duration, a.duration * s, 38, 'rgba(94,234,212,.5)'));
         row.append(el);
@@ -649,6 +661,7 @@ export function createTimeline({ root, store, engine, ui }) {
       item('Split at playhead', () => ui.split()),
       item('Duplicate', () => ui.duplicate()),
       item('Copy', () => ui.copy()),
+      ui.toggleOff ? item(isOff(store.get(), selFor(kind, id)) ? `Turn on (${OFF_KEY})` : `Turn off (${OFF_KEY})`, () => ui.toggleOff([selFor(kind, id)])) : null,
       item('Settings', () => ui.openSettings && ui.openSettings()),
       item('Delete', () => ui.deleteSelection(), 'danger'),
     );
@@ -658,7 +671,14 @@ export function createTimeline({ root, store, engine, ui }) {
     if (r.right > innerWidth) menu.style.left = `${Math.max(4, innerWidth - r.width - 4)}px`;
     setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
   }
-  content.addEventListener('contextmenu', (e) => document.body.classList.contains('touch') && e.preventDefault());
+  content.addEventListener('contextmenu', (e) => {
+    if (document.body.classList.contains('touch')) return e.preventDefault();
+    // right-click on a block: the same menu a long press opens on touch
+    const b = e.target.closest('.tl-block');
+    if (!b || !b.dataset.kind) return;
+    e.preventDefault();
+    blockMenu(e.clientX, e.clientY, b.dataset.kind, b.dataset.id);
+  });
 
   content.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;

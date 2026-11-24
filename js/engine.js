@@ -254,7 +254,7 @@ export class Engine {
   _isStalled(now) {
     const laid = layoutClips(this.project.clips);
     const cur = laid.find((l) => this.t >= l.start && this.t < l.end);
-    if (!cur || cur.clip.kind !== 'video') {
+    if (!cur || cur.clip.kind !== 'video' || cur.clip.disabled) {
       this._stallSince = 0;
       return false;
     }
@@ -283,7 +283,7 @@ export class Engine {
       const e = clipElement(clip);
       if (!e) return;
       const el = e.el;
-      const active = t >= l.start && t < l.end;
+      const active = !clip.disabled && t >= l.start && t < l.end; // a clip turned off is silent (and shows black)
       const speed = clip.speed || 1;
       const target = clip.in + (t - l.start) * speed;
       const node = this._node(el);
@@ -345,7 +345,7 @@ export class Engine {
         const e = clipElement(clip);
         if (!e) continue;
         const el = e.el;
-        const active = shown && t >= clip.start && t < clip.start + clip.duration;
+        const active = shown && !clip.disabled && t >= clip.start && t < clip.start + clip.duration;
         const speed = clip.speed || 1;
         const target = clip.in + (t - clip.start) * speed;
         const node = this._node(el);
@@ -409,6 +409,7 @@ export class Engine {
       }
     }
     for (const a of p.audioTracks) {
+      if (a.disabled) continue; // turned off: its player is let go, like a deleted block's
       audioItems.push({
         key: a.id,
         mediaId: a.mediaId,
