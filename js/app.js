@@ -9,6 +9,7 @@ import { media, restoreMedia, restoreMissing, fileKind, addMedia, kindOf } from 
 import { configureRelink, refreshRelink, relinkButton, openRelink, missingFor } from './relink.js';
 import { Engine, exportVideo } from './engine.js';
 import { createTimeline } from './timeline.js';
+import { SLIDER_STEPS, zoomToSlider, sliderToZoom, anchorScroll } from './tlzoom.js';
 import { createPanels } from './panels.js';
 import { h, icon, iconButton, button, toast, setFold, Binder, download, tablistKeys } from './dom.js';
 import { modeUrl } from './modeurl.js';
@@ -126,7 +127,7 @@ const header = h(
   ),
 );
 
-const zoom = h('input', { type: 'range', min: 10, max: 300, step: 1, 'aria-label': 'Timeline zoom' });
+const zoom = h('input', { type: 'range', min: 0, max: SLIDER_STEPS, step: 1, 'aria-label': 'Timeline zoom', title: 'Timeline zoom. All the way left fits the whole edit.' });
 const snapBtn = iconButton('magnet', 'Snap to edges, playhead and beats', () => {
   ui.snap = !ui.snap;
   snapBtn.classList.toggle('on', ui.snap);
@@ -139,7 +140,8 @@ const tlToolbar = h(
   button('Delete', () => ui.deleteSelection(), { iconName: 'trash', variant: 'sm', title: 'Delete the selected item (Delete)' }),
   snapBtn,
   h('div', { class: 'spacer' }),
-  h('span', { class: 'muted tiny' }, 'Drag blocks to move · drag edges to trim · Ctrl+wheel to zoom'),
+  h('span', { class: 'muted tiny' }, 'Drag blocks to move · drag edges to trim · Ctrl+wheel to zoom · Shift+Z fits'),
+  button('Fit', () => ui.zoomToFit(), { variant: 'sm', title: 'Zoom to fit the whole edit (Shift+Z)' }),
   iconButton('zoomOut', 'Zoom out', () => ui.setZoom(ui.pxPerSec / 1.3)),
   zoom,
   iconButton('zoomIn', 'Zoom in', () => ui.setZoom(ui.pxPerSec * 1.3)),
@@ -190,10 +192,24 @@ const ui = {
     if (this.onSelect) this.onSelect();
     if ((sel && sel.type === 'lyric' && this.tab === 'lyrics') || leftSignature() !== leftSig) rebuildLeft();
   },
-  setZoom(v) {
-    this.pxPerSec = clamp(v, 10, 300);
-    zoom.value = this.pxPerSec;
+  /** Zoom the timeline to `v` px per second, keeping the moment under `clientX` (or the playhead) in place. */
+  setZoom(v, clientX) {
+    const { min, max } = timeline.zoomRange();
+    const at = timeline.zoomAnchor(clientX);
+    this.pxPerSec = clamp(v, min, max);
     timeline.render();
+    timeline.scroller.scrollLeft = anchorScroll(at.t, this.pxPerSec, at.off);
+  },
+  /** Zoom so the whole edit fits the visible timeline. */
+  zoomToFit() {
+    this.pxPerSec = timeline.zoomRange().fit;
+    timeline.render();
+    timeline.scroller.scrollLeft = 0;
+  },
+  /** The timeline calls this on every render so the slider follows the zoom and the edit's length. */
+  zoomShown(pps, min, max) {
+    zoom.value = String(zoomToSlider(pps, min, max));
+    zoom.setAttribute('aria-valuetext', `${pps < 10 ? pps.toFixed(2) : Math.round(pps)} pixels per second`);
   },
   /** Turn looping playback on or off (a Spotify Canvas previews as a loop). */
   setLoop(on) {
@@ -390,8 +406,10 @@ function rememberProject(p) {
   const list = saveRecent(pushRecent(loadRecent(), p));
   return !!list.length && list[0].project === p;
 }
-zoom.value = ui.pxPerSec;
-zoom.addEventListener('input', () => ui.setZoom(parseFloat(zoom.value)));
+zoom.addEventListener('input', () => {
+  const { min, max } = timeline.zoomRange();
+  ui.setZoom(sliderToZoom(parseFloat(zoom.value), min, max));
+});
 snapBtn.classList.add('on');
 snapBtn.setAttribute('aria-pressed', 'true');
 
@@ -918,6 +936,9 @@ window.addEventListener('keydown', (e) => {
       break;
     case 'Escape':
       ui.select(null);
+      break;
+    case 'Z':
+      if (e.shiftKey && !e.altKey) ui.zoomToFit();
       break;
     case 'g':
     case 'G':

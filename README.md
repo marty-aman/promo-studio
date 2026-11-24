@@ -885,6 +885,25 @@ Center for what is rising today. The trend list lives in `js/inspiration.js`.
   working). A limiter (−2 dB, 20:1) keeps a loud song, clip sound and effects from clipping in the preview and in
   the export; Export has a switch for it.
 
+### Timeline zoom (Video Studio)
+
+- Edits can be up to an hour long (the **Length** box and the end handle on the ruler; it was 10 minutes).
+- **Fit** (or **Shift+Z**) zooms so the whole edit fits the visible timeline. Zoomed out fully always means the
+  whole edit fits, however long it is; a short edit can still zoom out to the old 10 px per second.
+- The zoom slider runs on a log scale from whole-edit (far left) to 300 px per second. The zoom buttons keep the
+  playhead in place (or the middle of the view when the playhead is off screen); Ctrl+wheel keeps the moment
+  under the mouse; a two-finger pinch keeps the moment between your fingers.
+- The ruler picks its spacing from the zoom so labels never overlap: half seconds, then 1, 2, 5, 10, 15 and 30 s,
+  then 1, 2, 5, 10, 15 and 30 minutes and an hour (h:mm:ss from an hour on). Beat marks hide when they would be
+  under 4 px apart.
+- Zoomed far out, blocks under 18 px wide drop their text (the name stays in the tooltip) and blocks under 24 px
+  drop their thumbnail, weak-take marks and clip waveform. Waveforms are drawn once and reused between redraws;
+  past 4096 px a waveform is stretched to its block.
+- Snapping, moving and trimming work the same at every zoom: snapping reaches 8 px on screen, whatever that is
+  in seconds.
+- The zoom is not saved with the project (the app saves no timeline view settings); a new page starts at 40 px
+  per second.
+
 ### Editing keys (Video Studio)
 
 | Key | Does |
@@ -903,6 +922,7 @@ line moves on its own (the Lyrics tab's shared position moves them all). When th
 sets a keyframe at the playhead instead. Where items overlap the one on top wins, unless the selected one is under
 the pointer. On a phone, drag with one finger. The hit areas are boxes: they ignore rotation, and the sheet, poster
 and tunnel lyric displays can't be dragged (set their position in the Lyrics tab).
+| **Shift+Z** | Zoom the timeline to fit the whole edit |
 
 While a video exports, the panels, timeline and top bar are locked (greyed, not clickable) and these keys do
 nothing, so the file can't freeze or change; the bar at the bottom has **Cancel export**.
@@ -1058,6 +1078,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `vendor/alphatab/` | alphaTab 1.9.0 parser (MPL-2.0), loaded only when a tab is used |
 | `js/engine.js` | Playback clock, media sync, Web Audio mix, export |
 | `js/timeline.js` | Multi-track timeline UI |
+| `js/tlzoom.js` | Timeline zoom maths: zoom limits from the edit's length, fit, the log slider, ruler spacing (unit tested) |
 | `js/panels.js` | Tool panels and inspector |
 | `js/stock.js` | Pexels / Pixabay / Wikimedia search and download |
 | `js/app.js` | Layout, wiring, shortcuts, the four workspaces, save banner and export lock |
