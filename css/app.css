@@ -230,6 +230,8 @@ body.dropping::after { content: 'Drop to add to your library'; position: fixed; 
 .tl-block:active { cursor: grabbing; }
 .tl-block.selected { outline: 2px solid #fff; outline-offset: -1px; z-index: 2; }
 .tl-block.dragging { opacity: 0.85; z-index: 4; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
+.tl-content .tl-block.thin { padding: 0; }
+.tl-content .tl-block.thin .tl-handle { width: 3px; }
 .tl-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; position: relative; }
 .tl-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.8; font-size: 10.5px; position: relative; }
 .tl-block.clip { background-color: #23406f; border-color: var(--c-video); color: #fff; }

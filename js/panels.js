@@ -25,6 +25,7 @@ import {
 import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSettings, saveSettings, loadTemplates, saveTemplates, findClip, findLayer, LAYER_TYPES } from './state.js';
 import { buildLayersPanel, makeLayer, TAB_ACCEPT, midiDrumDefaults } from './panel-layers.js';
 import { MIDI_ACCEPT } from './midi.js';
+import { MAX_LENGTH } from './tlzoom.js';
 import { drumConvertState } from './page-drumconvert.js';
 import { driveButton } from './gdrive.js';
 import { lyricIdeas, applyLyricIdea } from './lyricideas.js';
@@ -3218,7 +3219,7 @@ export function createPanels({ store, engine, ui }) {
       h('div', { class: 'insp-title' }, icon('settings', 16), h('span', {}, 'Project')),
       b.text('Name', (pp) => pp.name, (d, v) => (d.name = v)),
       b.select('Format', (pp) => pp.aspect, (d, v) => (d.aspect = v), Object.entries(ASPECTS).map(([k, a]) => [k, a.label])),
-      b.number('Length (s)', (pp) => pp.duration, (d, v) => (d.duration = v), { min: 3, max: 600, step: 0.5 }),
+      b.number('Length (s)', (pp) => pp.duration, (d, v) => (d.duration = v), { min: 3, max: MAX_LENGTH, step: 0.5 }),
       button('Fit length to clips + end card', () => store.update((d) => {
         const len = d.clips.reduce((s, c) => s + c.duration, 0);
         if (len) d.duration = +(len + (d.endCard.enabled && d.endCard.background !== 'video' ? d.endCard.duration : 0)).toFixed(2);

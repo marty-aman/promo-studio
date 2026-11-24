@@ -90,6 +90,7 @@ body.m-sheets .stage { padding: 4px; }
 body.m-sheets .timeline { grid-template-rows: 48px minmax(0, 1fr); }
 body.m-sheets .tl-toolbar { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; gap: 4px; padding: 0 8px; flex: none; }
 body.m-sheets .tl-toolbar > * { flex: none; }
+body.m-sheets .tl-toolbar > .btn, body.touch .tl-toolbar > .btn { min-width: 44px; justify-content: center; }
 body.m-sheets .tl-toolbar .spacer, body.m-sheets .tl-toolbar .muted.tiny { display: none; }
 body.m-sheets .tl-toolbar input[type='range'] { width: 110px; }
 body.m-sheets .m-only { display: inline-flex; }

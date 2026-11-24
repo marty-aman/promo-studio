@@ -8,6 +8,7 @@ import { allKeys, moveKey, removeKey, EASES, KEY_EPS, snapToBeat, propInfo } fro
 import { markTimed } from './manager/lyrictiming.js';
 import { qualityMarks } from './panel-quality.js';
 import { pinchZoom, pinchScroll, edgeZone } from './mobilelogic.js';
+import { ZOOM_MAX, TAIL_SEC, MAX_LENGTH, zoomMin, fitZoom, rulerSteps, rulerLabel, showBeats, LABEL_MIN_PX, THUMB_MIN_PX, WAVE_MAX_PX } from './tlzoom.js';
 
 const HEAD_W = 112;
 
@@ -45,34 +46,53 @@ export function createTimeline({ root, store, engine, ui }) {
   // ------------------------------------------------------------ rendering
 
   function block({ cls, left, width, label, sub, selected, data, handles = 'both', style = {} }) {
+    // zoomed far out a block can be a few px wide: no text, no thumbnail (its name stays in the tooltip)
+    const thin = width < LABEL_MIN_PX;
+    if (width < THUMB_MIN_PX && style.backgroundImage) {
+      style = { ...style };
+      delete style.backgroundImage;
+    }
     const el = h(
       'div',
       {
-        class: `tl-block ${cls}${selected ? ' selected' : ''}`,
-        style: { left: `${left}px`, width: `${Math.max(4, width)}px`, ...(left < 0 ? { paddingLeft: `${8 - left}px` } : {}), ...style },
+        class: `tl-block ${cls}${selected ? ' selected' : ''}${thin ? ' thin' : ''}`,
+        style: { left: `${left}px`, width: `${Math.max(4, width)}px`, ...(left < 0 && !thin ? { paddingLeft: `${8 - left}px` } : {}), ...style },
         dataset: data,
         title: label,
         role: 'button',
         tabindex: '0',
         'aria-pressed': selected ? 'true' : 'false',
       },
-      h('span', { class: 'tl-label' }, label),
-      sub ? h('span', { class: 'tl-sub' }, sub) : null,
+      thin ? null : h('span', { class: 'tl-label' }, label),
+      sub && !thin ? h('span', { class: 'tl-sub' }, sub) : null,
     );
     if (handles === 'both' || handles === 'left') el.append(h('div', { class: 'tl-handle l', dataset: { edge: 'l' } }));
     if (handles === 'both' || handles === 'right') el.append(h('div', { class: 'tl-handle r', dataset: { edge: 'r' } }));
     return el;
   }
 
+  // Drawn waveforms are kept between renders (a render runs on every drag step, and a 30-minute song has a lot
+  // of peaks to scan); any not used by the latest render are dropped after it.
+  let waveCache = new Map();
+  let waveUsed = new Map();
   function waveformCanvas(rec, fromSec, toSec, width, height, color) {
+    const cssW = Math.max(1, Math.round(width));
+    const key = rec && rec.peaks ? `${rec.id}|${rec.peaks.length}|${fromSec.toFixed(3)}|${toSec.toFixed(3)}|${cssW}|${height}|${color}` : null;
+    const hit = key && (waveUsed.get(key) ? null : waveCache.get(key));
+    if (hit) {
+      waveUsed.set(key, hit);
+      return hit;
+    }
     const c = h('canvas', { class: 'tl-wave' });
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = Math.max(1, Math.min(8000, Math.round(width)));
+    // shortcut: past WAVE_MAX_PX the canvas is stretched to the block; fine for a waveform, sharp again zoomed out
+    const w = Math.min(WAVE_MAX_PX, cssW);
     c.width = Math.round(w * dpr);
     c.height = Math.round(height * dpr);
-    c.style.width = `${w}px`;
+    c.style.width = `${cssW}px`;
     c.style.height = `${height}px`;
     if (!rec || !rec.peaks) return c;
+    if (key) waveUsed.set(key, c);
     const g = c.getContext('2d');
     g.scale(dpr, dpr);
     g.fillStyle = color;
@@ -103,6 +123,7 @@ export function createTimeline({ root, store, engine, ui }) {
   let waveRedraw = 0;
   const qualityRedraw = () => requestAnimationFrame(() => render());
   function clipWave(el, rec, clip, widthPx) {
+    if (widthPx < THUMB_MIN_PX) return; // too thin to show weak takes or sound
     qualityMarks(el, rec, clip, widthPx, qualityRedraw);
     if (!rec || rec.kind !== 'video' || ui.clipWaves === false) return;
     const state = videoWaveform(rec, () => {
@@ -138,9 +159,14 @@ export function createTimeline({ root, store, engine, ui }) {
 
   function render() {
     const p = store.get();
-    const s = pps();
     const total = p.duration;
-    const width = Math.max(scroller.clientWidth, (total + 4) * s);
+    const { min } = zoomRange();
+    if (ui.pxPerSec < min) ui.pxPerSec = min; // the edit got shorter: zoomed-out-fully now means it fits again
+    const s = pps();
+    if (ui.zoomShown) ui.zoomShown(s, min, ZOOM_MAX);
+    waveCache = waveUsed;
+    waveUsed = new Map();
+    const width = Math.max(scroller.clientWidth, (total + TAIL_SEC) * s);
     content.style.width = `${width}px`;
     content.replaceChildren();
     heads.replaceChildren(h('div', { class: 'tl-head ruler-head' }, formatTime(engine.t)));
@@ -176,16 +202,19 @@ export function createTimeline({ root, store, engine, ui }) {
       rows.push(row);
     };
 
-    // ruler
+    // ruler: labelled ticks at least LABEL_PX apart (0.5 s up to 1 h), minor ticks between when there is room
     const ruler = h('div', { class: 'tl-ruler', dataset: { track: 'ruler' } });
-    const step = s > 120 ? 0.5 : s > 50 ? 1 : s > 20 ? 2 : 5;
-    for (let t = 0; t <= total + 4; t += step) {
-      const major = Math.abs(t / (step * 2) - Math.round(t / (step * 2))) < 1e-6 || step >= 5;
-      ruler.append(
-        h('div', { class: `tick${major ? ' major' : ''}`, style: { left: `${t * s}px` } }, major ? h('span', {}, formatTime(t, false)) : null),
-      );
+    const { label: lStep, minor: minor0 } = rulerSteps(s);
+    // shortcut: a long edit zoomed right in drops the minor ticks to keep the ruler under ~4000 nodes
+    const minor = minor0 && (total + TAIL_SEC) / minor0 <= 4000 ? minor0 : 0;
+    const tick = minor || lStep;
+    const per = Math.round(lStep / tick);
+    for (let i = 0; i * tick <= total + TAIL_SEC; i++) {
+      const t = +(i * tick).toFixed(3);
+      const major = i % per === 0;
+      ruler.append(h('div', { class: `tick${major ? ' major' : ''}`, style: { left: `${t * s}px` } }, major ? h('span', {}, rulerLabel(t, lStep)) : null));
     }
-    if (p.beats) {
+    if (p.beats && showBeats(p.beats.beats, s)) {
       for (const b of p.beats.beats) {
         const bt = songToTimeline(b, p.song);
         if (bt >= 0 && bt <= total) ruler.append(h('div', { class: 'beat', style: { left: `${bt * s}px` } }));
@@ -540,7 +569,7 @@ export function createTimeline({ root, store, engine, ui }) {
   }
   function moveGesture() {
     const f = fingers();
-    ui.setZoom(pinchZoom(gesture.pps0, gesture.dist0, f.dist));
+    ui.setZoom(pinchZoom(gesture.pps0, gesture.dist0, f.dist, zoomRange().min, ZOOM_MAX), f.cx);
     scroller.scrollLeft = pinchScroll(gesture.tc, ui.pxPerSec, f.cx - scroller.getBoundingClientRect().left);
     scroller.scrollTop = gesture.st0 - (f.cy - gesture.cy0);
   }
@@ -684,7 +713,7 @@ export function createTimeline({ root, store, engine, ui }) {
     const p = store.get();
 
     if (drag.op === 'duration') {
-      const v = clamp(snapT(drag.orig + dt), 3, 600);
+      const v = clamp(snapT(drag.orig + dt), 3, MAX_LENGTH);
       store.update((d) => (d.duration = +v.toFixed(2)), key);
     } else if (drag.kind === 'clip' && drag.op === 'reorder') {
       preview = { id: drag.id, dx };
@@ -873,10 +902,7 @@ export function createTimeline({ root, store, engine, ui }) {
     (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
-      const t = x2t(e.clientX);
-      const before = e.clientX - scroller.getBoundingClientRect().left;
-      ui.setZoom(ui.pxPerSec * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
-      scroller.scrollLeft = t * ui.pxPerSec - before;
+      ui.setZoom(ui.pxPerSec * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX);
     },
     { passive: false },
   );
@@ -885,5 +911,24 @@ export function createTimeline({ root, store, engine, ui }) {
     heads.scrollTop = scroller.scrollTop;
   });
 
-  return { render, movePlayhead, scroller, HEAD_W };
+  /** Zoom limits in px per second for this edit in this window: zoomed out fully, the whole edit fits. */
+  function zoomRange() {
+    const d = store.get().duration;
+    const w = scroller.clientWidth;
+    return { min: zoomMin(d, w), max: ZOOM_MAX, fit: fitZoom(d, w) };
+  }
+  /**
+   * Where a zoom should stay put: the moment under `clientX` (mouse or pinch), else the playhead while it is in
+   * view, else the middle of the view. Returns the time and its offset from the left of the view.
+   */
+  function zoomAnchor(clientX) {
+    const left = scroller.getBoundingClientRect().left;
+    if (clientX != null) return { t: Math.max(0, x2t(clientX)), off: clientX - left };
+    const x = engine.t * pps() - scroller.scrollLeft;
+    if (x >= 0 && x <= scroller.clientWidth) return { t: engine.t, off: x };
+    const off = scroller.clientWidth / 2;
+    return { t: (scroller.scrollLeft + off) / pps(), off };
+  }
+
+  return { render, movePlayhead, scroller, HEAD_W, zoomRange, zoomAnchor };
 }
