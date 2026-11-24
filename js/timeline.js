@@ -1,5 +1,5 @@
 // Multi-track timeline: ruler, video lane, text, lyrics, song, extra audio and end card.
-import { layoutClips, songToTimeline, timelineToSong, snap, clamp, formatTime, maxClipDuration, ctaText } from './core.js';
+import { layoutClips, songToTimeline, timelineToSong, snap, clamp, formatTime, maxClipDuration, ctaText, hasSongParts } from './core.js';
 import { media, videoWaveform } from './media.js';
 import { isVisible } from './state.js';
 import { h, icon, toast } from './dom.js';
@@ -371,6 +371,26 @@ export function createTimeline({ root, store, engine, ui }) {
         return;
       }
       const songDur = rec.duration || total;
+      if (hasSongParts(p.song)) {
+        // several parts of the song (Song part in the Audio tab): one block each, where it plays
+        p.song.parts.forEach((q, i) => {
+          const last = i === p.song.parts.length - 1;
+          const to = last ? Math.min(songDur, q.from + (total - q.at)) : q.to;
+          const el = block({
+            cls: 'song',
+            left: q.at * s,
+            width: Math.max(2, (to - q.from) * s),
+            label: i ? `${formatTime(q.from)}` : `${rec.name}`,
+            sub: `${formatTime(q.from)}–${formatTime(q.to)} · change it with Song part`,
+            selected: sel && sel.type === 'song',
+            data: { kind: 'song', id: 'song' },
+            handles: 'none',
+          });
+          el.prepend(waveformCanvas(rec, q.from, to, Math.max(2, (to - q.from) * s), 44, 'rgba(110,231,160,.55)'));
+          row.append(el);
+        });
+        return;
+      }
       const from = p.song.offset;
       const to = Math.min(songDur, from + total);
       const el = block({
@@ -717,7 +737,8 @@ export function createTimeline({ root, store, engine, ui }) {
       const a = p.audioTracks.find((x) => x.id === id);
       drag = { ...base, op: edge ? `trim-${edge}` : 'move', orig: { ...a } };
     } else if (kind === 'song') {
-      drag = { ...base, op: 'song', orig: { offset: p.song.offset } };
+      // several song parts don't slide as one: they are changed with Song part (Audio tab)
+      drag = hasSongParts(p.song) ? { ...base, op: 'select', orig: {} } : { ...base, op: 'song', orig: { offset: p.song.offset } };
     } else if (kind === 'oclip') {
       const L = p.layers.find((x) => x.id === blockEl.dataset.layer);
       const c = L && L.clips.find((x) => x.id === id);

@@ -113,8 +113,38 @@ export function fadeGain(t, start, end, fadeIn = 0, fadeOut = 0) {
 // Lyric times are stored in SONG time, so moving the song's start point
 // (the "hook" section) keeps the lyrics in sync automatically.
 
-export const songToTimeline = (songTime, song) => songTime - (song ? song.offset : 0);
-export const timelineToSong = (t, song) => t + (song ? song.offset : 0);
+// An edit of several sections of the song ("Song part", js/songpart.js) plays them one after another:
+// song.parts = [{ from, to, at }] (song seconds from–to, starting `at` seconds into the video, in play order).
+// Without parts the song plays as one stretch from song.offset.
+// Parts only count while the song still starts on the first one: anything that moves song.offset (Find the hook,
+// a template, dragging the song) goes back to one stretch.
+const multi = (song) => !!song && Array.isArray(song.parts) && song.parts.length > 1 && Math.abs(song.parts[0].from - (song.offset || 0)) < 0.0005;
+
+/** Does the edit play several parts of the song (song.parts in use)? */
+export const hasSongParts = (song) => multi(song);
+
+export function songToTimeline(songTime, song) {
+  if (!multi(song)) return songTime - (song ? song.offset : 0);
+  const ps = song.parts;
+  const hit = ps.find((q) => songTime >= q.from && songTime < q.to);
+  if (hit) return hit.at + (songTime - hit.from);
+  if (songTime < ps[0].from) return ps[0].at + (songTime - ps[0].from);
+  // a moment cut out of the edit sits at the start of the next part that comes later in the song
+  const later = ps.filter((q) => q.from > songTime).sort((a, b) => a.from - b.from)[0];
+  if (later) return later.at;
+  const last = ps[ps.length - 1];
+  return last.at + (songTime - last.from);
+}
+
+export function timelineToSong(t, song) {
+  if (!multi(song)) return t + (song ? song.offset : 0);
+  let q = song.parts[0];
+  for (const x of song.parts) if (t >= x.at) q = x;
+  return q.from + (t - q.at);
+}
+
+/** How far into the song the video is at `t`, minus `t`: song.offset for one stretch, the part's own for several. */
+export const songOffsetAt = (t, song) => timelineToSong(t, song) - t;
 
 /** Lines active at song time ts; the most recently started one wins. */
 export function activeLyric(lyrics, ts) {

@@ -1,5 +1,6 @@
 // App shell: layout, wiring, keyboard shortcuts and autosave.
-import { ASPECTS, clipAt, layoutClips, splitClip, clamp, linesFromText, timelineToSong, uid, detectBeats } from './core.js';
+import { openSongPart, partSummary } from './panel-songpart.js';
+import { ASPECTS, clipAt, layoutClips, splitClip, clamp, linesFromText, timelineToSong, songOffsetAt, uid, detectBeats } from './core.js';
 import { gameParts, applySongTemplate } from './songtemplates.js';
 import { syncLayer } from './layersync.js';
 import { describeSyncPoint, inForSyncPoint } from './clipsync.js';
@@ -1201,7 +1202,8 @@ manager = createManager({
       return c.toDataURL('image/jpeg', 0.85);
     },
     /** Put a song's title, lyrics and audio into the video edit, then switch to the studio. */
-    openPromo(song) {
+    /** opts.askPart: then ask which part of the song the video is of (Make a promo). */
+    openPromo(song, opts = {}) {
       const p = store.get();
       const rec = song.audioId && media.get(song.audioId);
       const plan = songLyricsPlan(song);
@@ -1231,6 +1233,7 @@ manager = createManager({
       if (b && (b.theme || b.logoId)) applyArtist(manager.currentArtist(), { quiet: true });
       setMode('studio');
       ui.openTab(song.lyrics.trim() || timed ? 'lyrics' : 'start');
+      if (rec && opts.askPart) setTimeout(() => store.get().managerSongId === song.id && ui.openSongPart(), 0);
       toast(`“${song.title}” is in the editor${timed ? (plan.stale ? ' with its saved timing, but the lyrics changed since they were timed: re-time or keep it on the Lyrics tab.' : ', its lyrics already in time.') : song.lyrics.trim() ? '. Next: tap along to sync the lyrics.' : '.'}`, plan.stale ? 'error' : 'info', 6000);
     },
   },
@@ -1584,6 +1587,19 @@ ui.songTemplateContext = () => {
     })(),
   };
 };
+/** "Which part of the song?": entire song, one section, several sections or a range (panel-songpart.js). */
+ui.openSongPart = (opts = {}) => {
+  if (opts.songId && store.get().managerSongId !== opts.songId) {
+    ui.chooseSong(opts.songId);
+    if (store.get().managerSongId !== opts.songId) {
+      const s = manager.store.get().songs.find((x) => x.id === opts.songId);
+      return toast(`“${s ? s.title : 'This song'}” has no song file yet: add it on its Overview in Songs & releases.`, 'error', 6000), null;
+    }
+    ui.refreshPanels(true);
+  }
+  return openSongPart({ store, engine, ctx: () => ui.songTemplateContext(), refresh: () => ui.refreshPanels(true), detect: (id) => ui.detectSongSections(id), picture: opts.picture || null });
+};
+ui.songPartSummary = () => partSummary(store.get(), ui.songTemplateContext());
 /** Open a song's Sections tab in the Manager and start detecting its sections from the audio. */
 ui.detectSongSections = (songId) => {
   requestDetect(songId);
@@ -1852,7 +1868,8 @@ store.subscribe((p, meta) => {
   const tabIds = ok ? ((song.files && song.files.tabs) || []).map((t) => t.mediaId) : [];
   const tc = tabSyncChanges(tabSeen, p.layers, tabIds, (id) => savedTabSync(song, id));
   tabSeen = tc.seen;
-  const vc = videoSyncChange(vidSeen, clipPlaces(p), ok && song.files && song.files.video ? song.files.video.mediaId : '', p.song ? p.song.offset || 0 : 0);
+  // each clip's start as song time, so a clip in a later song part (song.parts) is measured against its own part
+  const vc = videoSyncChange(vidSeen, clipPlaces(p).map((c) => ({ ...c, start: timelineToSong(c.start, p.song) })), ok && song.files && song.files.video ? song.files.video.mediaId : '', 0);
   vidSeen = vc.seen;
   if (meta.type !== 'update' || !ok) return;
   if (tc.fresh.length) {
@@ -1904,7 +1921,7 @@ function sendToEdit(rec, how) {
       const clip = makeOverlayClip(rec, Math.min(engine.t, Math.max(0, d.duration - 1)));
       // the song's music video starts in sync with the song
       const pt = songSync.videoPoint(rec);
-      if (pt != null) clip.in = inForSyncPoint(pt, clip.start, d.song ? d.song.offset || 0 : 0, rec.duration, clip.duration);
+      if (pt != null) clip.in = inForSyncPoint(pt, clip.start, songOffsetAt(clip.start, d.song), rec.duration, clip.duration);
       L.clips.push(clip);
       selectId = L.id;
     } else if (how === 'drums') {
