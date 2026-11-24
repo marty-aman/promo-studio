@@ -5,7 +5,11 @@
 import { autoSyncBox } from './panel-autosync.js';
 import { LOW_CONFIDENCE } from './lyricsync.js';
 import { sortLyrics, songToTimeline } from '../core.js';
-import { markTimed, timingFromLyrics, setSongTiming } from '../manager/lyrictiming.js';
+import { markTimed, timingFromLyrics, setSongTiming, lyricsFromTiming } from '../manager/lyrictiming.js';
+import { mergeAutoWords, handLinesHit } from '../wordtiming.js';
+
+/** Word timing set by hand on some of these lines: keep it (true) or let Auto-sync replace it (false)? */
+const keepHandWords = (n) => !n || confirm(`You timed the words of ${n} line${n === 1 ? '' : 's'} by hand. Keep your word timing on ${n === 1 ? 'it' : 'them'}?\n\nOK keeps yours (Auto-sync’s words are kept for “Reset to auto-sync”). Cancel lets Auto-sync replace ${n === 1 ? 'it' : 'them'}.`);
 
 const summary = (res, info) => {
   const flagged = res.lines.filter((l) => l.flagged).length;
@@ -28,10 +32,11 @@ export function studioAutoSync({ store, engine, ui, media }) {
     },
     blob: (id) => (media.get(id) || {}).blob || null,
     apply(res, info) {
+      const keepHand = keepHandWords(handLinesHit(sorted(), res.lines));
       store.update((d) => {
         const old = sortLyrics(d.lyrics).filter((l) => String(l.text || '').trim());
         const keep = d.lyrics.filter((l) => !String(l.text || '').trim());
-        d.lyrics = [...old.map((l, i) => (res.lines[i] ? { ...l, start: res.lines[i].start, end: res.lines[i].end, words: res.lines[i].words, conf: res.lines[i].conf } : l)), ...keep];
+        d.lyrics = [...mergeAutoWords(old, res.lines.map((l, i) => ({ start: l.start, end: l.end, words: l.words, conf: l.conf, text: old[i] && old[i].text })), { keepHand }), ...keep];
         d.lyricsTimed = markTimed(d.lyricsTimed, 'auto');
       });
       ui.refreshPanels(true);
@@ -67,7 +72,11 @@ export function managerAutoSync(ctx, song, S) {
     confirmReplace: () => !song.lyricTiming || confirm(`Replace the saved timing of “${song.title}” with the auto-synced one?`),
     apply(res, info) {
       const mix = song.audioId && ctx.studio.mediaInfo(song.audioId);
-      const timing = timingFromLyrics(res.lines.map((l) => ({ text: l.text, start: l.start, end: l.end, words: l.words, conf: l.conf })), { source: 'auto', songLength: (mix && mix.duration) || 0, lyricsText: song.lyrics });
+      const fresh = res.lines.map((l) => ({ text: l.text, start: l.start, end: l.end, words: l.words, conf: l.conf }));
+      const old = lyricsFromTiming(song.lyricTiming, () => '');
+      const keepHand = keepHandWords(handLinesHit(old, fresh));
+      const lines = mergeAutoWords(fresh.map((f, i) => ({ ...(old[i] || {}), text: f.text })), fresh, { keepHand });
+      const timing = timingFromLyrics(lines, { source: 'auto', songLength: (mix && mix.duration) || 0, lyricsText: song.lyrics });
       ctx.update(S((s) => setSongTiming(s, timing)));
       return summary(res, info);
     },

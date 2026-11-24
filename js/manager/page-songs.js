@@ -4,6 +4,7 @@ import { h, icon, button, iconButton, toast, pickFiles, download } from '../dom.
 import { timingSummary, timingStale, keepTiming, setSongTiming, timingFromLRC, timingToLRC, timingToSRT, SOURCE_LABELS } from './lyrictiming.js';
 import { driveButton } from '../gdrive.js';
 import { managerAutoSync } from '../ai/panel-lyricsync.js';
+import { wordTimingBox } from './page-wordtiming.js';
 import { SONG_STATUSES, TASK_CATS, newSong, taskDue, releaseProgress, releaseChecklist, niceDate, daysBetween, mid, deleteSong, markPreReleaseDone, isPreReleaseMoot } from './model.js';
 import { hookLines, planPosts } from './ideas.js';
 import { releaseTaskState, releaseTaskDone, setTaskDone } from './todoauto.js';
@@ -329,6 +330,7 @@ function lyricsTab(ctx, song, S) {
       h('p', { class: 'muted tiny' }, 'Use them as the first line of a short video, a caption, or the end card. The Video shoot tab suggests concepts from these words.'),
       button('Send lyrics to the video editor', () => ctx.studio.openPromo(song), { iconName: 'film', variant: 'sm' }),
       timingSection(ctx, song, S),
+      wordTimingBox(ctx, song, S),
     ),
   );
 }
