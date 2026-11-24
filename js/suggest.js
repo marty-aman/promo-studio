@@ -6,6 +6,7 @@ import { applyTemplate, tabSources, TEMPLATES } from './templates.js';
 import { isBassTrack } from './tab.js';
 import { suggestBackdrops } from './backgrounds.js';
 import { bestStart, isWeakTake } from './framequality.js';
+import { templatePart, applySongPart } from './songpart.js';
 
 const beatCache = new Map(); // song media id -> detectBeats result (or null)
 
@@ -218,5 +219,19 @@ export function applyTake(d, take, { inv, seed = 0, palette = null, tabTempo = (
     facts.push(`Cut-outs in front of ${best.label}`);
   }
   d.suggestion = take.id;
+  return facts;
+}
+
+/**
+ * A take built for a part of the song: `choice` (songpart.js; null or kind 'own' = the take's own hook) with
+ * partCtx { song, audio, video, ... } from the Templates tab. The take is cut for the part's first stretch and
+ * length, then the edit plays the part (several sections join as song.parts; your clips from the take stay).
+ */
+export function applyTakePart(d, take, opts, choice, partCtx) {
+  const part = choice && partCtx && partCtx.audio && opts.inv.song && opts.inv.song.id === partCtx.audio.id ? templatePart(choice, partCtx) : null;
+  if (!part) return applyTake(d, take, opts);
+  const facts = applyTake(d, { ...take, hookLen: part.length, start: part.parts[0].from }, opts);
+  applySongPart(d, choice, { ...partCtx, picture: 'keep' });
+  facts.unshift(`${part.parts.map((q) => q.label).join(', ')} (${formatTime(part.length, false)}), the part you picked`);
   return facts;
 }

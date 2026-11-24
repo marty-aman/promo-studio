@@ -696,6 +696,23 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
   Several sections play as `song.parts` (each from its own player, so they crossfade); anything that moves
   the song's start (Find the hook, dragging the song, a template) goes back to one stretch. Templates show
   the stretch they picked as the Song part.
+- **Templates for a part of the song:** the Templates tab (and the Suggested edits) has a **Part of the song**
+  line: **Each template's own pick** (the default: the best 15–30 s, the Chorus promo's chorus), **Entire song**,
+  any one section, or **Several sections or a custom range…** (the same "Which part" sheet, ending in **Use for
+  the templates**). It starts on the song part you chose for the edit, else the last one remembered for the song;
+  Entire song in the edit counts as no choice, so templates keep their own length until you pick a part. With no
+  sections it offers **Detect sections from the audio**. Every song template (Music video + lyrics, Raw footage +
+  lyrics, Chorus promo, Rhythm game), every look template and the Suggested edits are then built for that part:
+  the song, the music video in sync with its saved offset (one piece per part), footage on the beat, lyrics and
+  word timing (kept in song time), tab, drum, MIDI and rhythm game layers (their song offset is unchanged), the
+  beat grid and the end card right after the part. The Chorus promo needs no Chorus section once you pick a part.
+  One undo reverts it. Themes and Guitar Pro / drum / rhythm game themes never change the part, and a layer added
+  later starts at the part's song moment. **Song part → Change** in the Audio tab on an edit a song template made
+  offers **Re-make "…" for this part** (default) or **Only change the song part**, and warns when you changed the
+  edit by hand since the template made it. The part and the template that made it are saved with the edit
+  (`songPart.template`, `songPart.sig`), so projects, the project library, project files and backups keep them;
+  older saves load as before. Not covered: Spotify Canvas (a silent loop), Inspiration trend recipes and
+  playbook buttons (they pick their own hook), Export → Song sections (one file per section already).
 - **App layouts:** TikTok, Instagram Reels, YouTube Shorts, "works on all three" and full frame. A layout
   moves lyrics, text, logo, progress bar and the end card into that app's clear area; templates keep it.
 - **Sound effects (Audio tab):** one list, **Your sounds**, holds everything you have: your own clips, the
@@ -1273,8 +1290,8 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/subtitles.js` | Captions: .srt/.vtt in and out, caption styles, the lyrics and captions as cues in video time (unit tested) |
 | `js/rhythmgame.js`, `js/gamechart.js` | Rhythm game layer: charts from tabs, MIDI or stems, drawing, themes (unit tested) |
 | `js/songtemplates.js` | Templates from a song's files: rhythm game, music video + lyrics, raw footage + lyrics, chorus promo (unit tested) |
-| `js/songpart.js` | Song part: entire song, one section, several sections (joins, crossfades) or a range, applied to the edit (unit tested) |
-| `js/panel-songpart.js` | The "Which part of the song?" dialog (a bottom sheet on a phone) and the Audio tab's Song part line |
+| `js/songpart.js` | Song part: entire song, one section, several sections (joins, crossfades) or a range, applied to the edit, or to a template built for a part (`templatePart`, `defaultTemplatePart`, `editSignature`; unit tested) |
+| `js/panel-songpart.js` | The "Which part of the song?" dialog (a bottom sheet on a phone) the Audio tab's Song part line (re-makes a template-built edit) and the Templates / Suggested tabs' **Part of the song** picker |
 | `js/sectiondetect.js` | Song sections from the audio: chroma and timbre every 0.5 s, self-similarity, novelty peaks, repeat grouping and labels, in small async slices (unit tested) |
 | `js/lyricsfetch.js` | Lyrics for the chosen song: Songs & releases or LRCLIB, LRC parsing (unit tested) |
 | `js/manager/lyrictiming.js` | Lyric timing kept on the song: normalize, save rules, stale check, .lrc/.srt (unit tested) |
