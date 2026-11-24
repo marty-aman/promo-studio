@@ -393,6 +393,17 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
 - Upload videos and images, or drag files anywhere onto the window.
 - Free stock footage search: Pexels and Pixabay (free API key, stored only in your browser) and
   Wikimedia Commons (no key). Hover to preview; credits are collected for your post caption.
+- **Split a layer at the playhead:** select a guitar tab, drum chart, visualizer, MIDI notes or rhythm game layer
+  and press **S** (or **Split** in the timeline toolbar, **Split at playhead** in the layer's settings or its
+  long-press menu). The layer becomes two pieces, "Name" and "Name (part 2)", that meet at the playhead, keep the
+  same look and settings and stay in sync with the song (both keep the same song offset, so the second piece
+  carries on where the first stopped). Keyframes are cut with it (each side gets a keyframe at the cut with the
+  value there), the entrance stays on the first piece and the exit on the last, and a visualizer that plays its
+  stem plays it once, from the first piece. Pieces that touch draw as one layer: no fade at the cut, and the
+  drum chart's combo counter carries on. The second piece is selected, one Ctrl+Z puts the layer back whole, and
+  with the playhead outside the layer's time it says where the layer is. Video layers aren't split: split the
+  clips on them. Moves with a curved easing that cross the cut are eased again over each half (Linear and Hold
+  stay exact). MIDI notes and rhythm game layers now also follow their **When it shows** times.
 - Sequential video track: reorder by dragging, trim either edge, split at the playhead (S),
   duplicate, delete.
 - Per clip: speed (0.25×–4×), fill / fit / fit with blurred background, zoom, pan, rotate, mirror,
@@ -973,7 +984,7 @@ Center for what is rising today. The trend list lives in `js/inspiration.js`.
 | Key | Does |
 |---|---|
 | Space, ← / →, Home, End | Play, step a frame (Shift = 1 s), go to the start or end |
-| **S** | Split under the playhead: the selected clip, text, lyric line (its words are shared out) or extra audio block, else the main-lane clip. The song runs under the whole video and says so instead |
+| **S** | Split under the playhead: the selected clip, text, lyric line (its words are shared out), extra audio block or chart/visualizer layer, else the main-lane clip. The song runs under the whole video and says so instead |
 | **Ctrl+D** | Duplicate the selection right after itself (clip, text, lyric line, audio block, layer) |
 | **Ctrl+C**, **Ctrl+V** | Copy, then paste at the playhead |
 | Delete, Ctrl+Z, Ctrl+Shift+Z, G, O | Delete, undo, redo, safe-area guide, phone-app preview |

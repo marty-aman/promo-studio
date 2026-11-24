@@ -151,7 +151,7 @@ selectBtn.setAttribute('aria-pressed', 'false');
 const tlToolbar = h(
   'div',
   { class: 'tl-toolbar' },
-  button('Split', () => ui.split(), { iconName: 'scissors', variant: 'sm', title: 'Split the clip under the playhead (S)' }),
+  button('Split', () => ui.split(), { iconName: 'scissors', variant: 'sm', title: 'Split at the playhead (S): the selected text, lyric line, audio block or chart/visualizer layer, else the clip under the playhead' }),
   button('Delete', () => ui.deleteSelection(), { iconName: 'trash', variant: 'sm', title: 'Delete the selected items (Delete)' }),
   selectBtn,
   snapBtn,
@@ -341,14 +341,17 @@ const ui = {
       const laid = f.clip && !f.layer ? layoutClips(p.clips).find((l) => l.clip.id === sel.id) : null;
       const under = f.clip && (f.layer ? engine.t > f.clip.start && engine.t < f.clip.start + f.clip.duration : laid && engine.t > laid.start && engine.t < laid.end);
       if (under) res = applyEdit((d) => splitClipAt(d, sel.id, engine.t));
-    } else if (sel && sel.type !== 'layer') {
+    } else if (sel && sel.type === 'layer') {
+      // a chart or visualizer layer is cut at the playhead; it says so when the playhead is outside it
+      res = applyEdit((d) => splitItem(d, sel, engine.t));
+    } else if (sel) {
       res = applyEdit((d) => splitItem(d, sel, engine.t));
       // the selected block isn't under the playhead: the clip under it is split instead, as before
       if (res.error && /playhead inside/.test(res.error)) (miss = res.error), (res = null);
     }
     if (!res) {
       const hit = clipAt(p.clips, engine.t);
-      if (!hit) return toast(miss || 'Move the playhead over a clip to split it, or select a text, lyric line or audio block.');
+      if (!hit) return toast(miss || 'Move the playhead over a clip to split it, or select a text, lyric line, audio block or layer.');
       res = applyEdit((d) => splitClipAt(d, hit.clip.id, engine.t));
     }
     if (res.error) return toast(res.error);
