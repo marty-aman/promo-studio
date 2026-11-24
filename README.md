@@ -921,6 +921,29 @@ Center for what is rising today. The trend list lives in `js/inspiration.js`.
 - The zoom is not saved with the project (the app saves no timeline view settings); a new page starts at 40 px
   per second.
 
+### Selecting and moving several blocks (Video Studio)
+
+- **Shift+click** or **Ctrl/Cmd+click** a block to add it to the selection, or take it out again. Drag on empty
+  timeline space to draw a box: every block it touches is selected (hold Shift to add to what is already
+  selected). **Ctrl+A** selects every block on the selected block's row; press it again for every block on the
+  timeline. **Escape** clears. Selected blocks are outlined in yellow; the one shown in the settings panel is
+  outlined in white, and the toolbar says how many are selected.
+- Drag any selected block to move them all by the same amount, across rows. The dragged block snaps by its edges
+  (to other blocks, the playhead and beats). The group stops when its earliest block reaches 0 (lyric lines: the
+  start of the song), and a visualizer range stays inside the video. One Ctrl+Z undoes the whole move, and
+  keyframes move with their blocks.
+- Clips on the main Video track have no gaps, so selected main clips move as one run into the nearest slot between
+  the other clips, and the rest of the group moves by the same amount. They must sit next to each other;
+  otherwise nothing moves and a message says why.
+- **← / →** nudge the group a frame (Shift: a second); main clips step one slot. Alt+arrows still move the
+  playhead. **Delete** removes the group. **Ctrl+C / Ctrl+V** paste the group at the playhead with its spacing.
+  **Ctrl+D** puts a copy right after it.
+- On a phone or tablet, tap **Select** in the timeline toolbar. Taps then add or remove blocks, and one finger on
+  empty space draws the box. Drag a selected block to move the group. Tap **Select** again to go back to
+  scrolling with one finger.
+- An empty-track click still moves the playhead. A drag on empty track space now draws the box, so scrub on the
+  ruler.
+
 ### Editing keys (Video Studio)
 
 | Key | Does |
@@ -1096,6 +1119,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/engine.js` | Playback clock, media sync, Web Audio mix, export |
 | `js/timeline.js` | Multi-track timeline UI |
 | `js/tlzoom.js` | Timeline zoom maths: zoom limits from the edit's length, fit, the log slider, ruler spacing (unit tested) |
+| `js/multimove.js` | Multi-selection on the timeline: rows, select all, the group move plan (clamps, main-track slots), delete, copy, paste and duplicate of a group (unit tested) |
 | `js/panels.js` | Tool panels and inspector |
 | `js/stock.js` | Pexels / Pixabay / Wikimedia search and download |
 | `js/app.js` | Layout, wiring, shortcuts, the four workspaces, save banner and export lock |

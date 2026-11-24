@@ -6,6 +6,7 @@ import { describeSyncPoint, inForSyncPoint } from './clipsync.js';
 import { savedVideoSync, setVideoSync, sameVideoSync, savedTabSync, setTabSync, sameTabSync, syncPatch, tabSyncChanges, videoSyncChange, autoSyncDecision, describeTabSync } from './songsync.js';
 import { createStore, newProject, loadProject, saveProject, FONTS, findClip, loadRecent, saveRecent, setSaveFailHandler } from './state.js';
 import { splitItem, splitClipAt, duplicateItem, copyItem, pasteItem, safeRect, meterFill, meterHold } from './studioedit.js';
+import { liveGroup, inGroup, rowOf, allItems, planMove, applyMove, deleteGroup, copyGroup, pasteGroup, duplicateGroup } from './multimove.js';
 import { makeProjectFile, parseProjectFile, projectFileName, pushRecent, hasContent } from './projectfile.js';
 import { media, restoreMedia, restoreMissing, fileKind, addMedia, kindOf } from './media.js';
 import { configureRelink, refreshRelink, relinkButton, openRelink, missingFor } from './relink.js';
@@ -135,14 +136,22 @@ const snapBtn = iconButton('magnet', 'Snap to edges, playhead and beats', () => 
   snapBtn.classList.toggle('on', ui.snap);
   snapBtn.setAttribute('aria-pressed', ui.snap ? 'true' : 'false');
 });
+const TL_HINT = 'Drag blocks to move · drag edges to trim · Shift+click or drag a box to select several · Ctrl+wheel to zoom · Shift+Z fits';
+const tlHint = h('span', { class: 'muted tiny tl-hint' }, TL_HINT);
+const selectBtn = button('Select', () => {
+  ui.multiSelect = !ui.multiSelect;
+  timeline.render();
+}, { iconName: 'check', variant: 'sm', title: 'Select several: click or tap blocks to add them, drag on empty space to box them. Drag one to move them all.' });
+selectBtn.setAttribute('aria-pressed', 'false');
 const tlToolbar = h(
   'div',
   { class: 'tl-toolbar' },
   button('Split', () => ui.split(), { iconName: 'scissors', variant: 'sm', title: 'Split the clip under the playhead (S)' }),
-  button('Delete', () => ui.deleteSelection(), { iconName: 'trash', variant: 'sm', title: 'Delete the selected item (Delete)' }),
+  button('Delete', () => ui.deleteSelection(), { iconName: 'trash', variant: 'sm', title: 'Delete the selected items (Delete)' }),
+  selectBtn,
   snapBtn,
   h('div', { class: 'spacer' }),
-  h('span', { class: 'muted tiny' }, 'Drag blocks to move · drag edges to trim · Ctrl+wheel to zoom · Shift+Z fits'),
+  tlHint,
   button('Fit', () => ui.zoomToFit(), { variant: 'sm', title: 'Zoom to fit the whole edit (Shift+Z)' }),
   iconButton('zoomOut', 'Zoom out', () => ui.setZoom(ui.pxPerSec / 1.3)),
   zoom,
@@ -172,6 +181,10 @@ const engine = new Engine(store, canvas);
 
 const ui = {
   selection: null,
+  /** A multi-selection (two or more { type, id }), or []. ui.selection is its last-picked block (the inspector shows that one). */
+  group: [],
+  /** The Select button: taps and clicks add blocks to the multi-selection (touch has no Shift key). */
+  multiSelect: false,
   pxPerSec: 40,
   snap: true,
   follow: true,
@@ -179,6 +192,7 @@ const ui = {
   tab: (localStorage.getItem('pvm.tab') || 'start').replace(/^guitar$/, 'guitarpro').replace(/^tabstudio$/, 'layers'),
   select(sel) {
     this.selection = sel;
+    this.group = [];
     // jump to the panel that edits what was just selected (only now, not on every refresh)
     const homeId = sel && { layer: 'layers', song: 'audio', endcard: 'endcard' }[sel.type];
     const [home, homeFold] = homeId ? panels.resolveTab(homeId) : [];
@@ -193,6 +207,36 @@ const ui = {
     timeline.render();
     if (this.onSelect) this.onSelect();
     if ((sel && sel.type === 'lyric' && this.tab === 'lyrics') || leftSignature() !== leftSig) rebuildLeft();
+  },
+  /** Select several blocks at once (one or none falls back to a plain selection). The last one is shown in the inspector. */
+  setGroup(list) {
+    const g = liveGroup(store.get(), list);
+    if (g.length < 2) return this.select(g[0] || null);
+    this.select(g[g.length - 1]);
+    this.group = g;
+    timeline.render();
+  },
+  /** Ctrl+A: every block on the selected block's row; again (or with nothing selected), every block on the timeline. */
+  selectAll() {
+    const p = store.get();
+    const row = rowOf(p, this.selection);
+    const onRow = row ? allItems(p, row) : [];
+    const already = onRow.length && onRow.every((s) => inGroup(this.group.length ? this.group : [this.selection], s));
+    this.setGroup(row && !already ? onRow : allItems(p));
+  },
+  /** Arrow keys with a multi-selection: move the group a frame (Shift: a second). Video-track clips move one slot. */
+  nudgeGroup(dir, big) {
+    const p = store.get();
+    const plan = planMove(p, this.group, dir * (big ? 1 : 1 / 30), { slot: dir });
+    if (plan.error) return toast(plan.error);
+    if (!plan.delta && plan.insertAt == null) return;
+    store.update((d) => applyMove(d, this.group, plan), 'nudge-group');
+  },
+  /** The timeline calls this on every render with the size of the multi-selection (0 when there is none). */
+  groupShown(n) {
+    tlHint.textContent = n ? `${n} selected · drag one to move them all · arrows nudge · Esc clears` : TL_HINT;
+    selectBtn.classList.toggle('on', !!this.multiSelect);
+    selectBtn.setAttribute('aria-pressed', this.multiSelect ? 'true' : 'false');
   },
   /** Zoom the timeline to `v` px per second, keeping the moment under `clientX` (or the playhead) in place. */
   setZoom(v, clientX) {
@@ -291,6 +335,12 @@ const ui = {
   },
   /** Ctrl+D: a copy of the selection right after itself. */
   duplicate() {
+    if (this.group.length > 1) {
+      const g = applyEdit((d) => duplicateGroup(d, this.group));
+      if (g.error) return toast(g.error);
+      ui.setGroup(g.group);
+      return toast(`Duplicated ${g.group.length} items. Ctrl+Z undoes it.`);
+    }
     const r = applyEdit((d) => duplicateItem(d, this.selection));
     if (r.error) return toast(r.error);
     ui.select(r.sel);
@@ -298,13 +348,18 @@ const ui = {
   },
   /** Ctrl+C. */
   copy() {
-    const c = copyItem(store.get(), this.selection);
+    const c = this.group.length > 1 ? copyGroup(store.get(), this.group) : copyItem(store.get(), this.selection);
     if (!c) return toast('Select a clip, text, lyric line, audio block or layer to copy.');
     this.clipboard = c;
-    toast('Copied. Move the playhead and press Ctrl+V to paste it there.');
+    toast(c.group ? `Copied ${c.group.length} items. Move the playhead and press Ctrl+V to paste them there.` : 'Copied. Move the playhead and press Ctrl+V to paste it there.');
   },
   /** Ctrl+V: paste what was copied at the playhead. */
   paste() {
+    if (this.clipboard && this.clipboard.group) {
+      const g = applyEdit((d) => pasteGroup(d, this.clipboard, engine.t));
+      if (g.error) return toast(g.error);
+      return ui.setGroup(g.group);
+    }
     const r = applyEdit((d) => pasteItem(d, this.clipboard, { mode: 'at', t: engine.t }));
     if (r.error) return toast(r.error);
     ui.select(r.sel);
@@ -370,6 +425,12 @@ const ui = {
   deleteSelection() {
     const sel = this.selection;
     if (!sel) return;
+    if (this.group.length > 1) {
+      const g = this.group;
+      store.update((d) => deleteGroup(d, g));
+      toast(`Deleted ${g.length} items. Ctrl+Z brings them back.`);
+      return this.select(null);
+    }
     store.update((d) => {
       if (sel.type === 'clip') d.clips = d.clips.filter((c) => c.id !== sel.id);
       if (sel.type === 'lyric') d.lyrics = d.lyrics.filter((c) => c.id !== sel.id);
@@ -556,6 +617,11 @@ store.subscribe((p, meta) => {
       (s.type === 'text' && !p.texts.some((c) => c.id === s.id)) ||
       (s.type === 'audio' && !p.audioTracks.some((c) => c.id === s.id));
     if (gone) ui.selection = null;
+  }
+  if (ui.group.length) {
+    // undo/redo or a delete can take blocks out of a multi-selection
+    const g = liveGroup(p, ui.group);
+    ui.group = g.length > 1 ? g : [];
   }
   if (engine.t > p.duration) engine.t = p.duration;
   timeline.render();
@@ -896,6 +962,9 @@ window.addEventListener('keydown', (e) => {
     } else if (k === 'v' && ui.clipboard) {
       e.preventDefault();
       ui.paste();
+    } else if (k === 'a') {
+      e.preventDefault();
+      ui.selectAll();
     }
     return;
   }
@@ -911,6 +980,10 @@ window.addEventListener('keydown', (e) => {
     case 'ArrowRight': {
       if (e.target.type === 'range') return;
       e.preventDefault();
+      if (ui.group.length > 1 && !e.altKey) {
+        ui.nudgeGroup(e.key === 'ArrowLeft' ? -1 : 1, e.shiftKey);
+        break;
+      }
       const step = e.shiftKey ? 1 : 1 / 30;
       engine.seek(engine.t + (e.key === 'ArrowLeft' ? -step : step));
       break;
