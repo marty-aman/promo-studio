@@ -8,7 +8,9 @@ import { FORMATS, PLATFORMS, GROUPINGS, formatLabel, parseLink, isYouTube, fetch
 import { buildOutreach } from './page-outreach.js'; // also registers the outreach follow-ups in the agenda
 import { captionsTab, saveToBank } from './page-captions.js';
 
-export const contentUI = { song: '', status: '', by: 'format', open: null, busy: false };
+export const contentUI = { song: '', status: '', by: 'format', open: null, busy: false, limit: 100 };
+/** Rows of the schedule drawn at first and per "Show more" press: 500 posts at once is 25,000 elements and a second of waiting. */
+const POST_PAGE = 100;
 /**
  * Tabs on the Content page: [key, label, build(ctx) => node]. The first (no builder) is the schedule
  * below. A build adds its tab with ONE line at the end of this file: CONTENT_TABS.push([...]).
@@ -162,9 +164,9 @@ export function buildContent(ctx) {
 
   // ---- schedule
   const songSel = h('select', { 'aria-label': 'Song' }, h('option', { value: '' }, 'All songs'), m.songs.map((s) => h('option', { value: s.id, selected: ui.song === s.id }, s.title)));
-  songSel.addEventListener('change', () => ((ui.song = songSel.value), re()));
+  songSel.addEventListener('change', () => ((ui.song = songSel.value), (ui.limit = POST_PAGE), re()));
   const stSel = h('select', { 'aria-label': 'Status' }, h('option', { value: '' }, 'Any status'), POST_STATUSES.map(([k, l]) => h('option', { value: k, selected: ui.status === k }, l)));
-  stSel.addEventListener('change', () => ((ui.status = stSel.value), re()));
+  stSel.addEventListener('change', () => ((ui.status = stSel.value), (ui.limit = POST_PAGE), re()));
   const posts = all.filter((p) => !ui.status || p.status === ui.status).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   const add = () => ctx.update((d) => d.posts.push({ id: mid('post'), songId: ui.song || (m.songs[0] && m.songs[0].id) || '', date: ctx.today(), platform: 'TikTok', format: 'other', title: 'New post', hook: '', idea: '', status: 'idea', url: '', stats: null }));
   const planFor = (song) => {
@@ -188,7 +190,10 @@ export function buildContent(ctx) {
       ),
     );
   };
-  const rows = posts.flatMap((p) => {
+  // the post whose stats are open stays on screen even when it is further down than the rows shown
+  const openAt = ui.open ? posts.findIndex((p) => p.id === ui.open) : -1;
+  const limit = Math.max(ui.limit || POST_PAGE, openAt + 1);
+  const rows = posts.slice(0, limit).flatMap((p) => {
     const mt = postMetrics(p.stats);
     const link = parseLink(p.url);
     const main = h(
@@ -238,7 +243,8 @@ export function buildContent(ctx) {
       h('h2', {}, `Schedule · ${posts.length} posts`),
       h('div', { class: 'mgr-filters' }, songSel, stSel, m.songs.filter((s) => s.releaseDate).length ? h('span', { class: 'row' }, h('span', { class: 'muted small' }, 'Plan around release:'), m.songs.filter((s) => s.releaseDate).map((s) => button(s.title, () => planFor(s), { variant: 'chip' }))) : null),
       posts.length
-        ? h('table', { class: 'mgr-table mgr-posts' }, h('thead', {}, h('tr', {}, ['Date', 'Song', 'Type', 'Post', 'App', 'Status', 'Link', 'Stats', ''].map((x) => h('th', {}, x)))), h('tbody', {}, rows))
+        ? h('div', {}, h('table', { class: 'mgr-table mgr-posts' }, h('thead', {}, h('tr', {}, ['Date', 'Song', 'Type', 'Post', 'App', 'Status', 'Link', 'Stats', ''].map((x) => h('th', {}, x)))), h('tbody', {}, rows)),
+            posts.length > limit ? h('div', { class: 'row' }, button(`Show ${Math.min(POST_PAGE, posts.length - limit)} more`, () => ((ui.limit = limit + POST_PAGE), re()), { variant: 'sm' }), button('Show all', () => ((ui.limit = posts.length), re()), { variant: 'sm ghost' }), h('span', { class: 'muted small' }, `${limit} of ${posts.length} posts shown`)) : null)
         : h('div', { class: 'mgr-empty' }, h('p', {}, 'No posts yet. Plan them from a song’s release date, or add one.'), button('Add a post', add, { iconName: 'plus', variant: 'sm primary' })),
     ),
   );

@@ -4,6 +4,7 @@ import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const HOST = '127.0.0.1';
@@ -127,6 +128,8 @@ async function openaiProxy(req, res) {
   }
 }
 
+const GZ = new Map(); // gzipped text files, by path and validator (a few MB in all)
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${HOST}`);
@@ -145,12 +148,21 @@ const server = http.createServer(async (req, res) => {
     }
     const st = await stat(file);
     if (!st.isFile()) throw new Error('not a file');
-    res.writeHead(200, {
-      'Content-Type': TYPES[extname(file)] || 'application/octet-stream',
-      'Cache-Control': 'no-cache',
-      'X-Content-Type-Options': 'nosniff',
-    });
-    res.end(await readFile(file));
+    // A validator, so a reload answers 304 for every file that did not change (the app is about 200 files), and gzip for
+    // text, which is a third of the size. Cache-Control stays no-cache: the browser asks each time, nothing goes stale.
+    const etag = `"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"`;
+    const type = TYPES[extname(file)] || 'application/octet-stream';
+    const headers = { 'Content-Type': type, 'Cache-Control': 'no-cache', ETag: etag, Vary: 'Accept-Encoding', 'X-Content-Type-Options': 'nosniff' };
+    if (req.headers['if-none-match'] === etag) return void res.writeHead(304, headers).end();
+    let body = await readFile(file);
+    if (/^(text\/|application\/(javascript|json))/.test(type) && body.length > 1024 && /\bgzip\b/.test(req.headers['accept-encoding'] || '')) {
+      const key = file + etag;
+      if (!GZ.has(key)) GZ.set(key, gzipSync(body));
+      body = GZ.get(key);
+      headers['Content-Encoding'] = 'gzip';
+    }
+    res.writeHead(200, headers);
+    res.end(body);
   } catch {
     res.writeHead(404).end('Not found');
   }

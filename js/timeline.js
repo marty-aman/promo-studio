@@ -52,7 +52,19 @@ export function createTimeline({ root, store, engine, ui }) {
 
   // ------------------------------------------------------------ rendering
 
+  // Only blocks near the visible part are drawn (a 30 minute edit has hundreds), the rest are skipped: block() returns
+  // null for them. The selected, multi-selected and dragged blocks are always drawn. A scroll past the margin redraws.
+  let win = { l: -Infinity, r: Infinity, at: 0 };
+  const WIN_MIN_PX = 1600;
+  function setWindow() {
+    const w = Math.max(scroller.clientWidth, WIN_MIN_PX);
+    const l = scroller.scrollLeft;
+    win = { l: l - w, r: l + 2 * w, at: l, w };
+  }
+  const culled = (left, width) => left + width < win.l || left > win.r;
+
   function block({ cls, left, width, label, sub, selected, data, handles = 'both', style = {}, off = null }) {
+    if (!selected && culled(left, width) && !(data && ((groupKeys && groupKeys.has(keyOf(selFor(data.kind, data.id)))) || (preview && preview.id === data.id)))) return null;
     // zoomed far out a block can be a few px wide: no text, no thumbnail (its name stays in the tooltip)
     const thin = width < LABEL_MIN_PX;
     if (width < THUMB_MIN_PX && style.backgroundImage) {
@@ -156,6 +168,8 @@ export function createTimeline({ root, store, engine, ui }) {
     el.append(c);
   }
 
+  const put = (row, el) => el && row.append(el);
+
   /** Greedy lane packing so overlapping items get their own row. */
   function lanes(items, startOf, endOf) {
     const ends = [];
@@ -183,6 +197,7 @@ export function createTimeline({ root, store, engine, ui }) {
     waveUsed = new Map();
     const width = Math.max(scroller.clientWidth, (total + TAIL_SEC) * s);
     content.style.width = `${width}px`;
+    setWindow();
     content.replaceChildren();
     heads.replaceChildren(h('div', { class: 'tl-head ruler-head' }, formatTime(engine.t)));
     const sel = ui.selection;
@@ -227,7 +242,7 @@ export function createTimeline({ root, store, engine, ui }) {
     const minor = minor0 && (total + TAIL_SEC) / minor0 <= 4000 ? minor0 : 0;
     const tick = minor || lStep;
     const per = Math.round(lStep / tick);
-    for (let i = 0; i * tick <= total + TAIL_SEC; i++) {
+    for (let i = Math.max(0, Math.floor(win.l / s / tick)); i * tick <= total + TAIL_SEC && i * tick * s <= win.r; i++) {
       const t = +(i * tick).toFixed(3);
       const major = i % per === 0;
       ruler.append(h('div', { class: `tick${major ? ' major' : ''}`, style: { left: `${t * s}px` } }, major ? h('span', {}, rulerLabel(t, lStep)) : null));
@@ -235,7 +250,7 @@ export function createTimeline({ root, store, engine, ui }) {
     if (p.beats && showBeats(p.beats.beats, s)) {
       for (const b of p.beats.beats) {
         const bt = songToTimeline(b, p.song);
-        if (bt >= 0 && bt <= total) ruler.append(h('div', { class: 'beat', style: { left: `${bt * s}px` } }));
+        if (bt >= 0 && bt <= total && bt * s >= win.l && bt * s <= win.r) ruler.append(h('div', { class: 'beat', style: { left: `${bt * s}px` } }));
       }
     }
     ruler.append(h('div', { class: 'tl-outside', style: { left: `${total * s}px` } }));
@@ -262,6 +277,7 @@ export function createTimeline({ root, store, engine, ui }) {
               off: !!c.disabled,
               style: rec && rec.thumb ? { backgroundImage: `linear-gradient(rgba(10,40,30,.55),rgba(10,40,30,.55)), url(${rec.thumb})` } : {},
             });
+            if (!el) continue;
             clipWave(el, rec, c, c.duration * s);
             row.append(el);
           }
@@ -297,7 +313,7 @@ export function createTimeline({ root, store, engine, ui }) {
       }
       addRow(L.name, `lrow ${L.type}row`, 32, (row) => {
         if (len > 0) {
-          row.append(
+          put(row,
             block({
               cls: `lblk ${L.type}blk`,
               left: a * s,
@@ -330,6 +346,7 @@ export function createTimeline({ root, store, engine, ui }) {
           off: !!l.clip.disabled,
           style: rec && rec.thumb ? { backgroundImage: `linear-gradient(rgba(10,20,40,.55),rgba(10,20,40,.55)), url(${rec.thumb})` } : {},
         });
+        if (!el) return;
         if (preview && preview.id === l.clip.id) {
           el.style.transform = `translateX(${preview.dx}px)`;
           el.classList.add('dragging');
@@ -344,7 +361,7 @@ export function createTimeline({ root, store, engine, ui }) {
     const tl = lanes(p.texts, (x) => x.start, (x) => x.end);
     addRow('Text', 'text', Math.max(30, tl.count * 26 + 4), (row) => {
       for (const tx of p.texts) {
-        row.append(
+        put(row,
           block({
             cls: 'txt',
             left: tx.start * s,
@@ -366,7 +383,7 @@ export function createTimeline({ root, store, engine, ui }) {
         const a = songToTimeline(l.start, p.song);
         const b = songToTimeline(l.end, p.song);
         if (b < 0 || a > total + 4) continue;
-        row.append(
+        put(row,
           block({
             cls: `lyr${l.style ? ' styled' : ''}`,
             left: a * s,
@@ -403,6 +420,7 @@ export function createTimeline({ root, store, engine, ui }) {
             data: { kind: 'song', id: 'song' },
             handles: 'none',
           });
+          if (!el) return;
           el.prepend(waveformCanvas(rec, q.from, to, Math.max(2, (to - q.from) * s), 44, 'rgba(110,231,160,.55)'));
           row.append(el);
         });
@@ -420,6 +438,7 @@ export function createTimeline({ root, store, engine, ui }) {
         data: { kind: 'song', id: 'song' },
         handles: 'none',
       });
+      if (!el) return;
       el.prepend(waveformCanvas(rec, from, to, (to - from) * s, 44, 'rgba(110,231,160,.55)'));
       row.append(el);
     }, { vis: 'song', audio: true });
@@ -437,6 +456,7 @@ export function createTimeline({ root, store, engine, ui }) {
           data: { kind: 'audio', id: a.id },
           off: !!a.disabled,
         });
+        if (!el) return;
         if (rec) el.prepend(waveformCanvas(rec, a.in, a.in + a.duration, a.duration * s, 38, 'rgba(94,234,212,.5)'));
         row.append(el);
       }, { vis: `audio:${a.id}`, audio: true });
@@ -449,7 +469,7 @@ export function createTimeline({ root, store, engine, ui }) {
         return;
       }
       const start = total - p.endCard.duration;
-      row.append(
+      put(row,
         block({
           cls: 'end',
           left: start * s,
@@ -1068,6 +1088,9 @@ export function createTimeline({ root, store, engine, ui }) {
 
   scroller.addEventListener('scroll', () => {
     heads.scrollTop = scroller.scrollTop;
+    // scrolled far enough that the drawn blocks no longer cover the view with room to spare: draw the ones now near.
+    // Done in the scroll event itself (before the next paint) so there is never a frame with a gap.
+    if ((!drag || drag.op === 'pan') && Math.abs(scroller.scrollLeft - win.at) > 0.6 * (win.w || WIN_MIN_PX)) render();
   });
 
   /** Zoom limits in px per second for this edit in this window: zoomed out fully, the whole edit fits. */

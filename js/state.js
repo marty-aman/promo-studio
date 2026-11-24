@@ -170,6 +170,8 @@ export function overlayClipAt(layer, t) {
 
 // ------------------------------------------------------------ store with history
 
+const UNDO_MAX_CHARS = 24_000_000;
+
 export function createStore(initial) {
   let state = initial;
   const undo = [];
@@ -177,6 +179,7 @@ export function createStore(initial) {
   const listeners = new Set();
   let coalesceKey = null;
   let coalesceAt = 0;
+  let undoChars = 0; // the length of every saved step in `undo`
 
   const emit = (meta) => listeners.forEach((fn) => fn(state, meta));
 
@@ -194,8 +197,12 @@ export function createStore(initial) {
       const now = Date.now();
       const coalesce = key && key === coalesceKey && now - coalesceAt < 600;
       if (!coalesce) {
-        undo.push(JSON.stringify(state));
-        if (undo.length > 150) undo.shift();
+        const snap = JSON.stringify(state);
+        undo.push(snap);
+        undoChars += snap.length;
+        // 150 steps, but a big edit (the Manager with thousands of fans, a 30 minute video) keeps fewer, so the history stays
+        // under UNDO_MAX_CHARS (about 48 MB of text). The 20 newest steps are always kept.
+        while (undo.length > 150 || (undoChars > UNDO_MAX_CHARS && undo.length > 20)) undoChars -= undo.shift().length;
         redo.length = 0;
       }
       coalesceKey = key;
@@ -213,6 +220,7 @@ export function createStore(initial) {
       emit({ type: 'patch' });
     },
     replace(next) {
+      undoChars = 0;
       undo.length = 0;
       redo.length = 0;
       state = next;
@@ -221,14 +229,18 @@ export function createStore(initial) {
     undo() {
       if (!undo.length) return false;
       redo.push(JSON.stringify(state));
-      state = JSON.parse(undo.pop());
+      const back = undo.pop();
+      undoChars -= back.length;
+      state = JSON.parse(back);
       coalesceKey = null;
       emit({ type: 'undo' });
       return true;
     },
     redo() {
       if (!redo.length) return false;
-      undo.push(JSON.stringify(state));
+      const snap = JSON.stringify(state);
+      undo.push(snap);
+      undoChars += snap.length;
       state = JSON.parse(redo.pop());
       coalesceKey = null;
       emit({ type: 'redo' });
