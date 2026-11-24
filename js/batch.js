@@ -52,7 +52,11 @@ export function planBatch({ mode = 'song', song = null, mv = null, len = 15, cou
 
 /** Apply one batch item to a project draft. */
 export function applyBatchItem(d, item, { len, mvId = null, mvDuration = 0 }) {
-  if (d.song) d.song.offset = item.songOffset;
+  if (d.song) {
+    d.song.offset = item.songOffset;
+    delete d.song.parts; // each item is one stretch of the song
+    delete d.song.join;
+  }
   d.duration = +(len + (d.endCard.enabled ? d.endCard.duration : 0)).toFixed(2);
   if (mvId) {
     // the music video plays in sync with the song section; its own sound stays muted (the song plays)

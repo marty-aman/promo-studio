@@ -132,6 +132,8 @@ export function applyTake(d, take, { inv, seed = 0, palette = null, tabTempo = (
     const len = Math.min(take.hookLen, Math.max(5, Math.floor(song.duration)));
     // take.start: a stretch chosen by the caller (a song section) instead of the loudest part
     d.song.offset = take.start != null ? take.start : findHook(song.envelope, song.envRate || 100, len, song.duration);
+    delete d.song.parts; // one stretch of the song
+    delete d.song.join;
     d.endCard.enabled = true;
     d.duration = +(len + d.endCard.duration).toFixed(2);
     if (take.start == null) facts.push(`${len} s hook from ${formatTime(d.song.offset, false)}, the loudest part of “${song.name}”`);

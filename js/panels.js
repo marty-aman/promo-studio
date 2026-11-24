@@ -16,6 +16,8 @@ import {
   beatCutPlan,
   songToTimeline,
   timelineToSong,
+  songOffsetAt,
+  hasSongParts,
   clipAt,
   splitClip,
   layoutClips,
@@ -180,7 +182,7 @@ export function createPanels({ store, engine, ui }) {
         const pt = from == null && rec.kind === 'video' && ui.songSync ? ui.songSync.videoPoint(rec) : null;
         if (pt != null) {
           const laid = layoutClips(d.clips).find((l) => l.clip.id === clip.id);
-          clip.in = inForSyncPoint(pt, laid ? laid.start : 0, d.song ? d.song.offset || 0 : 0, rec.duration, clip.duration);
+          clip.in = inForSyncPoint(pt, laid ? laid.start : 0, songOffsetAt(laid ? laid.start : 0, d.song), rec.duration, clip.duration);
         }
         const total = d.clips.reduce((s, c) => s + c.duration, 0);
         if (d.clips.length === 1 && !d.song) d.duration = Math.max(d.duration, +(total + (d.endCard.enabled ? d.endCard.duration : 0)).toFixed(2));
@@ -559,6 +561,7 @@ export function createPanels({ store, engine, ui }) {
               { class: 'song-files-item' },
               m.thumb ? h('img', { src: m.thumb, alt: '' }) : h('span', { class: 'song-files-noimg' }),
               h('span', { class: 'song-files-name', title: m.name }, m.note || m.name, m.duration ? h('span', { class: 'muted tiny' }, ` ${len(m.duration)}`) : null),
+              m.note === 'Music video' && ui.openSongPart ? button('Make a video', () => ui.openSongPart({ songId: s.id, picture: 'video' }), { iconName: 'scissors', variant: 'sm primary', title: 'Pick the part of the song (entire song, a section, several sections or a range): the music video is cut in sync with it' }) : null,
               button('Add', () => send(m.id, 'clip'), { iconName: 'plus', variant: 'sm', title: 'Add to the end of the video track' }),
               iconButton('layers', 'Picture-in-picture at the playhead', () => send(m.id, 'overlay'), 'ghost'),
             ),
@@ -2059,6 +2062,18 @@ export function createPanels({ store, engine, ui }) {
   }
 
   // ---------------------------------------------------------------- AUDIO
+  /** Song part: which part of your song the video is of, and a button to change it (panel-songpart.js). */
+  function songPartBlock() {
+    const ctx = ui.songTemplateContext ? ui.songTemplateContext() : null;
+    if (!ctx || !ctx.song || !ctx.audio || !store.get().song) return null;
+    const sum = ui.songPartSummary ? ui.songPartSummary() : '';
+    return h(
+      'div',
+      { class: 'songpart-block', 'data-songpart': '' },
+      h('div', { class: 'songpart-block-text' }, h('strong', { class: 'small' }, 'Song part'), h('span', { class: 'muted tiny', 'data-songpart-sum': '' }, sum || 'Entire song, one section, several sections or a range')),
+      button(sum ? 'Change' : 'Choose the part', () => ui.openSongPart(), { iconName: 'scissors', variant: sum ? 'sm' : 'sm primary', title: 'Make the video of the entire song, one section, several sections or a custom range: the song, music video, lyrics and captions follow' }),
+    );
+  }
   function buildAudio(b) {
     const p = store.get();
     // only your songs (Songs & releases) are offered as the song; stems and other audio stay in the library
@@ -2078,6 +2093,8 @@ export function createPanels({ store, engine, ui }) {
       if (v.startsWith('song:')) ui.chooseSong(v.slice(5));
       else if (!v) store.update((d) => (d.song = null));
       ui.refreshPanels(true);
+      // then: which part of the song is the video of?
+      if (v.startsWith('song:') && ui.openSongPart && store.get().song) setTimeout(() => ui.openSongPart(), 0);
     });
     const songHint = yours.length
       ? 'Your songs from Songs & releases. To use another audio file, press “Use as song” on it in the media library.'
@@ -2110,13 +2127,17 @@ export function createPanels({ store, engine, ui }) {
             g.fillRect(x, H / 2 - hi * H * 0.48, 1, Math.max(1, (hi - lo) * H * 0.48));
           }
         }
-        const x0 = (pr.song.offset / dur) * W;
-        const x1 = (Math.min(dur, pr.song.offset + pr.duration) / dur) * W;
-        g.fillStyle = 'rgba(110,231,160,.22)';
-        g.fillRect(x0, 0, x1 - x0, H);
-        g.strokeStyle = 'rgba(110,231,160,.95)';
-        g.lineWidth = 2;
-        g.strokeRect(x0 + 1, 1, x1 - x0 - 2, H - 2);
+        // the stretch the video uses (each part, when it plays several: Song part)
+        const spans = hasSongParts(pr.song) ? pr.song.parts.map((q) => [q.from, q.to]) : [[pr.song.offset, Math.min(dur, pr.song.offset + pr.duration)]];
+        for (const [a, z] of spans) {
+          const x0 = (a / dur) * W;
+          const x1 = (z / dur) * W;
+          g.fillStyle = 'rgba(110,231,160,.22)';
+          g.fillRect(x0, 0, x1 - x0, H);
+          g.strokeStyle = 'rgba(110,231,160,.95)';
+          g.lineWidth = 2;
+          g.strokeRect(x0 + 1, 1, x1 - x0 - 2, H - 2);
+        }
       };
       ov._draw = drawOv;
       let dragging = false;
@@ -2167,7 +2188,8 @@ export function createPanels({ store, engine, ui }) {
         h('div', { class: 'row' }, button(p.beats ? `Tempo: ${p.beats.bpm} BPM · redetect` : 'Detect BPM', bpm, { iconName: 'activity', variant: 'ghost' }), p.beats ? button('Clear beats', () => store.update((d) => (d.beats = null)), { variant: 'ghost sm' }) : null),
       );
       b._reg((pp) => {
-        if (pp.song) b._label.textContent = `Using ${formatTime(pp.song.offset)} – ${formatTime(Math.min(rec.duration, pp.song.offset + pp.duration))} of ${formatTime(rec.duration)}`;
+        if (pp.song && hasSongParts(pp.song)) b._label.textContent = `Using ${pp.song.parts.map((q) => `${formatTime(q.from)} – ${formatTime(q.to)}`).join(', ')} of ${formatTime(rec.duration)} (Song part; changing the start below goes back to one stretch)`;
+        else if (pp.song) b._label.textContent = `Using ${formatTime(pp.song.offset)} – ${formatTime(Math.min(rec.duration, pp.song.offset + pp.duration))} of ${formatTime(rec.duration)}`;
       });
     }
 
@@ -2198,7 +2220,7 @@ export function createPanels({ store, engine, ui }) {
     return h(
       'div',
       {},
-      section('Song', field('Track', songSel, songHint), yours.length || curRec ? null : button('Upload a song file', async () => importFiles(await pickFiles('audio/*', false)), { iconName: 'upload', variant: 'primary' }), songBlock),
+      section('Song', field('Track', songSel, songHint), yours.length || curRec ? null : button('Upload a song file', async () => importFiles(await pickFiles('audio/*', false)), { iconName: 'upload', variant: 'primary' }), songPartBlock(), songBlock),
       section('Extra audio', h('p', { class: 'muted small' }, 'Voice-over, a riser or sound effects. Each gets its own track; it starts at the playhead.'), tracks, button('Add audio file', addAudio, { iconName: 'plus' })),
       section('Video clip sound', h('p', { class: 'muted small' }, 'Clips are muted by default so your song is clean. Select a clip on the timeline to turn its own sound up.')),
     );
@@ -2313,7 +2335,7 @@ export function createPanels({ store, engine, ui }) {
     // where the clip and the song are now: the base a nudge or a whole drag is measured from
     const placeFrom = (pp = store.get()) => {
       const f = findClip(pp, sel.id);
-      return { in: f.clip.in || 0, duration: f.clip.duration, speed: f.clip.speed || 1, start: startOf(pp), layer: !!f.layer, songOffset: pp.song.offset || 0, songLen: song.duration, fileLen: rec.duration };
+      return { in: f.clip.in || 0, duration: f.clip.duration, speed: f.clip.speed || 1, start: startOf(pp), layer: !!f.layer, songOffset: songOffsetAt(startOf(pp), pp.song), songLen: song.duration, fileLen: rec.duration };
     };
     // move the in-point (and, when it has to, the clip's length, an overlay's start or the song's start: see clipplace.js)
     const place = (r, key = `sync:${sel.id}`) => {
@@ -2323,14 +2345,14 @@ export function createPanels({ store, engine, ui }) {
         x.in = r.in;
         x.duration = r.duration;
         if (findClip(d, sel.id).layer) x.start = r.start;
-        if (d.song) d.song.offset = r.songOffset;
+        if (d.song && !hasSongParts(d.song)) d.song.offset = r.songOffset; // several song parts: the song's start stays
       }, key);
       return r;
     };
     const setIn = (fn, from = placeFrom()) => place(placeIn(fn(from), from));
     const showInfo = () => {
       const pp = store.get();
-      info.textContent = describeSyncPoint(syncPoint(findClip(pp, sel.id).clip, startOf(pp), pp.song.offset));
+      info.textContent = describeSyncPoint(syncPoint(findClip(pp, sel.id).clip, startOf(pp), songOffsetAt(startOf(pp), pp.song)));
     };
     // drag: moving right makes the video's sound later against the song (an earlier in-point)
     let drag = null;
@@ -2356,7 +2378,7 @@ export function createPanels({ store, engine, ui }) {
     cv.addEventListener('pointerup', end);
     cv.addEventListener('pointercancel', end);
     const x0 = findClip(p, sel.id).clip;
-    const point = syncPoint(x0, startOf(p), p.song.offset);
+    const point = syncPoint(x0, startOf(p), songOffsetAt(startOf(p), p.song));
     const info = h('p', { class: 'small', 'data-k': 'sync-info' }, describeSyncPoint(point));
     const fps = 30;
     const nudge = (sec) => {
@@ -2365,7 +2387,7 @@ export function createPanels({ store, engine, ui }) {
     };
     const auto = () => {
       const pp = store.get();
-      const r = autoLineUp(song, rec, findClip(pp, sel.id).clip, startOf(pp), pp.song.offset);
+      const r = autoLineUp(song, rec, findClip(pp, sel.id).clip, startOf(pp), songOffsetAt(startOf(pp), pp.song));
       if (r.error) return toast(r.error, 'error', 5000);
       const moved = place(placeOnPoint(r.point, placeFrom(pp)));
       toast(`${describeSyncPoint(r.point)} ${r.sure === 'sure' ? 'A clear match.' : r.sure === 'likely' ? 'A likely match: play it to check.' : 'No clear match: play it, and nudge or drag if it’s off.'}${moved.note ? ` ${moved.note}` : ''} Undo (Ctrl+Z) to go back.`, r.sure === 'unsure' ? 'error' : 'info', 8000);
@@ -2393,8 +2415,8 @@ export function createPanels({ store, engine, ui }) {
       const pp = store.get();
       const x = findClip(pp, sel.id).clip;
       if (!x || document.activeElement === secIn || document.activeElement === dirSel) return;
-      const now = pointToDirection(syncPoint(x, startOf(pp), pp.song.offset));
-      if (info) info.textContent = describeSyncPoint(syncPoint(x, startOf(pp), pp.song.offset));
+      const now = pointToDirection(syncPoint(x, startOf(pp), songOffsetAt(startOf(pp), pp.song)));
+      if (info) info.textContent = describeSyncPoint(syncPoint(x, startOf(pp), songOffsetAt(startOf(pp), pp.song)));
       dirSel.value = now.dir;
       secIn.value = now.sec;
       secIn.disabled = now.dir === 'together';
@@ -2405,10 +2427,10 @@ export function createPanels({ store, engine, ui }) {
     const isMv = !!(mv && mv.mvId === rec.id);
     const saveMv = (replace) => {
       const pp = store.get();
-      const pt = syncPoint(findClip(pp, sel.id).clip, startOf(pp), pp.song.offset);
+      const pt = syncPoint(findClip(pp, sel.id).clip, startOf(pp), songOffsetAt(startOf(pp), pp.song));
       ui.songSync.saveVideo(pt, { replace });
     };
-    const mvNow = isMv ? syncPoint(x0, startOf(p), p.song.offset) : 0;
+    const mvNow = isMv ? syncPoint(x0, startOf(p), songOffsetAt(startOf(p), p.song)) : 0;
     const mvState = !isMv
       ? null
       : h(

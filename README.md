@@ -671,6 +671,20 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
     **Detect sections first**, which opens its Sections tab and starts detecting.
   - Each card says what it will use, or what the song still needs. Lyrics come from the edit, else the song's
     own (instrumentals get none). Layers they don't use are hidden, not deleted.
+- **Song part** ("Which part of the song?"): opens after **Make a promo**, after picking a song in the Audio
+  tab, and from **Make a video** on a song's music video (Video tab → From your songs); change it any time
+  with **Song part → Change** in the Audio tab. Choose **Entire song**, **One section** (from the song's
+  Sections tab), **Several sections** (ticked in song order with the gaps cut out, then moved, repeated or
+  left out; a short crossfade, 0.3 s by default, or a hard cut where they meet) or a **Custom range** (typed,
+  or Start/End at the playhead). With no sections it offers **Detect sections from the audio** or a custom
+  range. The preview lists each part, where it lands in the video and the length before **Apply**; one undo
+  reverts it. The picture is the music video in sync with its saved offset (one clip per part), raw footage
+  cut on the beat, the cover, or your own clips kept (the song's music video among them is put back in sync).
+  Lyrics follow by themselves (they are kept in song time); speech captions move with the song, ones in a
+  cut-out part go; texts, layers and the look stay. The last choice is remembered per song in this browser.
+  Several sections play as `song.parts` (each from its own player, so they crossfade); anything that moves
+  the song's start (Find the hook, dragging the song, a template) goes back to one stretch. Templates show
+  the stretch they picked as the Song part.
 - **App layouts:** TikTok, Instagram Reels, YouTube Shorts, "works on all three" and full frame. A layout
   moves lyrics, text, logo, progress bar and the end card into that app's clear area; templates keep it.
 - **Sound effects (Audio tab):** one list, **Your sounds**, holds everything you have: your own clips, the
@@ -1104,6 +1118,8 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/subtitles.js` | Captions: .srt/.vtt in and out, caption styles, the lyrics and captions as cues in video time (unit tested) |
 | `js/rhythmgame.js`, `js/gamechart.js` | Rhythm game layer: charts from tabs, MIDI or stems, drawing, themes (unit tested) |
 | `js/songtemplates.js` | Templates from a song's files: rhythm game, music video + lyrics, raw footage + lyrics, chorus promo (unit tested) |
+| `js/songpart.js` | Song part: entire song, one section, several sections (joins, crossfades) or a range, applied to the edit (unit tested) |
+| `js/panel-songpart.js` | The "Which part of the song?" dialog (a bottom sheet on a phone) and the Audio tab's Song part line |
 | `js/sectiondetect.js` | Song sections from the audio: chroma and timbre every 0.5 s, self-similarity, novelty peaks, repeat grouping and labels, in small async slices (unit tested) |
 | `js/lyricsfetch.js` | Lyrics for the chosen song: Songs & releases or LRCLIB, LRC parsing (unit tested) |
 | `js/manager/lyrictiming.js` | Lyric timing kept on the song: normalize, save rules, stale check, .lrc/.srt (unit tested) |

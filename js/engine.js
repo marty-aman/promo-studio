@@ -1,5 +1,5 @@
 // Playback clock, media synchronisation, audio mixing and rendering.
-import { ASPECTS, layoutClips, fadeGain, clamp, timelineToSong } from './core.js';
+import { ASPECTS, layoutClips, fadeGain, clamp, timelineToSong, hasSongParts } from './core.js';
 import { media, clipElement, pruneClipElements, tabTimeline, drumTimeline, drumHitsFromStem, vizFeatures } from './media.js';
 import { midiNotesFor } from './midiviz.js';
 import { gameChart } from './gamechart.js';
@@ -377,16 +377,36 @@ export class Engine {
     const vis = (k) => isVisible(p, k);
     const audioItems = [];
     if (p.song && media.get(p.song.mediaId)) {
-      audioItems.push({
-        key: 'song',
-        mediaId: p.song.mediaId,
-        start: 0,
-        end: p.duration,
-        target: t + p.song.offset,
-        volume: vis('song') ? p.song.volume ?? 1 : 0,
-        fadeIn: p.song.fadeIn || 0,
-        fadeOut: p.song.fadeOut || 0,
-      });
+      const parts = hasSongParts(p.song) ? p.song.parts : null;
+      if (!parts) {
+        audioItems.push({
+          key: 'song',
+          mediaId: p.song.mediaId,
+          start: 0,
+          end: p.duration,
+          target: t + p.song.offset,
+          volume: vis('song') ? p.song.volume ?? 1 : 0,
+          fadeIn: p.song.fadeIn || 0,
+          fadeOut: p.song.fadeOut || 0,
+        });
+      } else {
+        // several sections: one player each, crossfading (or a hard cut) where they meet
+        const fade = Math.max(0.02, (p.song.join && p.song.join.fade) || 0);
+        parts.forEach((q, i) => {
+          const last = i === parts.length - 1;
+          audioItems.push({
+            key: i ? `song:${i}` : 'song',
+            mediaId: p.song.mediaId,
+            start: q.at,
+            end: last ? p.duration : q.at + (q.to - q.from),
+            target: q.from + (t - q.at),
+            volume: vis('song') ? p.song.volume ?? 1 : 0,
+            fadeIn: i ? fade : p.song.fadeIn || 0,
+            fadeOut: last ? p.song.fadeOut || 0 : fade,
+            park: i ? q.from : null,
+          });
+        });
+      }
     }
     for (const a of p.audioTracks) {
       audioItems.push({
@@ -422,8 +442,10 @@ export class Engine {
       if (active && playing) {
         if (force || Math.abs(el.currentTime - a.target) > 0.12) el.currentTime = a.target;
         if (el.paused) el.play().catch(() => {});
-      } else if (!el.paused) {
-        el.pause();
+      } else {
+        if (!el.paused) el.pause();
+        // a later section's player waits on its first moment, so the join doesn't wait for a seek
+        if (a.park != null && t < a.start && a.start - t < 1.5 && Math.abs(el.currentTime - a.park) > 0.05 && !el.seeking) el.currentTime = a.park;
       }
     }
   }

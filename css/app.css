@@ -1740,3 +1740,36 @@ body.touch .wt-h.e { right: -8px; }
 .mgr-wt-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
 .mgr-wt-list li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mgr-wt-edit summary { cursor: pointer; margin: 6px 0; }
+
+/* Song part (panel-songpart.js): which part of the song the video is of. A bottom sheet on a phone. */
+.songpart-block { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; margin: 6px 0; border: 1px solid var(--accent-soft); background: var(--accent-soft); border-radius: 8px; min-width: 0; }
+.songpart-block-text { display: grid; min-width: 0; overflow-wrap: anywhere; }
+.songpart-dialog { max-width: 560px; width: calc(100% - 32px); max-height: calc(100vh - 48px); border: 1px solid var(--border-strong); border-radius: 12px; background: var(--panel); color: var(--text); padding: 14px 16px; overflow-y: auto; }
+.songpart-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+.songpart-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.songpart-head h2 { margin: 0; font-size: 17px; min-width: 0; overflow-wrap: anywhere; }
+.songpart-body { display: grid; gap: 10px; margin-top: 10px; min-width: 0; }
+.songpart-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.songpart-list, .songpart-order, .songpart-parts, .songpart-notes { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.songpart-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); cursor: pointer; min-width: 0; }
+.songpart-row strong { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.songpart-order { counter-reset: sp; }
+.songpart-order li { display: flex; align-items: center; gap: 2px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 8px; counter-increment: sp; }
+.songpart-order li::before { content: counter(sp) '.'; color: var(--muted); margin-right: 6px; font-size: 12px; }
+.songpart-order-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.songpart-sub { margin: 8px 0 4px; }
+.songpart-join { gap: 10px; flex-wrap: wrap; }
+.songpart-join input[type='number'] { width: 72px; }
+.songpart-picture select { max-width: 100%; }
+.songpart-preview { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); min-width: 0; overflow-wrap: anywhere; }
+.songpart-total { margin: 0 0 6px; }
+.songpart-parts { list-style: decimal inside; margin-bottom: 6px; }
+.songpart-notes { list-style: disc inside; }
+.songpart-actions { justify-content: flex-end; }
+.songpart-range input[type='number'] { width: 100%; }
+@media (max-width: 700px) {
+  .songpart-dialog { width: 100%; max-width: 100%; margin: auto 0 0; max-height: 88vh; border-radius: 14px 14px 0 0; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
+  .songpart-row, .songpart-kinds .btn, .songpart-actions .btn { min-height: 44px; }
+  .songpart-order .icon-btn { min-width: 40px; min-height: 40px; }
+  .songpart-actions .btn { flex: 1 1 0; justify-content: center; }
+}

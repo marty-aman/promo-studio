@@ -281,6 +281,8 @@ export function applySongTemplate(d, id, ctx) {
   if (!ready.ok) throw new Error(ready.missing);
   d.layers = d.layers || [];
   d.texts = [];
+  if (d.song) delete d.song.parts; // a template plays one stretch of the song (see songpart.js)
+  if (d.song) delete d.song.join;
   if (id === 'st-chorus') {
     hideParts(d);
     const sec = firstChorus(ctx.song, ctx.audio.duration || 0);
@@ -386,6 +388,8 @@ export function applySongTemplate(d, id, ctx) {
   }
   endCardFor(d, ctx, ctx.today || '');
   d.template = id;
+  // the stretch it picked shows as the Song part, so it can be changed from there
+  if (d.song) d.songPart = { songId: ctx.song.id, kind: 'range', ids: [], from: d.song.offset, to: +(d.song.offset + Math.max(1, d.duration - (d.endCard.enabled ? d.endCard.duration : 0))).toFixed(3), join: { kind: 'fade', fade: 0.3 }, picture: 'keep', length: +Math.max(1, d.duration - (d.endCard.enabled ? d.endCard.duration : 0)).toFixed(3), byTemplate: id };
   facts.push(`Ends on the end card for “${ctx.song.title}”${ctx.cover ? ' with its cover' : ''}`);
   return facts;
 }
