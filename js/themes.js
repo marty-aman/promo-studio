@@ -162,6 +162,7 @@ export function themeLayer(L, theme, c) {
   if (L.type === 'tab') {
     Object.assign(L, { bg: c.bg, lineColor: c.light, numColor: c.light, hiColor: c.accent, stringColors: stringRamp(c) });
     L.chrome = { bg0: c.bg, bg1: mix(c.bg, c.deep, 0.7), road: c.bg, grid: c.accent, edge: c.accent, rail: c.light, wood0: theme.wood[0], wood1: theme.wood[1], wood2: theme.wood[2], fret: mix(c.light, '#888888', 0.4), nut: c.light, inlay: c.accent };
+    L.tabTheme = 'project'; // the tab theme picker shows the colours came from the project theme
   } else if (L.type === 'drums') {
     L.bg = c.bg;
     L.colors = drumColors(c);
