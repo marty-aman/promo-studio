@@ -380,6 +380,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
           button('Show from playhead', () => store.update(set((x) => (x.start = +engine.t.toFixed(2)))), { variant: 'sm' }),
           button('Hide at playhead', () => store.update(set((x) => (x.end = +engine.t.toFixed(2)))), { variant: 'sm' }),
           button('Until end card', () => store.update(set((x) => (x.end = null))), { variant: 'ghost sm' }),
+          button('Split at playhead', () => ui.split(), { iconName: 'scissors', variant: 'sm', title: 'Cut this layer in two at the playhead (S). Both pieces keep its look and stay in sync with the song.' }),
         ),
       );
     const placement = (defaults) =>

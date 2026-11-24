@@ -14,7 +14,7 @@ import {
 } from './core.js';
 import { FILTER_PRESETS, PLATFORMS, isVisible, overlayClipAt } from './state.js';
 import { drawPlatformOverlay, overlaySupported } from './overlays.js';
-import { safeRect } from './studioedit.js';
+import { safeRect, seamView } from './studioedit.js';
 import { drawMidi } from './midiviz.js';
 import { drawGame, gameTheme } from './rhythmgame.js';
 import { drawTab } from './tab.js';
@@ -1452,8 +1452,11 @@ export function renderFrame(ctx, W, H, project, t, env) {
   // graphics layers in stack order
   for (const l0 of layers) {
     if (l0.type === 'video') continue;
-    const l = animate(l0, t - (l0.start || 0));
-    const mo = layerMotion(l, t, visEnd);
+    // a layer shows from its start until its end (empty = the end card); the MIDI and game layers rely on this
+    if (t < (l0.start || 0) || t >= (l0.end ?? visEnd)) continue;
+    const la = animate(l0, t - (l0.start || 0));
+    const mo = layerMotion(la, t, visEnd);
+    const l = seamView(la, layers, visEnd); // a piece of a split layer draws as the unsplit layer did
     const moving = !isStill(mo);
     if (moving) {
       if (mo.alpha <= 0.001) continue;

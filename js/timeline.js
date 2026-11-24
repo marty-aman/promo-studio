@@ -275,6 +275,12 @@ export function createTimeline({ root, store, engine, ui }) {
         }
         a = songToTimeline(L.offset || 0, p.song);
         label = `${L.name}${rec ? ` · ${rec.title || rec.name}` : ' · choose a file'}`;
+        if (L.chain && len > 0) {
+          // a piece of a split layer: show only the part of the chart it draws
+          const lo = Math.max(a, L.start || 0);
+          len = Math.max(0, Math.min(a + len, L.end ?? visEnd) - lo);
+          a = lo;
+        }
       } else if (L.type === 'viz') {
         a = L.start || 0;
         len = (L.end ?? visEnd) - a;
@@ -289,7 +295,7 @@ export function createTimeline({ root, store, engine, ui }) {
               left: a * s,
               width: len * s,
               label,
-              sub: L.type === 'viz' ? 'drag edges to set when it shows' : 'drag to line up with the song',
+              sub: L.type === 'viz' ? 'drag edges to set when it shows · S splits at the playhead' : 'drag to line up with the song · S splits at the playhead',
               selected: isSel,
               data: { kind, id: L.id },
               handles,

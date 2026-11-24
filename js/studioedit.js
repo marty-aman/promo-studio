@@ -2,6 +2,7 @@
 // safe areas and level maths. Every function works on a project (or a draft of one) and touches no browser API.
 import { layoutClips, timelineToSong, wordTimings, savedWordTimes, splitClip, clamp, uid } from './core.js';
 import { findClip } from './state.js';
+import { valueAt } from './keyframes.js';
 
 const MIN = 0.05; // a piece shorter than this is not worth making
 const copy = (x) => JSON.parse(JSON.stringify(x));
@@ -23,6 +24,86 @@ export function splitKeys(keys, local) {
 
 const setKeys = (item, keys) => (keys ? (item.keys = keys) : delete item.keys);
 
+/**
+ * Like splitKeys, but both pieces also get a keyframe at the cut holding the value there, so a property
+ * that was moving keeps the same value on each side of the cut instead of jumping to the next keyframe.
+ * shortcut: a move with a curved easing is re-eased over each half (exact for Linear and Hold); exact
+ * curves need a "part of an ease" keyframe type, worth it only if someone notices the bend.
+ */
+export function splitKeysAt(keys, local) {
+  if (!keys) return [undefined, undefined];
+  const a = {};
+  const b = {};
+  for (const [path, list] of Object.entries(keys)) {
+    const v = valueAt(list, local);
+    const first = list.filter((k) => k.t < local - 1e-6);
+    const second = list.filter((k) => k.t >= local - 1e-6).map((k) => ({ ...k, t: r3(Math.max(0, k.t - local)) }));
+    if (v === undefined) {
+      if (first.length) a[path] = first;
+      if (second.length) b[path] = second;
+      continue;
+    }
+    const before = first[first.length - 1];
+    a[path] = [...first, { t: r3(local), v, ...(before && before.e ? { e: before.e } : {}) }];
+    b[path] = second.length && second[0].t < 1e-6 ? second : [{ t: 0, v, ...(before && before.e ? { e: before.e } : {}) }, ...second];
+  }
+  return [Object.keys(a).length ? a : undefined, Object.keys(b).length ? b : undefined];
+}
+
+// Layers that draw a chart, notes or a visualizer over a time window (start .. end, null = until the end card).
+const TIMED_LAYERS = new Set(['tab', 'drums', 'viz', 'midi', 'game']);
+const visEndOf = (d) => (d.endCard && d.endCard.enabled ? d.duration - d.endCard.duration : d.duration);
+
+/**
+ * Split a chart or visualizer layer at timeline time `t`: the first piece shows until t, the second from t.
+ * Both keep every setting, so they stay on the same theme and in sync: the chart, notes and audio follow the
+ * song through `offset` (song time of the file's first beat), which is not tied to when the layer shows,
+ * so the second piece carries on exactly where the first stopped. The pieces share `chain`, which the
+ * renderer uses (seamView) to draw them as one layer at the cut: no fade between them.
+ */
+function splitLayer(d, L, t, makeId) {
+  if (L.type === 'video') return { error: 'A video layer holds clips: select a clip on it and split that clip instead.' };
+  if (!TIMED_LAYERS.has(L.type)) return { error: 'This layer can’t be split.' };
+  const start = L.start || 0;
+  const end = L.end ?? visEndOf(d);
+  if (t <= start + MIN || t >= end - MIN) return { error: `Move the playhead inside the layer’s time (${start.toFixed(1)}s to ${end.toFixed(1)}s) to split it.` };
+  const local = t - start;
+  const b = copy(L);
+  b.id = makeId('lyr');
+  L.chain ||= L.id;
+  b.chain = L.chain;
+  const parts = (d.layers || []).filter((x) => x.chain === L.chain).length + 1;
+  b.name = `${String(L.name || 'Layer').replace(/ \(part \d+\)$/, '')} (part ${parts})`;
+  b.start = r3(t);
+  L.end = r3(t);
+  const [ka, kb] = splitKeysAt(L.keys, local);
+  setKeys(L, ka);
+  setKeys(b, kb);
+  delete L.exit; // the first piece carries on into the second: only the last piece leaves
+  delete b.enter; // and only the first one arrives
+  if (b.playAudio) b.playAudio = false; // the stem plays once, from the first piece (it plays for the whole video)
+  d.layers.splice(d.layers.indexOf(L) + 1, 0, b);
+  return { sel: { type: 'layer', id: b.id } };
+}
+
+/**
+ * The layer as the renderer should draw it: a piece of a split layer is drawn as if it started where its
+ * chain started and (when the next piece follows on) never ended, so the built-in fades and running
+ * counters (the drum combo) match the unsplit layer. Its own start/end still decide when it shows.
+ * `layers` are the visible layers; a hidden piece breaks the chain, so the pieces around it fade as usual.
+ */
+export function seamView(L, layers, visEnd) {
+  if (!L || !L.chain) return L;
+  const same = layers.filter((x) => x !== L && x.chain === L.chain && x.type === L.type);
+  if (!same.length) return L;
+  const endOf = (x) => x.end ?? visEnd;
+  let from = L.start || 0;
+  for (let guard = 0, prev; guard < 64 && (prev = same.find((x) => Math.abs(endOf(x) - from) < 1e-3 && (x.start || 0) < from)); guard++) from = prev.start || 0;
+  const joinsNext = same.some((x) => Math.abs((x.start || 0) - endOf(L)) < 1e-3);
+  if (from === (L.start || 0) && !joinsNext) return L;
+  return { ...L, start: from, end: joinsNext ? Infinity : L.end };
+}
+
 /** What a selection points at: { kind, list, item } for text, lyric and audio items, or null. */
 function listFor(d, sel) {
   const list = { text: d.texts, lyric: d.lyrics, audio: d.audioTracks }[sel.type];
@@ -38,7 +119,10 @@ export function splitItem(d, sel, t, makeId = uid) {
   if (!sel) return { error: 'Select a clip, text, lyric line or audio block first.' };
   if (sel.type === 'song') return { error: 'The song runs under the whole video, so it can’t be split. Add it as an extra audio track to cut it, or fade it in the Audio tab.' };
   if (sel.type === 'endcard') return { error: 'The end card can’t be split.' };
-  if (sel.type === 'layer') return { error: 'A layer can’t be split. Split its clips, or duplicate the layer.' };
+  if (sel.type === 'layer') {
+    const L = (d.layers || []).find((x) => x.id === sel.id);
+    return L ? splitLayer(d, L, t, makeId) : { error: 'That layer is gone.' };
+  }
   const f = listFor(d, sel);
   if (!f) return { error: 'Nothing selected can be split.' };
   const { list, item } = f;

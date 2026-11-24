@@ -3353,7 +3353,7 @@ export function createPanels({ store, engine, ui }) {
     }
     if (sel.type === 'layer') {
       const L = findLayer(store.get(), sel.id);
-      return h('div', {}, h('div', { class: 'insp-title' }, icon(L ? LAYER_TYPES[L.type].icon : 'layers', 16), h('span', {}, L ? L.name : 'Layer')), h('p', { class: 'small' }, 'This layer’s settings are in the panel on the left. Drag its block on the timeline to line it up with the song, or use the eye to hide it.'), button('Open settings', () => ui.openTab('layers'), { iconName: 'settings', variant: 'sm primary' }));
+      return h('div', {}, h('div', { class: 'insp-title' }, icon(L ? LAYER_TYPES[L.type].icon : 'layers', 16), h('span', {}, L ? L.name : 'Layer')), h('p', { class: 'small' }, 'This layer’s settings are in the panel on the left. Drag its block on the timeline to line it up with the song, or use the eye to hide it.'), h('div', { class: 'row' }, button('Open settings', () => ui.openTab('layers'), { iconName: 'settings', variant: 'sm primary' }), L && L.type !== 'video' ? button('Split at playhead', () => ui.split(), { iconName: 'scissors', variant: 'sm', title: 'Cut this layer in two at the playhead (S)' }) : null));
     }
     if (sel.type === 'endcard') {
       return h('div', {}, h('div', { class: 'insp-title' }, icon('disc', 16), h('span', {}, 'End card')), h('p', { class: 'small' }, 'Drag its left edge on the timeline to change its length. Everything else is in the End card tab.'));
@@ -3407,7 +3407,7 @@ export function createPanels({ store, engine, ui }) {
         h(
           'dl',
           { class: 'keys' },
-          [['Space', 'Play / pause'], ['← →', 'Step one frame (Shift: 1 s)'], ['S', 'Split clip at playhead'], ['O', 'Cycle phone app buttons'], ['Delete', 'Delete selected'], ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo'], ['Ctrl+wheel', 'Zoom timeline'], ['Home / End', 'Jump to start / end']].map(([k, v]) => [h('dt', {}, h('kbd', {}, k)), h('dd', {}, v)]),
+          [['Space', 'Play / pause'], ['← →', 'Step one frame (Shift: 1 s)'], ['S', 'Split at playhead (clip, text, lyric, audio or layer)'], ['O', 'Cycle phone app buttons'], ['Delete', 'Delete selected'], ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo'], ['Ctrl+wheel', 'Zoom timeline'], ['Home / End', 'Jump to start / end']].map(([k, v]) => [h('dt', {}, h('kbd', {}, k)), h('dd', {}, v)]),
         ),
       ),
     );
