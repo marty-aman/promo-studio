@@ -1795,3 +1795,12 @@ body.touch .tl-block .tl-offbtn { display: none; }
 .off-bar .btn { align-self: flex-start; }
 .off-bar.is-off .btn { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 body.touch .off-bar .btn { min-height: 44px; }
+
+/* tempo control: BPM box, Tap tempo, ×2 ÷2, first beat (panel-tempo.js) */
+.tempo-ctl { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; margin: 8px 0; background: var(--panel-2); }
+.tempo-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; }
+.tempo-ctl .row { margin: 6px 0 0; }
+.tempo-ctl input.num { width: 84px; }
+.tempo-ctl [hidden] { display: none !important; }
+.tempo-ctl .btn.on { border-color: var(--accent); }
+.tempo-src[data-source='set'], .tempo-src[data-source='song'], .tempo-src[data-source='effect'] { color: var(--accent); }

@@ -39,10 +39,10 @@ export function parseRatios(text, fallback = [3, 4]) {
  * A cycle is `bars` bars of `beatsPerBar` beats. The tempo is the song's beats when there are any
  * and `followSong` is on, otherwise `bpm`. `t0` is the first beat (the song's downbeat).
  */
-export function polyTiming({ beats = null, bpm = 120, bars = 1, beatsPerBar = 4, followSong = true } = {}, ts) {
+export function polyTiming({ beats = null, bpm = 120, first = 0, bars = 1, beatsPerBar = 4, followSong = true } = {}, ts) {
   const useSong = followSong && beats && beats.period > 0;
   const beat = useSong ? beats.period : 60 / Math.max(20, Math.min(300, bpm || 120));
-  const t0 = useSong && beats.beats && beats.beats.length ? beats.beats[0] : 0;
+  const t0 = useSong ? (beats.beats && beats.beats.length ? beats.beats[0] : 0) : Math.max(0, +first || 0);
   const cycle = beat * beatsPerBar * Math.max(0.25, bars);
   const x = (ts - t0) / cycle;
   const index = Math.floor(x);
@@ -268,6 +268,6 @@ const DRAW = { polygons: drawPolygons, arcs: drawArcs, polymeter: drawPolymeter 
 
 /** Draw a polyrhythm style. `beats` is the project's beat grid ({ period, beats }) or null. */
 export function drawPoly(ctx, layer, ts, beats, g) {
-  const T = polyTiming({ beats, bpm: layer.bpm, bars: layer.bars ?? (layer.style === 'arcs' ? 4 : 1), beatsPerBar: layer.beatsPerBar || 4, followSong: layer.followSong !== false }, ts);
+  const T = polyTiming({ beats, bpm: layer.bpm, first: layer.first, bars: layer.bars ?? (layer.style === 'arcs' ? 4 : 1), beatsPerBar: layer.beatsPerBar || 4, followSong: layer.followSong !== false }, ts);
   DRAW[layer.style](ctx, layer, T, g);
 }

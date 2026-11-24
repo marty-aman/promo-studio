@@ -953,6 +953,33 @@ Center for what is rising today. The trend list lives in `js/inspiration.js`.
 - The sec.frame value is a seek box: type 12.15 (seconds.frame), 12 (seconds) or 1:02 / 1:02.50 (a clock time) and
   press Enter to jump there; Escape leaves it. A frame of 30 or more is refused.
 
+### Tempo for the beat effects (Video Studio)
+
+Everything that follows the beat reads one **project tempo**, with an optional tempo of its own on a few effects.
+
+- **Project tempo** (Audio tab → Tempo): a BPM box (20 to 300, decimals allowed, e.g. 128.5), **Tap tempo** (the
+  average gap of your last 8 taps; a pause over 2.5 s starts over), **×2** and **÷2**, and **Use the song's BPM**
+  when the song in Songs & releases has a BPM saved (shown as a suggestion, never applied by itself). **Save as the
+  song's BPM** writes the tempo back to the song. A label shows where it comes from: *from song*, *set by you*,
+  *detected* (Detect BPM) or *default* (no tempo yet: 120 BPM, exactly as before).
+- **First beat at** (seconds into the song) with ±0.05 / ±0.5 nudges and **Set first beat at the playhead**. The grid
+  reaches back before the first beat, so beats fall on both sides of it. Changing the BPM keeps the first beat.
+- **Its own tempo** (the same controls, plus **Same as the project**): the Look's *Flash on the beat*, a clip's beat
+  effects (zoom pulse, shake, RGB split, strobe, invert), a drum chart's beat lines and a rhythm game's beat lines
+  (Guitar Pro / MIDI / drums / game layers). A polyrhythm / polymeter layer uses the same controls on its own
+  *bpm*, *first beat* and *follow the song* fields. For a Guitar Pro or MIDI chart the box is the BPM the chart plays
+  at (the file's BPM × the layer's tempo scale, so ×2 plays it twice as fast).
+- Follow the project tempo (no own box): beat text animations, lyric styles that pulse, backdrops, the beat markers
+  on the ruler and snapping, Auto-edit to the beat, Suggested edits and the song templates (a tempo you set is used
+  for their cuts instead of the detected one).
+- The preview and the export draw from the same value, a change shows at once, and each change is one Ctrl+Z (typing
+  counts when you leave the box; taps less than 0.6 s apart share a step). Everything is saved with the project, the
+  project library, project files and backups. Projects saved before this load unchanged and keep their tempo.
+- Where it is stored: `project.beats` = `{ bpm, period, beats, first?, source? }` (`source` `'set'` or `'song'`;
+  none means detected); an own tempo is `tempo: { bpm, first }` on a clip, the Look or a layer. The maths is in
+  `js/tempo.js`, the control in `js/panel-tempo.js`.
+- Choosing a different song drops a detected tempo (it belonged to the old song) but keeps one you set.
+
 ### Timeline zoom (Video Studio)
 
 - Edits can be up to an hour long (the **Length** box and the end handle on the ruler; it was 10 minutes).
@@ -1214,6 +1241,8 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `vendor/alphatab/` | alphaTab 1.9.0 parser (MPL-2.0), loaded only when a tab is used |
 | `js/engine.js` | Playback clock, media sync, Web Audio mix, export |
 | `js/timeline.js` | Multi-track timeline UI |
+| `js/tempo.js` | Tempo maths: BPM limits, tap tempo, ×2 / ÷2, beat times from BPM and first beat, which grid an effect follows (unit tested) |
+| `js/panel-tempo.js` | The tempo control (BPM box, Tap tempo, ×2, ÷2, song BPM, first beat) for the project and for effects with their own |
 | `js/timecode.js` | Time readout maths: clock time, seconds.frame, and the seek box parser (unit tested) |
 | `js/timereadout.js` | The player's two-line time readout and seek box |
 | `js/tlzoom.js` | Timeline zoom maths: zoom limits from the edit's length, fit, the log slider, ruler spacing (unit tested) |

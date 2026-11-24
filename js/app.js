@@ -583,7 +583,7 @@ function leftSignature() {
   const parts = [ui.tab, media.all().length, p.aspect];
   if (ui.tab === 'lyrics') parts.push(p.lyrics.map((l) => `${l.id}:${l.start}:${l.end}:${wordsSig(l)}`).join('|'), panels.sync.active, panels.sync.cursor, ui.selection && ui.selection.id, p.lyricStyle.display);
   const has = (...ids) => ids.includes(ui.tab);
-  if (has('audio')) parts.push(p.song && p.song.mediaId, p.beats && p.beats.bpm, p.audioTracks.map((a) => `${a.id}:${a.start}:${a.duration}`).join('|'));
+  if (has('audio')) parts.push(p.song && p.song.mediaId, !!p.beats, p.audioTracks.map((a) => `${a.id}:${a.start}:${a.duration}`).join('|'));
   if (ui.tab === 'text') parts.push(p.texts.map((t) => `${t.id}:${t.text}:${t.start}:${t.end}`).join('|'));
   if (ui.tab === 'export') parts.push(p.clips.length, !!p.song, p.endCard.coverMediaId, p.duration, p.endCard.enabled, p.name, p.endCard.title, p.endCard.artist, p.endCard.cta, p.endCard.subtext);
   if (has('video')) parts.push(p.clips.length);
@@ -1581,6 +1581,16 @@ ui.chooseSong = (songId) => {
   });
   panels.actions.useSong(rec);
 };
+/** Write a tempo into the song's BPM box (Songs & releases); false when the edit isn't one of your songs. */
+ui.saveSongBpm = (bpm) => {
+  const ctx = ui.songContext();
+  if (!ctx || !ctx.song) return false;
+  manager.store.update((d) => {
+    const s = d.songs.find((x) => x.id === ctx.song.id);
+    if (s) s.bpm = String(+(+bpm).toFixed(2));
+  });
+  return true;
+};
 /** Files uploaded in the studio for the current song: add them to its stems in Songs & releases too. */
 ui.addStemsToSong = (recs) => {
   const ctx = ui.songContext();
@@ -1613,7 +1623,7 @@ ui.songTemplateContext = () => {
     song: s,
     band: m.band.name || '',
     audio,
-    beats: audio ? beatsFor.get(audio.id) || null : null,
+    beats: p.beats && p.beats.source ? p.beats : audio ? beatsFor.get(audio.id) || null : null,
     video: vrec && vrec.kind === 'video' ? { rec: vrec, offset: f.video.offset || 0 } : null,
     footage,
     parts: gameParts({ tabs, midis, stems }),

@@ -33,6 +33,8 @@ import { driveButton } from './gdrive.js';
 import { lyricIdeas, applyLyricIdea } from './lyricideas.js';
 import { tipSettings, saveTipSettings } from './panel-tips.js';
 import { createKeyframeUI } from './panel-kf.js';
+import { gridFromBpm, gridLength } from './tempo.js';
+import { tempoControl, projectTarget, clipTempoTarget, lookTempoTarget, tempoSummary } from './panel-tempo.js';
 import { EXITS } from './exits.js';
 import { templateFromProject, applyMyTemplate, templateFile, parseTemplateFile, describeTemplate } from './mytemplates.js';
 import { bgRemoveSection } from './panel-bgremove.js';
@@ -192,7 +194,8 @@ export function createPanels({ store, engine, ui }) {
     useSong(rec) {
       store.update((d) => {
         d.song = { mediaId: rec.id, offset: 0, volume: 1, fadeIn: 0.3, fadeOut: 1.2 };
-        d.beats = null;
+        // a detected tempo belongs to the old song; one you set or took from the song stays, laid out over the new one
+        d.beats = d.beats && d.beats.source ? gridFromBpm(d.beats.bpm, d.beats.first, gridLength(d, rec.duration), d.beats.source) : null;
       });
       toast('Song set. Use “Find the hook” in the Audio tab to pick the best section.');
       if (ui.onSongChosen) ui.onSongChosen(rec); // fill the lyrics for it
@@ -1524,10 +1527,16 @@ export function createPanels({ store, engine, ui }) {
       beatsBox.append(h('label', { class: 'toggle' }, cb, h('span', {}, m.name)));
     });
     const per = h('select', {}, [1, 2, 4, 8].map((n) => h('option', { value: n, selected: n === 4 }, `every ${n} beat${n > 1 ? 's' : ''}`)));
+    // the tempo the cuts land on, with a way to change it (the control itself is in the Audio tab)
+    const tempoLine = () => {
+      const t = h('span', { 'data-k': 'autoedit-tempo' });
+      b._reg((pp) => (t.textContent = pp.beats ? `Cuts land on ${tempoSummary(pp)}.` : 'No tempo yet.'));
+      return h('p', { class: 'muted tiny' }, t, ' ', h('button', { type: 'button', class: 'link', onclick: () => ui.openTab('audio') }, 'Change the tempo'));
+    };
     const autoEdit = () => {
       const p = store.get();
       if (!p.song) return toast('Choose a song first (Audio tab).', 'error');
-      if (!p.beats) return toast('Detect the tempo first (Audio tab → Detect BPM).', 'error');
+      if (!p.beats) return toast('Set the tempo first (Audio tab → Tempo: type it, tap it or Detect BPM).', 'error');
       const ids = visual.filter((m) => picks.has(m.id)).map((m) => m.id);
       if (!ids.length) return toast('Pick at least one clip or image.', 'error');
       const contentEnd = p.duration - (p.endCard.enabled ? p.endCard.duration : 0);
@@ -1575,6 +1584,7 @@ export function createPanels({ store, engine, ui }) {
             h('p', { class: 'muted small' }, 'Replaces the video track with cuts that land on the beat of your song, cycling through the media you pick.'),
             beatsBox,
             field('Cut', per),
+            tempoLine(),
             button('Build beat-synced edit', autoEdit, { iconName: 'wand', variant: 'primary' }),
           )
         : null,
@@ -2185,7 +2195,7 @@ export function createPanels({ store, engine, ui }) {
         b.number('Song starts at (s)', (pp) => pp.song && pp.song.offset, g((o, v) => (o.offset = v)), { min: 0, step: 0.1 }),
         b.range('Volume', (pp) => pp.song && pp.song.volume, g((o, v) => (o.volume = v)), { min: 0, max: 1.5, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
         h('div', { class: 'grid2' }, b.number('Fade in (s)', (pp) => pp.song && pp.song.fadeIn, g((o, v) => (o.fadeIn = v)), { min: 0, max: 10, step: 0.1 }), b.number('Fade out (s)', (pp) => pp.song && pp.song.fadeOut, g((o, v) => (o.fadeOut = v)), { min: 0, max: 10, step: 0.1 })),
-        h('div', { class: 'row' }, button(p.beats ? `Tempo: ${p.beats.bpm} BPM · redetect` : 'Detect BPM', bpm, { iconName: 'activity', variant: 'ghost' }), p.beats ? button('Clear beats', () => store.update((d) => (d.beats = null)), { variant: 'ghost sm' }) : null),
+        h('div', { class: 'row' }, button(p.beats ? 'Detect BPM again' : 'Detect BPM', bpm, { iconName: 'activity', variant: 'ghost' }), p.beats ? button('Clear beats', () => store.update((d) => (d.beats = null)), { variant: 'ghost sm' }) : null),
       );
       b._reg((pp) => {
         if (pp.song && hasSongParts(pp.song)) b._label.textContent = `Using ${pp.song.parts.map((q) => `${formatTime(q.from)} – ${formatTime(q.to)}`).join(', ')} of ${formatTime(rec.duration)} (Song part; changing the start below goes back to one stretch)`;
@@ -2221,6 +2231,11 @@ export function createPanels({ store, engine, ui }) {
       'div',
       {},
       section('Song', field('Track', songSel, songHint), yours.length || curRec ? null : button('Upload a song file', async () => importFiles(await pickFiles('audio/*', false)), { iconName: 'upload', variant: 'primary' }), songPartBlock(), songBlock),
+      section(
+        'Tempo',
+        h('p', { class: 'muted small' }, 'Beat effects, beat-synced cuts, the beat markers on the ruler and the drum and game beat lines follow this tempo. Effects can have their own: look for “Tempo” in their settings.'),
+        tempoControl(b, { store, engine, ui }, projectTarget(), { title: 'Project tempo' }),
+      ),
       section('Extra audio', h('p', { class: 'muted small' }, 'Voice-over, a riser or sound effects. Each gets its own track; it starts at the playhead.'), tracks, button('Add audio file', addAudio, { iconName: 'plus' })),
       section('Video clip sound', h('p', { class: 'muted small' }, 'Clips are muted by default so your song is clean. Select a clip on the timeline to turn its own sound up.')),
     );
@@ -2675,6 +2690,7 @@ export function createPanels({ store, engine, ui }) {
         b.range('Light leaks', (p) => p.look.lightLeak || 0, l((o, v) => (o.lightLeak = v)), { min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
         b.range('Scanlines', (p) => p.look.scanlines || 0, l((o, v) => (o.scanlines = v)), { min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
         b.range('Flash on the beat', (p) => p.look.beatFlash || 0, l((o, v) => (o.beatFlash = v)), { min: 0, max: 1, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` }),
+        tempoControl(b, { store, engine, ui }, lookTempoTarget(), { title: 'Flash tempo', note: 'The flash follows the project tempo unless you set its own here. Beat text animations follow the project tempo (Audio tab).' }),
         h('p', { class: 'muted tiny' }, 'Color filters, zoom and speed are per clip: select a clip on the timeline.'),
       ),
       section(
@@ -3242,11 +3258,12 @@ export function createPanels({ store, engine, ui }) {
         ),
         section(
           'Effects',
-          h('p', { class: 'muted tiny' }, 'Beat effects follow the song’s beat. Run “Detect BPM” in the Audio tab first; otherwise they use 120 BPM.'),
+          h('p', { class: 'muted tiny' }, 'Beat effects follow the project tempo (Audio tab → Tempo); until one is set they use 120 BPM. This clip can have its own tempo below.'),
           ...['beatPulse', 'shake', 'rgb', 'flicker'].map((k) =>
             b.range(CLIP_EFFECTS[k], () => findClip(store.get(), sel.id).clip?.effects?.[k] || 0, c((x, v) => (x.effects = { ...(x.effects || {}), [k]: v })), { min: 0, max: 1, step: 0.01, fmt: (v) => (v ? `${Math.round(v * 100)}%` : 'Off') }),
           ),
           ...['vhs', 'strobe', 'invertBeat'].map((k) => b.toggle(CLIP_EFFECTS[k], () => findClip(store.get(), sel.id).clip?.effects?.[k], c((x, v) => (x.effects = { ...(x.effects || {}), [k]: v })))),
+          tempoControl(b, { store, engine, ui }, clipTempoTarget(sel.id), { title: 'Beat tempo for this clip' }),
           b.select('Mirror', () => findClip(store.get(), sel.id).clip?.effects?.mirror || 'none', c((x, v) => (x.effects = { ...(x.effects || {}), mirror: v })), MIRRORS),
           button('Clear effects', () => store.update(c((x) => (x.effects = {}))), { variant: 'ghost sm' }),
         ),
