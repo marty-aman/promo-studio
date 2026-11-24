@@ -563,10 +563,12 @@ function showPage() {
 }
 
 const loadTemplatesCount = () => (localStorage.getItem('pvm.templates.v1') || '').length;
+/** A lyric line's word times and text, so the Lyrics tab's word timing editor rebuilds after a change or an undo. */
+const wordsSig = (l) => (l.words || l.wordsBy ? `${l.wordsBy || ''}${l.text}${(l.words || []).map((k) => `${k.t},${k.end}`).join(';')}` : '');
 function leftSignature() {
   const p = store.get();
   const parts = [ui.tab, media.all().length, p.aspect];
-  if (ui.tab === 'lyrics') parts.push(p.lyrics.map((l) => `${l.id}:${l.start}:${l.end}`).join('|'), panels.sync.active, panels.sync.cursor, ui.selection && ui.selection.id, p.lyricStyle.display);
+  if (ui.tab === 'lyrics') parts.push(p.lyrics.map((l) => `${l.id}:${l.start}:${l.end}:${wordsSig(l)}`).join('|'), panels.sync.active, panels.sync.cursor, ui.selection && ui.selection.id, p.lyricStyle.display);
   const has = (...ids) => ids.includes(ui.tab);
   if (has('audio')) parts.push(p.song && p.song.mediaId, p.beats && p.beats.bpm, p.audioTracks.map((a) => `${a.id}:${a.start}:${a.duration}`).join('|'));
   if (ui.tab === 'text') parts.push(p.texts.map((t) => `${t.id}:${t.text}:${t.start}:${t.end}`).join('|'));
@@ -1141,7 +1143,7 @@ manager = createManager({
       const m = id && media.get(id);
       if (!m) return null;
       const tab = m.kind === 'tab' ? { title: m.title || '', tracks: (m.tracks || []).map((t) => t.name), drumTracks: (m.drumTracks || []).length } : {};
-      return { id: m.id, name: m.name, kind: m.kind, duration: Number.isFinite(m.duration) ? m.duration : 0, thumb: m.thumb || null, url: m.url, width: m.width || 0, height: m.height || 0, ...tab };
+      return { id: m.id, name: m.name, kind: m.kind, duration: Number.isFinite(m.duration) ? m.duration : 0, thumb: m.thumb || null, url: m.url, width: m.width || 0, height: m.height || 0, peaks: m.peaks || null, peaksPerSec: m.peaksPerSec || 0, ...tab };
     },
     /**
      * Put a song's file into the current edit. `how`: 'clip' (end of the main video track),

@@ -46,6 +46,8 @@ import { LINE_PRESETS, lineStyle, hasLineStyle } from './linestyle.js';
 import { THEMES, themeById, applyTheme } from './themes.js';
 import { stemRoleLabel } from './manager/files.js';
 import { markTimed, timingSummary, SOURCE_LABELS } from './manager/lyrictiming.js';
+import { wordTimingEditor } from './panel-wordtiming.js';
+import { handTimedCount, wordsStale, clearHandWords } from './wordtiming.js';
 
 const themeState = { motion: false };
 import { ensureLayerAnalyses, videoWaveform } from './media.js';
@@ -130,6 +132,7 @@ export function createPanels({ store, engine, ui }) {
   engine.limiterOn = settings.limiter !== false;
   const kf = createKeyframeUI({ store, engine });
   const sync = { active: false, cursor: 0 };
+  const wordUI = { lineId: '', word: 0, target: 'word' }; // the word timing editor's line and word, kept between rebuilds
 
   // -------------------------------------------------------------- media actions
   const actions = {
@@ -1903,6 +1906,7 @@ export function createPanels({ store, engine, ui }) {
             list,
           )
         : null,
+      p.lyrics.length ? wordTimingSection(p, sorted) : null,
       section(
         'Lyric style',
         h('div', { class: 'lbl' }, 'How lyrics are shown'),
@@ -1928,6 +1932,66 @@ export function createPanels({ store, engine, ui }) {
         display === 'line' ? b.toggle('Background box', (p) => p.lyricStyle.box, s((o, v) => (o.box = v))) : null,
         display === 'line' ? h('div', { class: 'grid2' }, b.color('Box color', (p) => p.lyricStyle.boxColor, s((o, v) => (o.boxColor = v))), b.range('Box opacity', (p) => p.lyricStyle.boxOpacity, s((o, v) => (o.boxOpacity = v)), { min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` })) : null,
       ),
+    );
+  }
+
+  /** "4 · Word timing": when each word of a line starts and ends (Karaoke, Word by word and the lyric displays). */
+  function wordTimingSection(p, sorted) {
+    const lines = sorted.filter((l) => String(l.text || '').trim());
+    if (!lines.length) return null;
+    const selId = ui.selection && ui.selection.type === 'lyric' ? ui.selection.id : wordUI.lineId;
+    const line = lines.find((l) => l.id === selId) || lines[0];
+    if (wordUI.lineId !== line.id) Object.assign(wordUI, { lineId: line.id, word: 0 });
+    const num = (l) => sorted.indexOf(l) + 1;
+    const pick = h('select', { 'aria-label': 'Line to time', 'data-k': 'wt-line' }, lines.map((l) => h('option', { value: l.id, selected: l.id === line.id }, `${num(l)} · ${l.text.length > 44 ? `${l.text.slice(0, 43)}…` : l.text}`)));
+    pick.addEventListener('change', () => {
+      const l = lines.find((x) => x.id === pick.value);
+      if (l) selectLyric(l);
+    });
+    const i = lines.indexOf(line);
+    // one undo step per change; the timing then saves on the song by itself, like line times
+    const edit = (ids, fn) => store.update((d) => {
+      d.lyrics.forEach((x) => ids.includes(x.id) && fn(x));
+      d.lyricsTimed = markTimed(d.lyricsTimed, d.lyricsTimed && d.lyricsTimed.by === 'auto' ? 'auto' : 'manual');
+    });
+    const song = p.song;
+    const player = song && media.get(song.mediaId)
+      ? {
+          play(from) {
+            const at = songToTimeline(from, store.get().song);
+            if (at > store.get().duration - 0.2) return toast('That line is past the end of this edit.', 'error'), false;
+            engine.seek(Math.max(0, at));
+            engine.play();
+            return true;
+          },
+          stop: () => engine.pause(),
+          now: () => timelineToSong(engine.t, store.get().song),
+          playing: () => engine.playing,
+        }
+      : null;
+    const sc = ui.songContext ? ui.songContext() : null;
+    const vocal = sc && sc.stems.find((x) => x.role === 'vocals' && media.get(x.mediaId) && media.get(x.mediaId).peaks);
+    const rec = vocal ? media.get(vocal.mediaId) : song && media.get(song.mediaId);
+    const peaks = rec && rec.peaks ? { data: rec.peaks, perSec: rec.peaksPerSec, label: vocal ? 'Vocal stem' : 'Song' } : null;
+    const hand = handTimedCount(lines);
+    const stale = lines.filter(wordsStale);
+    const anim = p.lyricStyle.animation;
+    const shows = (p.lyricStyle.display || 'line') !== 'line' || anim === 'karaoke' || anim === 'words';
+    return section(
+      '4 · Word timing',
+      h('p', { class: 'muted tiny' }, 'When each word of a line lights up in the Word by word and Karaoke looks. Drag a word’s edge or the word itself; it saves on the song with the line times.'),
+      shows ? null : h('p', { class: 'muted tiny' }, 'Your lyric look shows whole lines. Pick Word by word or Karaoke under Lyric style to see the words timed.'),
+      h('div', { class: 'row wt-pick' }, iconButton('arrowLeft', 'Previous line', () => lines[i - 1] && selectLyric(lines[i - 1]), 'ghost'), pick, iconButton('arrowRight', 'Next line', () => lines[i + 1] && selectLyric(lines[i + 1]), 'ghost')),
+      wordTimingEditor({ line, commit: (fn) => edit([line.id], fn), player, peaks, fps: 30, state: wordUI }),
+      h('p', { class: 'small', 'data-k': 'wt-count' }, `Word timing: ${hand} line${hand === 1 ? '' : 's'} hand-timed`,
+        hand ? [' ', button('Clear all', () => confirm(`Clear the word timing you set on ${hand} line${hand === 1 ? '' : 's'}? Lines with Auto-sync word times go back to them, the rest spread evenly.`) && edit(lines.filter((l) => l.wordsBy === 'hand').map((l) => l.id), clearHandWords), { variant: 'sm ghost' })] : null),
+      stale.length
+        ? h('p', { class: 'warn-note small', 'data-k': 'wt-stale-all' }, `${stale.length} line${stale.length === 1 ? '’s' : 's’'} words changed since they were timed. `,
+            button('Re-spread them', () => edit(stale.map((l) => l.id), (x) => {
+              delete x.wordsAuto;
+              clearHandWords(x);
+            }), { variant: 'sm' }))
+        : null,
     );
   }
 

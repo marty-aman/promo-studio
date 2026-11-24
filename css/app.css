@@ -1696,3 +1696,39 @@ body.exporting .workspace .stage { opacity: 1; }
   .projects-actions .icon-btn { min-width: 44px; min-height: 44px; }
   .projects-versions li { flex-wrap: wrap; }
 }
+
+/* word timing editor (panel-wordtiming.js): a line's words as blocks on a small timeline */
+.wt { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.wt-pick { flex-wrap: nowrap; min-width: 0; }
+.wt-pick select { flex: 1; min-width: 0; }
+.wt-track { position: relative; height: 64px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+.wt-track:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.wt-wave { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.wt-line { position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--border-strong); border-right: 1px dashed var(--border-strong); background: rgba(250, 204, 21, 0.05); pointer-events: none; }
+.wt-word { position: absolute; top: 14px; height: 36px; box-sizing: border-box; background: rgba(250, 204, 21, 0.28); border: 1px solid var(--c-lyrics); border-radius: 4px; color: var(--text); font-size: 11px; display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none; min-width: 2px; }
+.wt-word.alt { top: 20px; background: rgba(244, 114, 182, 0.26); border-color: var(--c-text); }
+.wt-word.sel { outline: 2px solid var(--accent); z-index: 2; }
+.wt-word.live { background: var(--accent); color: var(--accent-ink); }
+.wt-w { overflow: hidden; white-space: nowrap; text-overflow: clip; padding: 0 3px; pointer-events: none; }
+.wt-h { position: absolute; top: -2px; bottom: -2px; width: 9px; cursor: ew-resize; z-index: 1; }
+.wt-h.s { left: -5px; }
+.wt-h.e { right: -5px; }
+.wt-h::after { content: ''; position: absolute; top: 8px; bottom: 8px; left: 3px; width: 3px; border-radius: 2px; background: currentColor; opacity: 0.55; }
+body.touch .wt-track { height: 76px; }
+body.touch .wt-word { top: 16px; height: 44px; }
+body.touch .wt-word.alt { top: 22px; }
+body.touch .wt-h { width: 16px; }
+body.touch .wt-h.s { left: -8px; }
+body.touch .wt-h.e { right: -8px; }
+.wt-head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--danger); pointer-events: none; z-index: 3; }
+.wt-scale { display: flex; justify-content: space-between; gap: 6px; margin-top: -3px; }
+.wt-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.wt-fields label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wt-fields input { width: 100%; box-sizing: border-box; }
+.wt-nudge .btn { flex: 1 1 auto; }
+.wt-tap { padding: 8px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-soft); }
+.mgr-wordtiming { margin-top: 10px; }
+.mgr-wt-list { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-direction: column; gap: 2px; }
+.mgr-wt-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
+.mgr-wt-list li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgr-wt-edit summary { cursor: pointer; margin: 6px 0; }

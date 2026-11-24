@@ -1,6 +1,8 @@
 // A song's lyric timing: the timed lines from the Video Studio's Lyrics tab (tap-sync, LRCLIB, an .lrc file
 // or times you set, or Auto-sync's `words` and `conf` (0..1 how sure a line is)), kept on the song so every edit of it starts in time. In seconds of the
-// song: song.lyricTiming = { lines: [{ t, end?, text, words?: [{ w, t, end? }], conf? }], offset, source, savedAt, songLength?, lyricsKey? }.
+// song: song.lyricTiming = { lines: [{ t, end?, text, words?: [{ w, t, end? }], conf?, wordsBy?: 'hand', wordsAuto? }], offset, source, savedAt, songLength?, lyricsKey? }.
+// `wordsBy: 'hand'` marks word times set in the word timing editor (wordtiming.js); `wordsAuto` keeps the
+// Auto-sync words they replaced, for "Reset to auto-sync". Older saves have neither and load as before.
 // `end` is left out when the line simply runs to the next one. `lyricsKey` fingerprints the song's plain
 // lyrics when the timing was saved, so an edit of the words afterwards can be noticed.
 // The music video's sync point (song.files.video.offset) is a separate thing and isn't touched here.
@@ -37,6 +39,16 @@ export function normalizeWords(raw) {
   return out.length ? out : undefined;
 }
 
+/** Copy the hand-timed word marks (wordsBy, wordsAuto) from `src` onto `out`, checked. */
+function handFields(out, src) {
+  if (src.wordsBy !== 'hand' || !out.words) return out;
+  out.wordsBy = 'hand';
+  const auto = normalizeWords(src.wordsAuto);
+  if (auto) out.wordsAuto = auto;
+  return out;
+}
+const shiftWords = (words, d) => words.map((k) => ({ w: k.w, t: +(k.t + d).toFixed(3), ...(k.end !== undefined ? { end: +(k.end + d).toFixed(3) } : {}) }));
+
 /** The song's plain lyrics, as a short fingerprint (blank lines and spacing ignored). */
 export function lyricsKey(text) {
   const s = String(text || '').split(/\r?\n/).map((l) => l.trim().replace(/\s+/g, ' ')).filter(Boolean).join('\n');
@@ -57,6 +69,7 @@ export function normalizeLyricTiming(raw) {
       const words = normalizeWords(l.words);
       if (words) out.words = words;
       if (fin(l.conf)) out.conf = r2(Math.max(0, Math.min(1, l.conf)));
+      handFields(out, l);
       return out;
     })
     .sort((a, b) => a.t - b.t);
@@ -90,6 +103,7 @@ export function timingFromLyrics(lyrics, { source = 'manual', songLength = 0, ly
     if (l.end === undefined || l.end <= l.t || Math.abs(l.end - r2(defaultEnd(lines, i))) < 0.02) delete l.end;
     if (!l.words) delete l.words;
     if (l.conf === undefined) delete l.conf;
+    handFields(l, sorted[i]);
   });
   const out = { lines, offset: 0, source: TIMING_SOURCES.includes(source) ? source : 'manual', savedAt: now.toISOString() };
   if (songLength > 0) out.songLength = r2(songLength);
@@ -106,19 +120,21 @@ export function lyricsFromTiming(timing, makeId = () => uid('lyr')) {
     const start = Math.max(0, l.t + t.offset);
     const end = Math.max(start + 0.2, (l.end ?? defaultEnd(t.lines, i)) + t.offset);
     const out = { id: makeId(), text: l.text, start: +start.toFixed(3), end: +end.toFixed(3) };
-    if (l.words) out.words = l.words.map((k) => ({ w: k.w, t: +(k.t + t.offset).toFixed(3), ...(k.end !== undefined ? { end: +(k.end + t.offset).toFixed(3) } : {}) }));
+    if (l.words) out.words = shiftWords(l.words, t.offset);
     if (l.conf !== undefined) out.conf = l.conf;
+    if (l.wordsBy === 'hand') out.wordsBy = 'hand';
+    if (l.wordsAuto) out.wordsAuto = shiftWords(l.wordsAuto, t.offset);
     return out;
   });
 }
 
-const sameWords = (a, b) => (!a && !b) || (!!a && !!b && a.length === b.length && a.every((k, i) => k.w === b[i].w && Math.abs(k.t - b[i].t) < 0.02));
+const sameWords = (a, b) => (!a && !b) || (!!a && !!b && a.length === b.length && a.every((k, i) => k.w === b[i].w && Math.abs(k.t - b[i].t) < 0.02 && Math.abs((k.end ?? k.t) - (b[i].end ?? b[i].t)) < 0.02));
 
 /** Do two timings put the same words at the same times (within 0.02 s)? */
 export function sameTiming(a, b) {
   const x = lyricsFromTiming(a, () => '');
   const y = lyricsFromTiming(b, () => '');
-  return x.length === y.length && x.length > 0 && x.every((l, i) => l.text === y[i].text && Math.abs(l.start - y[i].start) < 0.02 && Math.abs(l.end - y[i].end) < 0.02 && sameWords(l.words, y[i].words));
+  return x.length === y.length && x.length > 0 && x.every((l, i) => l.text === y[i].text && Math.abs(l.start - y[i].start) < 0.02 && Math.abs(l.end - y[i].end) < 0.02 && sameWords(l.words, y[i].words) && (l.wordsBy || '') === (y[i].wordsBy || ''));
 }
 
 /** Were the song's plain lyrics edited after the timing was saved? */
@@ -215,4 +231,29 @@ export const timingToSRT = (timing) => toSRT(lyricsFromTiming(timing, () => '').
 export function timingFromLRC(text, opts = {}) {
   const lines = parseLRC(text, () => '');
   return lines.length ? timingFromLyrics(lines, { ...opts, source: 'file' }) : null;
+}
+
+/**
+ * Change the word times of line `index` of a saved timing (mutates it), for the Manager's word timing editor.
+ * `fn(line)` gets the line as lyricsFromTiming() gives it (song time, offset applied) and changes its words,
+ * wordsBy and wordsAuto; they are written back without the offset. savedAt moves on, so an open edit that
+ * started from the old timing asks before saving over it. Returns false when there is no such line.
+ */
+export function editTimingLine(timing, index, fn, now = new Date()) {
+  const L = timing && timing.lines && timing.lines[index];
+  if (!L) return false;
+  const off = timing.offset || 0;
+  const ed = lyricsFromTiming(timing, () => '')[index];
+  if (!ed) return false;
+  fn(ed);
+  for (const k of ['words', 'wordsAuto']) {
+    const w = normalizeWords(ed[k] && shiftWords(ed[k], -off));
+    if (w) L[k] = w;
+    else delete L[k];
+  }
+  if (ed.wordsBy === 'hand' && L.words) L.wordsBy = 'hand';
+  else delete L.wordsBy;
+  if (!L.wordsBy) delete L.wordsAuto;
+  timing.savedAt = now.toISOString();
+  return true;
 }
