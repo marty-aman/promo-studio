@@ -1,0 +1,1018 @@
+{
+ "source": "alphaTab packages/alphatab/test/audio/MidiPlaybackController.test.ts (MPL-2.0), commit 639e20efd111789e029839beb6f573603f3f7c34",
+ "cases": [
+  {
+   "name": "repeat-with-alphaTex",
+   "tex": "\\ro 1.3 2.3 3.3 4.3 | 5.3 6.3 7.3 8.3 | \\rc 2 1.3 2.3 3.3 4.3 | \\ro \\rc 3 1.3 2.3 3.3 4.3",
+   "expected": [
+    0,
+    1,
+    2,
+    0,
+    1,
+    2,
+    3,
+    3,
+    3
+   ]
+  },
+  {
+   "name": "alternate-endings-with-alphaTex",
+   "tex": "\n            \\ro \\ae 1 1.1.1 | \\ae 2 2.1 | \\ae 3 3.1 |\n            4.3.4*4 |\n            \\ae 1 1.1.1 | \\ae 2 2.1 | \\ae 3 3.1 |\n            4.3.4*4 |\n            \\ae (1 3) 1.1.1 | \\ae 2 \\rc 3 2.1\n        ",
+   "expected": [
+    0,
+    4,
+    8,
+    1,
+    5,
+    9,
+    2,
+    3,
+    6,
+    7,
+    8
+   ]
+  },
+  {
+   "name": "multiple-closes",
+   "tex": "\n            .\n            4.3.4*4 | \\ro 4.3.4*4 | \\rc 2 4.3.4*4 | 4.3.4*4 | 4.3.4*4 | \\rc 2 4.3.4*4 | 4.3.4*4 |\n            \\ro 4.3.4*4 | \\rc 2 4.3.4*4 | 4.3.4*4 | 4.3.4*4\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    1,
+    2,
+    3,
+    4,
+    5,
+    1,
+    2,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    7,
+    8,
+    9,
+    10
+   ]
+  },
+  {
+   "name": "nested-repeats",
+   "tex": "\n            .\n            \\ro 4.3.4*4 | \\ro 4.3.4*4 | \\rc 2 4.3.4*4  | 4.3.4*4 | \\rc 2 4.3.4*4 |\n            3.3.4*4 |\n            \\ro 4.3.4*4 | \\ro 4.3.4*4 | \\rc 2 4.3.4*4  | 4.3.4*4 | \\rc 2 4.3.4*4\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    1,
+    2,
+    3,
+    4,
+    0,
+    1,
+    2,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    7,
+    8,
+    9,
+    10,
+    6,
+    7,
+    8,
+    7,
+    8,
+    9,
+    10
+   ]
+  },
+  {
+   "name": "alternate-endings-1046",
+   "tex": "\n        \\tempo 175\n        .\n        \\ro :1 r | \\ae 1 r | \\ae 2 \\rc 2 r | \\ro r | \\ae 1 r | \\ae (2 3 4) \\rc 4 r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    2,
+    3,
+    4,
+    3,
+    5,
+    3,
+    5,
+    3,
+    5,
+    6
+   ]
+  },
+  {
+   "name": "alternate-endings-repeat-sign-in-all-endings",
+   "tex": "\n        .\n        \\ro :1 r | \\ae 1 \\rc 2 r | \\ae 2 \\rc 2 r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    2,
+    3
+   ]
+  },
+  {
+   "name": "alternate-endings-three-endings-repeat-sign-in-all-endings",
+   "tex": "\n        .\n        \\ro :1 r | \\ae 1 \\rc 3 r | \\ae 2 \\rc 3 r | \\ae 3 \\rc 3 r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    2,
+    0,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "alternate-endings-three-endings-last-without-repeat-sign",
+   "tex": "\n        .\n        \\ro :1 r | \\ae 1 \\rc 3 r | \\ae 2 \\rc 3 r | \\ae 3 r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    2,
+    0,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "alternate-endings-combined-ending",
+   "tex": "\n        .\n        \\ro :1 r | \\ae (1 2) \\rc 3 r | \\ae 3 r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    0,
+    2,
+    3
+   ]
+  },
+  {
+   "name": "alternate-endings-multi-bar-first-ending",
+   "tex": "\n        .\n        \\ro :1 r | \\ae 1 r | \\ae 1 \\rc 2 r | \\ae 2 r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    0,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "alternate-endings-multi-bar-second-ending-with-repeat-sign",
+   "tex": "\n        .\n        \\ro :1 r | \\ae 1 \\rc 2 r | \\ae 2 r | \\ae 2 \\rc 2 r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    2,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "alternate-endings-repeat-sign-only-in-last-ending",
+   "tex": "\n        .\n        \\ro :1 r | \\ae 1 r | \\ae 2 r | \\ae 3 \\rc 3 r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    2,
+    0,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "alternate-endings-at-score-end",
+   "tex": "\n        .\n        \\ro :1 r | \\ae 1 \\rc 2 r | \\ae 2 r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    2
+   ]
+  },
+  {
+   "name": "alternate-endings-without-repeat-start",
+   "tex": "\n        .\n        :1 r | \\ae 1 \\rc 2 r | \\ae 2 r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    2,
+    3
+   ]
+  },
+  {
+   "name": "alternate-endings-without-repeat-end",
+   "tex": "\n        .\n        \\ro :1 r | \\ae 1 r | \\ae 2 r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "name": "repeat-start-without-end",
+   "tex": "\n        .\n        \\ro :1 r | r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2
+   ]
+  },
+  {
+   "name": "repeat-start-without-end-followed-by-repeat",
+   "tex": "\n        .\n        \\ro :1 r | r | \\ro r | \\rc 2 r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    3,
+    2,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "repeat-end-on-first-bar",
+   "tex": "\n        .\n        \\rc 2 :1 r | r\n        ",
+   "expected": [
+    0,
+    0,
+    1
+   ]
+  },
+  {
+   "name": "da-capo",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | \\jump DaCapo r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    0,
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "name": "da-capo-al-fine",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | \\jump fine r | \\jump DaCapoAlFine r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    0,
+    1,
+    2
+   ]
+  },
+  {
+   "name": "da-capo-al-coda",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | \\jump DaCoda r | \\jump DaCapoAlCoda r | \\jump Coda r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    0,
+    1,
+    2,
+    4
+   ]
+  },
+  {
+   "name": "da-capo-al-double-coda",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | \\jump DaDoubleCoda r | \\jump DaCapoAlDoubleCoda r | \\jump DoubleCoda r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    0,
+    1,
+    2,
+    4
+   ]
+  },
+  {
+   "name": "dal-segno",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | \\jump Segno r | \\ro \\rc 2 r | \\jump DalSegno r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    3,
+    4,
+    2,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "name": "dal-segno-al-coda",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | r |\n        \\jump Segno r | \\ro \\rc 2 r | \\jump DaCoda r |\n        r | r | \\jump DalSegnoAlCoda r | r | \\jump Coda r | r | \\ro \\rc 2 r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    4,
+    5,
+    6,
+    7,
+    8,
+    3,
+    4,
+    5,
+    10,
+    11,
+    12,
+    12
+   ]
+  },
+  {
+   "name": "dal-segno-al-coda-missing-target",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | r |\n        \\jump Segno r | \\ro \\rc 2 r | \\jump DaCoda r |\n        r | r | \\jump DalSegnoAlCoda r | r | r | r | \\ro \\rc 2 r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    4,
+    5,
+    6,
+    7,
+    8,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12
+   ]
+  },
+  {
+   "name": "dal-segno-al-double-coda",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | r |\n        \\jump Segno r | \\ro \\rc 2 r | \\jump DaDoubleCoda r |\n        r | r | \\jump DalSegnoAlDoubleCoda r | r | \\jump DoubleCoda r | r | \\ro \\rc 2 r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    4,
+    5,
+    6,
+    7,
+    8,
+    3,
+    4,
+    5,
+    10,
+    11,
+    12,
+    12
+   ]
+  },
+  {
+   "name": "dal-segno-al-fine",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | r |\n        \\jump Segno r | \\ro \\rc 2 r | \\jump Fine |\n        r | r | \\jump DalSegnoAlFine r | r |\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    4,
+    5,
+    6,
+    7,
+    8,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "name": "dal-segno-segno",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | \\jump SegnoSegno r | \\ro \\rc 2 r | \\jump DalSegnoSegno r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    3,
+    4,
+    2,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "name": "dal-segno-segno-missing-target",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | r | \\ro \\rc 2 r | \\jump DalSegnoSegno r | r  | \\ro \\rc 2 r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    3,
+    4,
+    5,
+    6,
+    6
+   ]
+  },
+  {
+   "name": "dal-segno-segno-al-coda",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | r |\n        \\jump SegnoSegno r | \\ro \\rc 2 r | \\jump DaCoda r |\n        r | r | \\jump DalSegnoSegnoAlCoda r | r | \\jump Coda r | r | \\ro \\rc 2 r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    4,
+    5,
+    6,
+    7,
+    8,
+    3,
+    4,
+    5,
+    10,
+    11,
+    12,
+    12
+   ]
+  },
+  {
+   "name": "dal-segno-segno-al-double-coda",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | r |\n        \\jump SegnoSegno r | \\ro \\rc 2 r | \\jump DaDoubleCoda r |\n        r | r | \\jump DalSegnoSegnoAlDoubleCoda r | r | \\jump DoubleCoda r | r | \\ro \\rc 2 r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    4,
+    5,
+    6,
+    7,
+    8,
+    3,
+    4,
+    5,
+    10,
+    11,
+    12,
+    12
+   ]
+  },
+  {
+   "name": "dal-segno-segno-al-fine",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 r | r |\n        \\jump SegnoSegno r | \\ro \\rc 2 r | \\jump Fine |\n        r | r | \\jump DalSegnoSegnoAlFine r | r |\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    4,
+    5,
+    6,
+    7,
+    8,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "name": "da-capo-al-coda-on-repeat-end",
+   "tex": "\n        .\n        \\ro :1 r | \\jump DaCoda r | \\rc 2 \\jump DaCapoAlCoda r | \\jump Coda r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    0,
+    1,
+    2,
+    0,
+    1,
+    3
+   ]
+  },
+  {
+   "name": "da-capo-on-repeat-end",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 3 \\jump DaCapo r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    0,
+    1,
+    0,
+    1,
+    2
+   ]
+  },
+  {
+   "name": "dal-segno-on-repeat-end",
+   "tex": "\n        .\n        \\ro :1 r | \\jump Segno r | \\rc 2 \\jump DalSegno r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    0,
+    1,
+    2,
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "name": "da-capo-al-fine-on-repeat-end",
+   "tex": "\n        .\n        \\ro :1 r | \\jump Fine r | \\rc 2 \\jump DaCapoAlFine r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    0,
+    1,
+    2,
+    0,
+    1
+   ]
+  },
+  {
+   "name": "dal-segno-al-coda-on-repeat-end",
+   "tex": "\n        .\n        :1 r | \\ro \\jump Segno r | \\jump DaCoda r | \\rc 2 \\jump DalSegnoAlCoda r | \\jump Coda r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    3,
+    1,
+    2,
+    3,
+    1,
+    2,
+    4
+   ]
+  },
+  {
+   "name": "da-capo-inside-repeat",
+   "tex": "\n        .\n        \\ro :1 r | \\jump DaCapo r | \\rc 2 r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    0,
+    1,
+    0,
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "name": "fine-on-repeat-end-after-da-capo",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 \\jump Fine r | \\jump DaCapoAlFine r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    0,
+    1
+   ]
+  },
+  {
+   "name": "to-coda-on-repeat-end-after-da-capo",
+   "tex": "\n        .\n        \\ro :1 r | \\rc 2 \\jump DaCoda r | \\jump DaCapoAlCoda r | \\jump Coda r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    0,
+    1,
+    3
+   ]
+  },
+  {
+   "name": "da-capo-in-first-ending-not-taken",
+   "tex": "\n        .\n        :1 r | \\ro r | \\ae 1 \\rc 2 \\jump DaCapo r | \\ae 2 r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    1,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "da-capo-al-coda-reached-again",
+   "tex": "\n        .\n        :1 r | \\jump DaCoda r | \\jump Coda r | \\jump DaCapoAlCoda r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    3,
+    0,
+    1,
+    2,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "dal-segno-al-coda-reached-again",
+   "tex": "\n        .\n        :1 r | \\jump Segno r | \\jump DaCoda r | \\jump Coda r | \\jump DalSegnoAlCoda r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    1,
+    2,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "name": "dal-segno-segno-al-double-coda-reached-again",
+   "tex": "\n        .\n        :1 r | \\jump SegnoSegno r | \\jump DaDoubleCoda r | \\jump DoubleCoda r | \\jump DalSegnoSegnoAlDoubleCoda r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    1,
+    2,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "name": "coda-before-to-coda",
+   "tex": "\n        .\n        :1 r | \\jump Coda r | r | \\jump DaCoda r | \\jump DaCapoAlCoda r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    0,
+    1,
+    2,
+    3,
+    1,
+    2,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "name": "da-capo-al-coda-missing-to-coda",
+   "tex": "\n        .\n        :1 r | r | \\jump DaCapoAlCoda r | \\jump Coda r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    0,
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "name": "da-capo-al-fine-missing-fine",
+   "tex": "\n        .\n        :1 r | \\jump DaCapoAlFine r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2
+   ]
+  },
+  {
+   "name": "chained-dal-segno-al-coda-and-da-capo-al-fine",
+   "tex": "\n        .\n        :1 r | \\jump Fine r | \\jump Segno r | \\jump DaCoda r | \\jump DalSegnoAlCoda r | \\jump Coda r | \\jump DaCapoAlFine r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    2,
+    3,
+    5,
+    6,
+    0,
+    1
+   ]
+  },
+  {
+   "name": "da-capo-in-second-ending",
+   "tex": "\n        .\n        :1 r | \\ro r | \\ae 1 \\rc 2 r | \\ae 2 \\jump DaCapo r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    1,
+    3,
+    0,
+    1,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "to-coda-in-second-ending",
+   "tex": "\n        .\n        \\ro :1 r | \\ae 1 \\rc 2 r | \\ae 2 \\jump DaCoda r | \\jump DaCapoAlCoda r | \\jump Coda r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    2,
+    3,
+    0,
+    2,
+    4
+   ]
+  },
+  {
+   "name": "to-coda-in-skipped-first-ending",
+   "tex": "\n        .\n        \\ro :1 r | \\ae 1 \\rc 2 \\jump DaCoda r | \\ae 2 r | \\jump DaCapoAlCoda r | \\jump Coda r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    2,
+    3,
+    0,
+    2,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "dal-segno-into-repeat-with-endings",
+   "tex": "\n        .\n        \\ro :1 r | \\jump Segno r | \\ae 1 \\rc 2 r | \\ae 2 r | \\jump DalSegno r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    0,
+    1,
+    3,
+    4,
+    1,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "name": "da-capo-after-alternate-endings-with-repeat-sign-in-all-endings",
+   "tex": "\n        .\n        \\ro :1 r | \\ae 1 \\rc 2 r | \\ae 2 \\rc 2 r | \\jump DaCapo r | r\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    2,
+    3,
+    0,
+    2,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "da-capo-after-multi-bar-first-ending",
+   "tex": "\n        .\n        \\ro :1 r | \\ae 1 r | \\ae 1 \\rc 2 r | \\ae 2 r | \\jump DaCapo r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    0,
+    3,
+    4,
+    0,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "name": "dal-segno-into-alternate-endings-with-repeat-sign-in-all-endings",
+   "tex": "\n        .\n        \\ro :1 r | \\jump Segno r | \\ae 1 \\rc 2 r | \\ae 2 \\rc 2 r | \\jump DalSegno r | r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    0,
+    1,
+    3,
+    4,
+    1,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "name": "multiple-jumps-same-target",
+   "tex": "\n        .\n\n        \\ro :1 r | \\rc 2 r | r |\n        \\jump Segno r | \\ro \\rc 2 r | \\jump DaCoda r |\n        r | r | \\jump DalSegnoAlCoda r | r | \\jump Coda r | r | \\ro \\rc 2 r |\n\n\n        \\ro :1 r | \\rc 2 r | r |\n        \\jump Segno r | \\ro \\rc 2 r | \\jump DaCoda r |\n        r | r | \\jump DalSegnoAlCoda r | r | \\jump Coda r | r | \\ro \\rc 2 r\n\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    4,
+    5,
+    6,
+    7,
+    8,
+    3,
+    4,
+    5,
+    10,
+    11,
+    12,
+    12,
+    13,
+    14,
+    13,
+    14,
+    15,
+    16,
+    17,
+    17,
+    18,
+    19,
+    20,
+    21,
+    16,
+    17,
+    18,
+    23,
+    24,
+    25,
+    25
+   ]
+  },
+  {
+   "name": "multiple-jumps-different-target",
+   "tex": "\n        .\n\n        \\ro :1 r | \\rc 2 r | r |\n        \\jump Segno r | \\ro \\rc 2 r | \\jump DaCoda r |\n        r | r | \\jump DalSegnoAlCoda r | r | \\jump Coda r | r | \\ro \\rc 2 r |\n\n\n        \\ro :1 r | \\rc 2 r | r |\n        \\jump SegnoSegno r | \\ro \\rc 2 r | \\jump DaDoubleCoda r |\n        r | r | \\jump DalSegnoSegnoAlDoubleCoda r | r | \\jump DoubleCoda r | r | \\ro \\rc 2 r\n\n        ",
+   "expected": [
+    0,
+    1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    4,
+    5,
+    6,
+    7,
+    8,
+    3,
+    4,
+    5,
+    10,
+    11,
+    12,
+    12,
+    13,
+    14,
+    13,
+    14,
+    15,
+    16,
+    17,
+    17,
+    18,
+    19,
+    20,
+    21,
+    16,
+    17,
+    18,
+    23,
+    24,
+    25,
+    25
+   ]
+  },
+  {
+   "name": "interleaved-repeat-and-jump",
+   "tex": "\n        .\n        \\ro :1 r | \\jump Segno r | \\ro \\rc 2 r | \\jump DaCoda r | r | \\jump DalSegnoAlCoda r | r | \\jump Coda r | \\rc 2 r | r | \\ro \\rc 2 r\n        ",
+   "expected": [
+    0,
+    1,
+    2,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    0,
+    1,
+    2,
+    2,
+    3,
+    4,
+    5,
+    1,
+    2,
+    3,
+    7,
+    8,
+    9,
+    10,
+    10
+   ]
+  }
+ ]
+}

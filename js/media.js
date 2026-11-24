@@ -1,8 +1,8 @@
 // Media library: turns uploaded or downloaded blobs into playable elements.
 import { uid, computePeaks, energyEnvelope } from './core.js';
 import { mediaDB, reportSaveFail } from './state.js';
-import { TAB_EXTENSIONS, parseTabBytes, tabTracks, buildTabTimeline } from './tab.js';
-import { drumTracks, drumTimelineFromScore, drumHitsFromAudio, drumTimelineFromMidi } from './drums.js';
+import { TAB_EXTENSIONS, parseTabBytes, tabTracks, buildTabTimeline, importCheck } from './tab.js';
+import { drumTracks, drumTimelineFromScore, drumHitsFromAudio, drumTimelineFromMidi, midiToLane } from './drums.js';
 import { analyseAudioBlob } from './viz.js';
 import { ensureMattes } from './bgremove.js';
 import { MIDI_EXTENSIONS, parseMidi } from './midi.js';
@@ -100,6 +100,12 @@ function loadElement(rec) {
           if (!rec.tracks.length && !rec.drumTracks.length) throw new Error('no guitar, bass or drum tracks');
           rec.duration = rec.tracks.length ? tabTimeline(rec, rec.tracks[0].index).duration : drumTimeline(rec, rec.drumTracks[0].index).duration;
           rec.title = score.title || '';
+          try {
+            rec.importNotes = importCheck(score, midiToLane); // shown in Tab Studio's Import check
+          } catch (e) {
+            console.warn('Import check failed', e);
+            rec.importNotes = [];
+          }
           resolve(true);
         })
         .catch((e) => {

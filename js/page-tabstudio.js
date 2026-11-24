@@ -4,7 +4,7 @@
 import { h, icon, button, toast, field, pickFiles } from './dom.js';
 import { media, addMedia } from './media.js';
 import { uid } from './core.js';
-import { defaultTabLayer } from './tab.js';
+import { defaultTabLayer, drumSoundName } from './tab.js';
 import { drumHitsFromAudio } from './drums.js';
 import { TAB_ACCEPT, makeLayer } from './panel-layers.js';
 import * as E from './tabedit.js';
@@ -65,7 +65,22 @@ const ROW = 18;
 const BAR_PAD = 12;
 const beatW = (b) => Math.round(BEAT_MIN + 30 * Math.sqrt(E.beatQuarters(b)));
 const DRUM_ROWS = [49, 51, 42, 46, 38, 48, 45, 41, 36];
-const drumName = (m) => (E.DRUM_PIECES.find((p) => p[0] === m) || [m, `Drum ${m}`])[1];
+// top-to-bottom order for any other kit pieces a Guitar Pro file uses (they get their own rows)
+const DRUM_ORDER = [55, 52, 49, 57, 51, 59, 53, 42, 46, 44, 40, 38, 37, 39, 50, 48, 47, 45, 43, 41, 36, 35];
+const MORE_DRUMS = { 35: 'Kick2', 37: 'Stick (side stick)', 39: 'Clap', 40: 'Rim (snare rim)', 43: 'Flr2 (floor tom 2)', 47: 'Tom2 (low-mid tom)', 50: 'Tom1 (high tom 2)', 52: 'China', 55: 'Splash', 59: 'Ride2' };
+const drumName = (m) => (E.DRUM_PIECES.find((p) => p[0] === m) || [m, MORE_DRUMS[m] || drumSoundName(m)])[1];
+/** The drum rows of a track: the usual kit plus every other sound its notes use. */
+function drumRows(track) {
+  const used = new Set();
+  for (const bar of track.bars) for (const b of bar.beats) for (const n of b.notes) used.add(n.m);
+  const extra = [...used].filter((m) => !DRUM_ROWS.includes(m));
+  if (!extra.length) return DRUM_ROWS;
+  const rank = (m) => {
+    const i = DRUM_ORDER.indexOf(m);
+    return i === -1 ? 100 + m : i;
+  };
+  return [...DRUM_ROWS, ...extra].sort((a, b) => rank(a) - rank(b));
+}
 const NOTE = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const stringName = (track, s) => NOTE[track.tuning[s - 1] % 12];
 const slug = (s) => String(s || 'tab').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'tab';
@@ -82,6 +97,12 @@ function snapshot() {
  * With `wrapW` the bars flow into lines that fit that width: each bar also gets its `line`, and the layout
  * has `lines` ({ bars, y, h }) and a total `height`.
  */
+/** Tab Studio's track for track `src` of the Guitar Pro file (tracks without a tab or drum staff are left out). */
+function modelTrackOf(model, src) {
+  const i = model.tracks.findIndex((t) => t.srcIndex === (src || 0));
+  return i >= 0 ? i : Math.max(0, Math.min(src || 0, model.tracks.length - 1));
+}
+
 function layoutTrack(track, wrapW = 0, k = 1, stem = false) {
   if (wrapW) {
     // beats a little narrower than the row height grows, so more bars fit on a line (frets stay readable)
@@ -121,7 +142,7 @@ function peaksOf(samples, bins) {
   return out;
 }
 
-const rowsFor = (track) => (track.kind === 'drums' ? DRUM_ROWS : track.tuning.map((_, i) => i + 1));
+const rowsFor = (track) => (track.kind === 'drums' ? drumRows(track) : track.tuning.map((_, i) => i + 1));
 
 let audioCtx = null;
 function ctx() {
@@ -267,7 +288,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
     S.undo = [];
     S.redo = [];
     S.dirty = false;
-    const ti = L && L.type === 'tab' ? Math.max(0, Math.min(L.track || 0, S.model.tracks.length - 1)) : 0;
+    const ti = L && L.type === 'tab' ? modelTrackOf(S.model, L.track) : 0;
     S.sel = { track: ti, bar: 0, beat: 0, key: S.model.tracks[ti] && S.model.tracks[ti].kind === 'drums' ? 36 : 1 };
     return true;
   }
@@ -396,7 +417,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
   };
 
   const ops = {
-    dur: (d) => edit(() => E.setDuration(track(), S.sel.bar, S.sel.beat, d, S.model.ts)),
+    dur: (d) => edit(() => E.setDuration(track(), S.sel.bar, S.sel.beat, d, E.tsAt(S.model, S.sel.bar))),
     longer: () => {
       const b = E.beatAt(track(), S.sel.bar, S.sel.beat);
       if (b.dur > 1) ops.dur(b.dur / 2);
@@ -405,10 +426,10 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       const b = E.beatAt(track(), S.sel.bar, S.sel.beat);
       if (b.dur < 32) ops.dur(b.dur * 2);
     },
-    dot: () => edit(() => E.toggleDot(track(), S.sel.bar, S.sel.beat, S.model.ts)),
+    dot: () => edit(() => E.toggleDot(track(), S.sel.bar, S.sel.beat, E.tsAt(S.model, S.sel.bar))),
     rest: () => edit(() => E.toggleRest(track(), S.sel.bar, S.sel.beat)),
     insert: () => edit(() => {
-      const k = E.insertBeat(track(), S.sel.bar, S.sel.beat, S.model.ts);
+      const k = E.insertBeat(track(), S.sel.bar, S.sel.beat, E.tsAt(S.model, S.sel.bar));
       if (k === S.sel.beat) return false;
       S.sel.beat = k;
     }),
@@ -625,15 +646,37 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       // the classic layout draws bar numbers in the font left over from the last beat; kept so desktop looks the same
       if (lay.wrap) g.font = `600 ${px(11)} Inter, system-ui, sans-serif`;
       g.fillText(String(bi + 1), bl.x + 3 * k, top - 11 * k);
-      if (S.model.tempos && S.model.tempos[bi]) {
+      // bar marks from the file: tempo, time signature change, section, repeat, ending and jump signs
+      const mk = (S.model.marks && S.model.marks[bi]) || {};
+      const tsc = S.model.tsBars && S.model.tsBars[bi];
+      const head = [
+        S.model.tempos && S.model.tempos[bi] ? `♩=${S.model.tempos[bi]}` : '',
+        tsc ? `${tsc[0]}/${tsc[1]}` : '',
+        mk.sec ? `[${mk.sec.t || mk.sec.m}]` : '',
+        mk.ae ? `${[0, 1, 2, 3, 4, 5, 6, 7].filter((x) => mk.ae & (1 << x)).map((x) => x + 1).join('.')}.` : '',
+        ...(mk.dirs || []).map((d) => E.DIRECTION_LABELS[d] || ''),
+      ].filter(Boolean).join(' ');
+      if (head) {
         g.fillStyle = accent;
-        g.fillText(`♩=${S.model.tempos[bi]}`, bl.x + 22 * k, top - 11 * k);
+        g.fillText(head, bl.x + 22 * k, top - 11 * k);
+      }
+      if (mk.ro || mk.rc) {
+        // repeat signs sit on the bar-number line, so they never cover a fret number
+        g.fillStyle = accent;
+        g.font = `700 ${px(11)} Inter, system-ui, sans-serif`;
+        if (mk.ro) g.fillText('‖:', bl.x + 22 * k + (head ? g.measureText(head).width + 6 * k : 0), top - 11 * k);
+        if (mk.rc) {
+          g.textAlign = 'right';
+          g.fillText(`:‖${mk.rc > 2 ? `×${mk.rc}` : ''}`, bl.x + bl.w - 3 * k, top - 11 * k);
+          g.textAlign = 'left';
+        }
+        g.font = `600 ${px(11)} Inter, system-ui, sans-serif`;
       }
       if (S.loop && S.loopFrom != null && bi >= S.loopFrom && bi < S.loopFrom + S.loopBars) {
         g.fillStyle = 'rgba(79,140,255,0.5)';
         g.fillRect(bl.x + 1, top - 4 * k, bl.w - 2, 2 * k);
       }
-      const over = E.barFill(t.bars[bi]) - E.barQuarters(S.model.ts);
+      const over = E.barFill(t.bars[bi]) - E.barLen(S.model, bi);
       if (Math.abs(over) > 1e-9) {
         g.fillStyle = over > 0 ? 'rgba(255,92,108,0.18)' : 'rgba(255,212,0,0.08)';
         g.fillRect(bl.x + 1, top, bl.w - 4, rows.length * R);
@@ -653,8 +696,9 @@ export function buildTabStudio({ store, engine, ui, panels }) {
         g.fillStyle = muted;
         g.textAlign = 'center';
         g.font = `${px(10)} Inter, system-ui, sans-serif`;
-        const dl = { 1: '𝅝', 2: '𝅗𝅥', 4: '♩', 8: '♪', 16: '𝅘𝅥𝅯', 32: '𝅘𝅥𝅰' }[b.dur] || '';
-        g.fillText(`${dl}${b.dot ? '.' : ''}`, bt.x + bt.w / 2, top + rows.length * R + 8 * k);
+        const dl = { 1: '𝅝', 2: '𝅗𝅥', 4: '♩', 8: '♪', 16: '𝅘𝅥𝅯', 32: '𝅘𝅥𝅰', 64: '𝅘𝅥𝅱' }[b.dur] || '';
+        const dots = b.dot === 2 ? '..' : b.dot ? '.' : '';
+        g.fillText(`${b.grace ? 'gr ' : ''}${b.tu && !(b.tu === 3 && (b.tuD || 2) === 2) ? `${b.tu}:${b.tuD}` : b.tu ? '3' : ''}${dl}${dots}${b.tp ? '≡' : ''}`, bt.x + bt.w / 2, top + rows.length * R + 8 * k);
         if (b.rest) {
           g.fillStyle = muted;
           g.font = `600 ${px(12)} Inter, system-ui, sans-serif`;
@@ -677,14 +721,21 @@ export function buildTabStudio({ store, engine, ui, panels }) {
             }
             continue;
           }
-          const label = n.tech.x ? 'x' : n.tech.g ? `(${n.f})` : String(n.f);
+          let label = n.tech.x ? 'x' : String(n.f);
+          if (n.tech.hm === 1) label = `<${label}>`;
+          if (n.tech.g || n.tech.t) label = `(${label})`; // ghost and tied notes, as Guitar Pro shows them
           g.font = `700 ${px(12)} Inter, system-ui, sans-serif`;
           const tw = g.measureText(label).width + 6 * k;
           g.fillStyle = pal.panel;
           g.fillRect(bt.x + bt.w / 2 - tw / 2, y - 7 * k, tw, 14 * k);
-          g.fillStyle = fg;
+          g.fillStyle = n.tech.t ? muted : fg;
           g.fillText(label, bt.x + bt.w / 2, y + 1);
-          const marks = ['h', 'sl', 'b', 'v', 'pm'].filter((m) => n.tech[m]).map((m) => ({ h: 'h', sl: '/', b: '↗', v: '~', pm: 'PM' })[m]);
+          const bendTxt = () => {
+            const q = Array.isArray(n.tech.b) ? Math.max(0, ...n.tech.b.map((p) => (Array.isArray(p) ? p[1] : p))) : 4; // quarter tones: 4 = full
+            return `↗${{ 1: '¼', 2: '½', 3: '¾', 4: 'full', 6: '1½', 8: '2' }[q] || q / 4}`;
+          };
+          const marks = ['h', 'sl', 'b', 'v', 'pm', 'lr', 'hm', 'lht'].filter((m) => n.tech[m] && !(m === 'hm' && n.tech.hm === 1)).map((m) => (m === 'b' ? bendTxt() : m === 'hm' ? (E.HARMONICS[n.tech.hm] || ['', 'H'])[1] : { h: 'h', sl: '/', v: '~', pm: 'PM', lr: 'LR', lht: 'T' }[m]));
+          if (b.tap && n === b.notes[0]) marks.push('T');
           if (marks.length) {
             g.font = `600 ${px(9)} Inter, system-ui, sans-serif`;
             g.fillStyle = accent;
@@ -711,7 +762,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
         const bl = lay.bars[bi];
         if (bl.x + bl.w < sx || bl.x > sx + W || !times[bi]) continue;
         const t0 = S.model.offset + times[bi].time;
-        const t1 = S.model.offset + (times[bi + 1] ? times[bi + 1].time : times[bi].time + E.barQuarters(S.model.ts) * times[bi].spq);
+        const t1 = S.model.offset + (times[bi + 1] ? times[bi + 1].time : times[bi].time + E.barLen(S.model, bi) * times[bi].spq);
         for (let p = 0; p < bl.w; p += 2) {
           const tt = t0 + ((t1 - t0) * p) / bl.w;
           const i = Math.floor((tt / stem.duration) * stem.peaks.length);
@@ -929,7 +980,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
   async function save({ use = false } = {}) {
     const issues = E.checkModel(S.model);
     if (issues.some((i) => !i.short)) return toast(`Fix first: ${issues.find((i) => !i.short).message}.`, 'error');
-    for (const t of S.model.tracks) for (const bar of t.bars) E.padBar(bar, S.model.ts);
+    for (const t of S.model.tracks) t.bars.forEach((bar, bi) => E.padBar(bar, E.barLen(S.model, bi)));
     try {
       const bytes = await E.toGpBytes(S.model);
       const draft = S.model.tracks.some((t) => t.draft);
@@ -1160,7 +1211,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       h('div', { class: 'ts-group', 'aria-label': 'Length' }, E.DURATIONS.map((d) => tbtn(DUR_LABEL[d], `${DUR_NAME[d]} note (+ / − keys)`, () => ops.dur(d), b.dur === d)), tbtn('dot', 'Dotted (.)', ops.dot, b.dot), tbtn('rest', 'Rest (R)', ops.rest, b.rest)),
       t.kind === 'fretted'
         ? h('div', { class: 'ts-group', 'aria-label': 'Technique' }, E.TECHS.map(([k, label, key]) => tbtn(key, `${label} (${key})`, () => ops.tech(k), !!(n && n.tech[k]))))
-        : h('div', { class: 'ts-group', 'aria-label': 'Drum hits' }, DRUM_ROWS.slice().reverse().map((m) => tbtn(drumName(m), `${drumName(m)} hit (select a row, Enter)`, () => ops.drum(m), b.notes.some((x) => x.m === m)))),
+        : h('div', { class: 'ts-group', 'aria-label': 'Drum hits' }, drumRows(track()).slice().reverse().map((m) => tbtn(drumName(m), `${drumName(m)} hit (select a row, Enter)`, () => ops.drum(m), b.notes.some((x) => x.m === m)))),
       h('div', { class: 'ts-group', 'aria-label': 'Beats and bars' }, tbtn('+ beat', 'Insert a beat after this one (I)', ops.insert), tbtn('− beat', 'Delete this beat (Shift+Delete)', ops.remove), tbtn('+ bar', 'Add a bar after this one', ops.addBar), tbtn('− bar', 'Delete this bar from every track', ops.delBar, false, 'danger')),
       h('div', { class: 'ts-group' }, tbtn('↶', 'Undo (Ctrl+Z)', ops.undo), tbtn('↷', 'Redo (Ctrl+Y)', ops.redo), tbtn(S.playing ? '■ Stop' : '▶ Play', 'Play from this bar (Space)', togglePlay, S.playing, 'primary')),
     );
@@ -1234,7 +1285,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
     const body = {
       fret: () =>
         t.kind === 'drums'
-          ? DRUM_ROWS.slice().reverse().map((m) => key(drumName(m), `${drumName(m)} hit`, () => ops.drum(m), { on: b.notes.some((x) => x.m === m), cls: 'word' }))
+          ? drumRows(track()).slice().reverse().map((m) => key(drumName(m), `${drumName(m)} hit`, () => ops.drum(m), { on: b.notes.some((x) => x.m === m), cls: 'word' }))
           : Array.from({ length: 25 }, (_, f) => key(String(f), `Fret ${f}`, () => {
               S.typed = '';
               edit(() => E.setFret(t, S.sel.bar, S.sel.beat, S.sel.key, f));
@@ -1264,6 +1315,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
     const m = S.model;
     edit(() => {
       const nt = v === 'drums' ? E.newTrack('drums', { name: 'Drums', bars: m.tracks[0].bars.length, ts: m.ts }) : E.newTrack('fretted', { name: v.startsWith('Bass') ? 'Bass' : 'Guitar', tuning: E.TUNINGS[v].slice(), bars: m.tracks[0].bars.length, ts: m.ts });
+      nt.bars = nt.bars.map((_, i) => E.emptyBar(E.tsAt(m, i))); // each bar in its own time signature
       m.tracks.push(nt);
       S.sel = { track: m.tracks.length - 1, bar: 0, beat: 0, key: v === 'drums' ? 36 : 1 };
     });
@@ -1371,6 +1423,20 @@ export function buildTabStudio({ store, engine, ui, panels }) {
   function paintIssues() {
     const iss = S.model ? E.checkModel(S.model) : [];
     issuesEl.replaceChildren(...(iss.length ? [h('strong', {}, iss.some((i) => !i.short) ? 'Fix before saving: ' : 'Note: '), iss.slice(0, 4).map((i) => i.message).join('; '), iss.length > 4 ? ` and ${iss.length - 4} more` : ''] : []));
+  }
+  /** Import check: what loading the Guitar Pro file skipped or guessed, in Tab Studio and in the video's tab layers. */
+  const KIND_LABEL = { skipped: 'Skipped', guessed: 'Guessed', changed: 'Changed' };
+  function importBox() {
+    const rec = S.sourceId ? media.get(S.sourceId) : null;
+    if (!S.model || !rec || rec.kind !== 'tab') return null;
+    const items = [...(S.model.importNotes || []).map((n) => ({ ...n, where: 'Tab Studio' })), ...(rec.importNotes || []).map((n) => ({ ...n, where: 'Video' }))];
+    if (!items.length) return null;
+    const box = h('details', { class: 'ts-import small', open: S.importOpen != null ? S.importOpen : !phone },
+      h('summary', {}, h('strong', {}, 'Import check'), ` · ${items.length} thing${items.length === 1 ? '' : 's'} in “${rec.name}” we could not read exactly`),
+      h('ul', {}, items.map((n) => h('li', {}, h('span', { class: `ts-import-kind ${n.kind}` }, KIND_LABEL[n.kind] || n.kind), ` ${n.where}: ${n.text}`, n.bars && n.bars.length ? h('span', { class: 'muted' }, ` (bar${n.bars.length > 1 ? 's' : ''} ${E.barList(n.bars)})`) : ''))),
+      h('p', { class: 'muted tiny' }, 'Everything else matches the file. If something still looks wrong, send the .gp file and the bar number.'));
+    box.addEventListener('toggle', () => (S.importOpen = box.open));
+    return box;
   }
 
   /** Touch on the tab: tap selects (tap again or long-press for the pad), swipe sideways moves, pinch resizes, a tap on a bar number plays from there. */
@@ -1592,7 +1658,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       const pickTrack = oneTrack() ? h('button', { type: 'button', class: 'btn ts-trackpick', onclick: openSheet, title: 'Pick a track' }, icon('layers', 18), h('span', {}, `${track().name} · ${S.sel.track + 1} of ${m.tracks.length}`)) : null;
       padEl.hidden = !padOpen();
       root.classList.toggle('ts-pad-open', padOpen());
-      root.replaceChildren(...[head, songLine(), fold, S.showTx ? txPanel() : null, pickTrack, status, tracksEl, issuesEl, keys, padEl, transportEl].filter(Boolean));
+      root.replaceChildren(...[head, songLine(), fold, S.showTx ? txPanel() : null, pickTrack, status, importBox(), tracksEl, issuesEl, keys, padEl, transportEl].filter(Boolean));
       if (sheetEl) {
         sheetEl = null;
         sheetBack = null;
@@ -1612,6 +1678,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
         songBar,
         tools,
         status,
+        importBox(),
         tracksEl,
         issuesEl,
         keys,
@@ -1673,7 +1740,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       E.alignTracks(S.model);
       S.model.offset = L.offset;
       S.sourceId = L.mediaId;
-      S.sel = { track: Math.min(L.track || 0, S.model.tracks.length - 1), bar: 0, beat: 0, key: 1 };
+      S.sel = { track: modelTrackOf(S.model, L.track), bar: 0, beat: 0, key: 1 };
     }
   }
   let shownSong = curSong() ? curSong().id : '';

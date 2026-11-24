@@ -85,38 +85,159 @@ export function tuningNames(tuning) {
   return names;
 }
 
+// Jump directions, numbered as alphaTab's model.Direction enum.
+const DIR = { fine: 0, segno: 1, segnoSegno: 2, coda: 3, doubleCoda: 4, toCoda: 17, toDoubleCoda: 18 };
+// [jump, target (null = the start), play until, continue at] in the order alphaTab checks them
+const JUMPS = [
+  [5, null, null, null], // D.C.
+  [6, null, DIR.toCoda, DIR.coda], // D.C. al Coda
+  [7, null, DIR.toDoubleCoda, DIR.doubleCoda],
+  [8, null, DIR.fine, null], // D.C. al Fine
+  [9, DIR.segno, null, null], // D.S.
+  [10, DIR.segno, DIR.toCoda, DIR.coda],
+  [11, DIR.segno, DIR.toDoubleCoda, DIR.doubleCoda],
+  [12, DIR.segno, DIR.fine, null],
+  [13, DIR.segnoSegno, null, null], // D.S.S.
+  [14, DIR.segnoSegno, DIR.toCoda, DIR.coda],
+  [15, DIR.segnoSegno, DIR.toDoubleCoda, DIR.doubleCoda],
+  [16, DIR.segnoSegno, DIR.fine, null],
+].map(([jump, target, until, cont]) => ({ jump, target, until, cont }));
+
+/** Repeat groups the way alphaTab builds them (Score._addMasterBarToRepeatGroups): bar index -> group. */
+function repeatGroups(bars) {
+  const groupOf = [];
+  let cur = null;
+  const opened = [];
+  let proper = 0;
+  bars.forEach((mb, i) => {
+    if (mb.isRepeatStart) {
+      if (cur && cur.isClosed) {
+        opened.pop();
+        proper--;
+      }
+      cur = { opening: i, closings: [], bars: [], isClosed: false };
+      opened.push(cur);
+      proper++;
+    } else if (!cur) {
+      cur = { opening: i, closings: [], bars: [], isClosed: false };
+      opened.push(cur);
+    }
+    cur.bars.push(i);
+    groupOf[i] = cur;
+    if (mb.repeatCount > 0) {
+      cur.closings.push(i);
+      cur.isClosed = true;
+      if (proper > 1) {
+        opened.pop();
+        proper--;
+        cur = opened.length ? opened[opened.length - 1] : null;
+      }
+    }
+  });
+  return groupOf;
+}
+
+const hasDir = (mb, d) => !!mb.directions && (mb.directions.has ? mb.directions.has(d) : mb.directions.includes(d));
+const dirCount = (mb) => (mb.directions ? (mb.directions.size ?? mb.directions.length) : 0);
+
 /**
- * Bar playback order with repeats and alternate endings expanded.
- * bars: [{ isRepeatStart, repeatCount, alternateEndings }]
+ * Bar playback order with repeats, alternate endings and jumps (D.C., D.S., To Coda, Fine) expanded.
+ * A port of alphaTab's MidiPlaybackController, so the tab plays bars in the same order alphaTab
+ * (and Guitar Pro) does. bars: [{ isRepeatStart, repeatCount (plays), alternateEndings (bit mask), directions }]
  */
 export function playbackOrder(bars, limit = 4000) {
+  const groupOf = repeatGroups(bars);
+  const altBars = (g) => g.bars.some((i) => bars[i].alternateEndings);
+  const newRepeat = (g, finalPass) => {
+    const r = { g, alts: altBars(g), pass: 0, endings: 0, iter: g.closings.map((c) => (finalPass ? Math.max(0, bars[c].repeatCount - 1) : 0)) };
+    if (finalPass) r.pass = Math.max(0, ...r.iter);
+    return r;
+  };
+  const isPlayed = (r, i) => {
+    let e = bars[i].alternateEndings || 0;
+    if (e === 0) e = r.endings;
+    else r.endings = e;
+    return e === 0 || (e & (1 << r.pass)) !== 0;
+  };
+  const onClosing = (r, i, played) => {
+    const last = r.g.closings[r.g.closings.length - 1] === i;
+    const count = bars[i].repeatCount;
+    if (r.alts) {
+      if (!played && !last) return 'continue';
+      if (r.pass < count - 1) {
+        r.pass++;
+        r.endings = 0;
+        return 'repeat';
+      }
+      return last ? 'finished' : 'continue';
+    }
+    const ci = r.g.closings.indexOf(i);
+    if (ci === -1) return 'continue';
+    if (r.iter[ci] < count - 1) {
+      r.iter[ci]++;
+      for (let k = 0; k < ci; k++) r.iter[k] = 0;
+      r.endings = 0;
+      return 'repeat';
+    }
+    return last ? 'finished' : 'continue';
+  };
+  const willRepeat = (r, i) => r.g.closings.some((c, k) => c >= i && (r.alts ? r.pass : r.iter[k]) < bars[c].repeatCount - 1);
+  const find = (from, d, backwardsFirst) => {
+    const scan = (step) => {
+      for (let k = from; k >= 0 && k < bars.length; k += step) if (hasDir(bars[k], d)) return k;
+      return -1;
+    };
+    const first = scan(backwardsFirst ? -1 : 1);
+    return first !== -1 ? first : scan(backwardsFirst ? 1 : -1);
+  };
+
   const order = [];
+  let stack = [];
+  let jump = null;
+  const taken = new Set();
   let i = 0;
-  let repeatStart = 0;
-  let pass = 1;
-  let justJumped = false;
   while (i < bars.length && order.length < limit) {
     const mb = bars[i];
-    if (mb.isRepeatStart && !justJumped) {
-      repeatStart = i;
-      pass = 1;
+    // enter the repeat of this bar (at its opening, or anywhere inside it after a jump)
+    const g = groupOf[i];
+    if (g && g.isClosed && !stack.some((r) => r.g === g)) {
+      if (g.opening === i || (jump && i <= g.closings[g.closings.length - 1])) stack.push(newRepeat(g, !!jump));
     }
-    justJumped = false;
-    if (mb.alternateEndings && !(mb.alternateEndings & (1 << (pass - 1)))) {
-      // this ending is for another pass; skip it unless it closes the repeat on the last pass
-      i += 1;
-      continue;
+    const top = stack[stack.length - 1];
+    const played = !top || isPlayed(top, i);
+    if (played) order.push(i);
+    // jumps (only on played bars)
+    if (played && dirCount(mb)) {
+      if (!jump) {
+        if (!taken.has(i) && !stack.some((r) => willRepeat(r, i))) {
+          const j = JUMPS.find((x) => hasDir(mb, x.jump) && (x.target === null || find(i, x.target, true) !== -1));
+          if (j) {
+            taken.add(i);
+            jump = j;
+            stack = [];
+            i = j.target === null ? 0 : find(i, j.target, true);
+            continue;
+          }
+        }
+      } else if (jump.until !== null && hasDir(mb, jump.until)) {
+        if (jump.cont === null) break; // Fine
+        const coda = find(i, jump.cont, false);
+        if (coda !== -1) {
+          jump = null;
+          stack = [];
+          i = coda;
+          continue;
+        }
+      }
     }
-    order.push(i);
-    if (mb.repeatCount > 0 && pass < mb.repeatCount) {
-      pass += 1;
-      i = repeatStart;
-      justJumped = true;
-      continue;
-    }
-    if (mb.repeatCount > 0) {
-      pass = 1;
-      repeatStart = i + 1;
+    if (stack.length && mb.repeatCount > 1) {
+      const r = stack[stack.length - 1];
+      const act = onClosing(r, i, played);
+      if (act === 'repeat') {
+        i = r.g.opening;
+        continue;
+      }
+      if (act === 'finished') stack.pop();
     }
     i += 1;
   }
@@ -134,7 +255,7 @@ function barTiming(barTicks, startBpm, autos) {
     bpm = a.bpm;
     lastTick = Math.max(lastTick, tick);
   }
-  segs.push({ from: lastTick, to: barTicks, bpm });
+  segs.push({ from: lastTick, to: Infinity, bpm }); // notes past the bar line (an over-full bar) keep the last tempo
   const secPerTick = (b) => 60 / (b * TICKS_PER_QUARTER);
   const at = (tick) => {
     let s = 0;
@@ -147,8 +268,20 @@ function barTiming(barTicks, startBpm, autos) {
   return { at, endBpm: bpm, duration: at(barTicks) };
 }
 
+/** The bar whose beats play in place of `bar`: a simile (%) bar repeats the bar (or two bars) before it, as alphaTab plays it. */
+function playbackBar(staff, index) {
+  let bar = staff.bars[index];
+  for (let guard = 0; bar && bar.simileMark && guard < 64; guard++) {
+    const back = bar.simileMark === 1 ? 1 : 2;
+    const prev = staff.bars[bar.index - back];
+    if (!prev) break;
+    bar = prev;
+  }
+  return bar;
+}
+
 /**
- * Walk one staff in playback order (repeats expanded, tempo changes applied) and report each
+ * Walk one staff in playback order (repeats and jumps expanded, tempo changes applied) and report each
  * sounding beat with its time. Shared by the guitar tab and the drum chart.
  * Returns { staff, bars: [{time, duration, index}], beats: [{time, dur, bar, beat}], duration }.
  */
@@ -165,13 +298,14 @@ export function timedBeats(score, staff) {
     const autos = (mb.tempoAutomations || (mb.tempoAutomation ? [mb.tempoAutomation] : [])).map((a) => ({ ratio: a.ratioPosition || 0, bpm: a.value }));
     const timing = barTiming(ticks, bpm, autos);
     bars.push({ time, duration: timing.duration, index: mbIndex });
-    const bar = staff.bars[mbIndex];
+    const bar = playbackBar(staff, mbIndex);
     if (bar) {
       for (const voice of bar.voices) {
         for (const beat of voice.beats) {
           if (beat.isEmpty || beat.isRest || !beat.notes.length) continue;
-          const start = time + timing.at(beat.playbackStart);
-          const end = time + timing.at(Math.min(ticks, beat.playbackStart + beat.playbackDuration));
+          // like alphaTab, beats past the end of an over-full bar keep their place (they overlap the next bar)
+          const start = time + timing.at(Math.max(0, beat.playbackStart));
+          const end = time + timing.at(Math.max(0, beat.playbackStart) + beat.playbackDuration);
           beats.push({ time: +start.toFixed(4), dur: +Math.max(0.03, end - start).toFixed(4), bar: mbIndex, beat });
         }
       }
@@ -181,6 +315,54 @@ export function timedBeats(score, staff) {
   }
   beats.sort((a, b) => a.time - b.time);
   return { bars, beats, duration: time };
+}
+
+const DRUM_NAMES = { 27: 'High Q', 28: 'Slap', 29: 'Scratch push', 30: 'Scratch pull', 31: 'Sticks', 32: 'Square click', 33: 'Metronome click', 34: 'Metronome bell', 54: 'Tambourine', 56: 'Cowbell', 58: 'Vibraslap', 60: 'Hi bongo', 61: 'Low bongo', 62: 'Mute hi conga', 63: 'Open hi conga', 64: 'Low conga', 65: 'High timbale', 66: 'Low timbale', 67: 'High agogo', 68: 'Low agogo', 69: 'Cabasa', 70: 'Maracas', 71: 'Short whistle', 72: 'Long whistle', 73: 'Short guiro', 74: 'Long guiro', 75: 'Claves', 76: 'Hi wood block', 77: 'Low wood block', 78: 'Mute cuica', 79: 'Open cuica', 80: 'Mute triangle', 81: 'Open triangle', 82: 'Shaker', 83: 'Jingle bell', 84: 'Belltree', 85: 'Castanets', 86: 'Mute surdo', 87: 'Open surdo' };
+/** A name for a General MIDI drum sound the drum chart has no lane for. */
+export const drumSoundName = (m) => DRUM_NAMES[m] || `MIDI note ${m}`;
+
+/**
+ * What the video tab, drum chart and rhythm game could not show exactly as the file has it:
+ * [{ kind: 'skipped' | 'guessed', text, bars: [bar numbers] }]. `laneOf(midi)` is the drum chart's lane for a sound.
+ */
+export function importCheck(score, laneOf = () => 'x') {
+  const out = new Map();
+  const add = (kind, text, bar) => {
+    const key = `${kind}|${text}`;
+    if (!out.has(key)) out.set(key, { kind, text, bars: [] });
+    if (bar != null && !out.get(key).bars.includes(bar + 1)) out.get(key).bars.push(bar + 1);
+  };
+  score.tracks.forEach((tr) => {
+    const perc = tr.staves.find((s) => s.isPercussion);
+    const fretted = tr.staves.find((s) => !s.isPercussion && s.tuning && s.tuning.length);
+    if (!perc && !fretted) add('skipped', `Track “${tr.name}” has no tab or drum staff, so the tab layers can't show it`);
+    const staff = perc || fretted;
+    if (!staff) return;
+    const arts = tr.percussionArticulations || [];
+    const unlaned = new Map();
+    staff.bars.forEach((bar) => {
+      const mb = score.masterBars[bar.index];
+      const ticks = mb ? mb.calculateDuration() : 0;
+      let over = false;
+      for (const v of bar.voices)
+        for (const b of v.beats) {
+          if (b.playbackStart + b.playbackDuration > ticks + 1 && !b.isEmpty) over = true;
+          if (b.isTremolo && b.notes.length) add('guessed', `Tremolo picking (“${tr.name}”): the tab shows one note per written beat, and the rhythm game counts it once`, bar.index);
+          for (const n of b.notes) {
+            if (n.isTrill) add('guessed', `Trills (“${tr.name}”): shown and counted as the main note`, bar.index);
+            if (perc) {
+              const a = arts[n.percussionArticulation];
+              const m = a ? a.outputMidiNumber : n.percussionArticulation;
+              if (!laneOf(m)) unlaned.set(m, (unlaned.get(m) || 0) + 1);
+            }
+          }
+        }
+      if (over) add('guessed', `“${tr.name}” has bars longer than their time signature: as in alphaTab, the extra notes run into the next bar`, bar.index);
+    });
+    if (unlaned.size)
+      add('skipped', `Drum chart (“${tr.name}”) has no lane for: ${[...unlaned].sort((a, b) => b[1] - a[1]).map(([m, c]) => `${drumSoundName(m)} (${c})`).join(', ')}`);
+  });
+  return [...out.values()];
 }
 
 /**
@@ -199,6 +381,7 @@ export function buildTabTimeline(score, trackIndex = 0) {
     dur,
     bar,
     palmMute: !!beat.isPalmMute,
+    tremolo: !!beat.isTremolo,
     chord: (beat.chord && beat.chord.name) || chordName(beat.notes.filter((n) => !n.isDead).map((n) => (tuningMidi[strings - n.string] ?? NaN) + capo + n.fret)),
     notes: beat.notes.map((n) => ({
       line: Math.max(0, Math.min(strings - 1, strings - n.string)),
