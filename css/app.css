@@ -367,6 +367,10 @@ body.dropping::after { content: 'Drop to add to your library'; position: fixed; 
 .ts-canvas:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
 .ts-issues { margin-top: 8px; color: var(--muted); }
 .ts-empty { padding: 30px; border: 1px dashed var(--border-strong); border-radius: 10px; text-align: center; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.ts-songtab { flex-wrap: wrap; gap: 8px; align-items: center; }
+.ts-songtab select { width: auto; flex: 0 1 auto; max-width: 100%; min-width: 0; }
+.ts-from { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.ts-missing { color: var(--danger); flex-basis: 100%; }
 .ts-keys ul { margin: 6px 0; padding-left: 18px; color: var(--muted); }
 .ts-tx { margin: 10px 0; }
 .rule.on { border-color: var(--accent); }

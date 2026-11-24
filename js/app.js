@@ -28,7 +28,7 @@ import { sectionsExport } from './panel-sections.js';
 import { coverOf, songCovers, autoCover } from './manager/releases.js';
 import { requestDetect } from './manager/page-sections.js';
 import { addPhotos as addArtistPhotos } from './manager/photos.js';
-import { makeLayer, makeOverlayClip } from './panel-layers.js';
+import { makeLayer, makeOverlayClip, setSongTabs } from './panel-layers.js';
 import { studioSongFiles, studioSongContext, addStems, addTabs } from './manager/files.js';
 import { applyTheme, themeById } from './themes.js';
 import { loadSettings } from './state.js';
@@ -635,6 +635,10 @@ function syncNowOn() {
     const p = store.get();
     if (p.artistId && manager.artists().some((a) => a.id === p.artistId)) artistId = p.artistId;
     song = p.managerSongId ? manager.findSong(p.managerSongId) : null;
+  } else if (mode === 'tabstudio') {
+    const ts = ui.tabSong();
+    song = ts ? manager.findSong(ts.id) : null;
+    if (tabPage) tabPage.songChanged();
   }
   const a = manager.artists().find((x) => x.id === artistId) || { name: 'No band yet' };
   const ph = a.photoId && media.get(a.photoId);
@@ -1251,6 +1255,27 @@ ui.songContext = () => {
   const p = store.get();
   return studioSongContext(manager.store.get(), { songId: p.managerSongId || '', audioId: p.song ? p.song.mediaId : '', info: (id) => media.get(id), findSong });
 };
+// A new tab, drum chart or rhythm game layer starts on the edit's song's Guitar Pro file
+setSongTabs(() => (ui.songContext() || { tabs: [] }).tabs);
+/**
+ * The song Tab Studio works for: the edit's song when you came from the Video Studio, else the song open in the
+ * Manager, else the edit's song. The whole song (with its files), or null.
+ */
+ui.tabSong = () => {
+  if (!manager) return null;
+  const edit = linkedSong();
+  const cur = manager.currentSong();
+  const open = cur && manager.store.get().songs.find((s) => s.id === cur.id);
+  return (tabFrom === 'studio' && edit && edit.song) || open || (edit && edit.song) || null;
+};
+/** Tab Studio's "Open its Files tab": the song's Files tab in the Manager. */
+ui.openSongFiles = (songId) => {
+  const s = manager && manager.findSong(songId);
+  if (!s) return;
+  setMode('manager');
+  if (s.artistId !== manager.currentArtist()) manager.switchArtist(s.artistId, 'songs', s.id, 'files');
+  else manager.go('songs', s.id, 'files');
+};
 /** A song's cover (its own, else its EP's or album's) when the picture is in this library, else null. */
 const songCoverOf = (song) => {
   const id = song && manager ? coverOf(song, manager.store.get().releases || []) : null;
@@ -1541,7 +1566,9 @@ if (localStorage.getItem('pvm.tab') === 'tabstudio') {
   localStorage.setItem('pvm.tab', 'layers');
   if (!location.hash && !location.search) mode = 'tabstudio';
 }
+let tabFrom = 'manager'; // the workspace Tab Studio was opened from (it works for that workspace's song)
 function setMode(m) {
+  if (m === 'tabstudio' && mode !== 'tabstudio') tabFrom = mode;
   mode = m;
   localStorage.setItem('pvm.mode.v1', m); // nothing reads it back, but older checks and tools look at it
   // the workspace is in the address, so a reload or a shared link opens the same one
