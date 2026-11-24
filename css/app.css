@@ -1779,3 +1779,19 @@ body.touch .wt-h.e { right: -8px; }
   .songpart-order .icon-btn { min-width: 40px; min-height: 40px; }
   .songpart-actions .btn { flex: 1 1 0; justify-content: center; }
 }
+
+/* a timeline item turned off (itemoff.js): dimmed and hatched where it sits, with an "off" eye on the block */
+.tl-block.off { opacity: 0.5; filter: grayscale(0.7); }
+.tl-block.off::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.55) 0 5px, rgba(255, 255, 255, 0.07) 5px 10px); }
+.tl-block.off .tl-label { text-decoration: line-through; }
+.tl-offbtn { position: absolute; top: 1px; right: 8px; z-index: 3; display: none; align-items: center; justify-content: center; width: 18px; height: 16px; padding: 0; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.4); background: rgba(0, 0, 0, 0.65); color: #fff; cursor: pointer; }
+.tl-offtag { display: inline-block; margin-right: 4px; padding: 0 3px; border-radius: 3px; background: var(--accent); color: var(--accent-ink); font-size: 9.5px; text-transform: uppercase; text-decoration: none; }
+.tl-block:hover .tl-offbtn, .tl-block.selected .tl-offbtn, .tl-block.off .tl-offbtn { display: inline-flex; }
+.tl-block.off .tl-offbtn { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.tl-offbtn:focus-visible { outline: 2px solid var(--accent); display: inline-flex; }
+/* touch: a tap on the block opens its sheet (Turn off / Turn on) and a long press its menu, so the eye would only steal taps */
+body.touch .tl-block .tl-offbtn { display: none; }
+.off-bar { display: flex; flex-direction: column; gap: 4px; margin: 0 0 8px; }
+.off-bar .btn { align-self: flex-start; }
+.off-bar.is-off .btn { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+body.touch .off-bar .btn { min-height: 44px; }

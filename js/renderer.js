@@ -13,6 +13,7 @@ import {
   beatEnvelope,
 } from './core.js';
 import { FILTER_PRESETS, PLATFORMS, isVisible, overlayClipAt } from './state.js';
+import { onOnly } from './itemoff.js';
 import { drawPlatformOverlay, overlaySupported } from './overlays.js';
 import { safeRect, seamView } from './studioedit.js';
 import { drawMidi } from './midiviz.js';
@@ -975,6 +976,7 @@ function drawVideoLane(ctx, W, H, project, t, env) {
   const i = laid.findIndex((l) => t >= l.start && t < l.end);
   if (i < 0) return;
   const cur = laid[i];
+  if (cur.clip.disabled) return; // a clip turned off keeps its slot: the background (black) shows there
   const local = t - cur.start;
   const fx = cur.clip.effects || {};
   const beat = beatEnvelope(project.beats && project.beats.beats, timelineToSong(t, project.song));
@@ -993,8 +995,9 @@ function drawVideoLane(ctx, W, H, project, t, env) {
   };
   const tr = cur.clip.transition || { type: 'none', duration: 0.4 };
   const d = Math.min(tr.duration || 0.4, cur.clip.duration * 0.9);
-  const inTransition = tr.type !== 'none' && local < d && (i > 0 || tr.type === 'fade' || tr.type === 'flash' || tr.type === 'zoom' || tr.type === 'shake' || tr.type === 'glitch');
-  if (inTransition) drawTransition(ctx, W, H, tr.type, clamp(local / d, 0, 1), curState, laid[i - 1], { ...env, t });
+  const prev = laid[i - 1] && !laid[i - 1].clip.disabled ? laid[i - 1] : undefined; // coming out of a clip that's off: out of black
+  const inTransition = tr.type !== 'none' && local < d && (prev || tr.type === 'fade' || tr.type === 'flash' || tr.type === 'zoom' || tr.type === 'shake' || tr.type === 'glitch');
+  if (inTransition) drawTransition(ctx, W, H, tr.type, clamp(local / d, 0, 1), curState, prev, { ...env, t });
   else drawClip(ctx, W, H, cur.clip, local, env.sourceFor(cur.clip), i === laid.length - 1 ? clipExitFx(cur.clip, cur.end - t, W, H, curState.fx) : curState.fx);
   applyGradeWash(ctx, W, H, cur.clip.grade);
   postEffects(ctx, W, H, fx, t, beat);
@@ -1483,8 +1486,8 @@ export function renderFrame(ctx, W, H, project, t, env) {
     if (fadeOwn) ctx.restore();
     if (moving) ctx.restore();
   }
-  if (isVisible(project, 'text')) drawTexts(ctx, W, H, project.texts, t, beat, project.endCard.releaseDate);
-  if (t < ecStart && isVisible(project, 'lyrics')) drawLyrics(ctx, W, H, project, t, beat);
+  if (isVisible(project, 'text')) drawTexts(ctx, W, H, onOnly(project.texts), t, beat, project.endCard.releaseDate);
+  if (t < ecStart && isVisible(project, 'lyrics')) drawLyrics(ctx, W, H, project.lyrics.some((l) => l.disabled) ? { ...project, lyrics: onOnly(project.lyrics) } : project, t, beat);
   if (isVisible(project, 'endcard')) drawEndCard(ctx, W, H, project, t, env);
   drawWatermark(ctx, W, H, project.look.watermark, env);
   drawProgress(ctx, W, H, project.look.progress, t, project.duration);

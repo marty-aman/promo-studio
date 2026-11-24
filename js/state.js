@@ -163,9 +163,9 @@ export function findClip(p, id) {
   return { clip: null, layer: null };
 }
 
-/** Overlay clip active at timeline time t on a video layer. */
+/** Overlay clip active at timeline time t on a video layer (a clip turned off, see itemoff.js, is skipped). */
 export function overlayClipAt(layer, t) {
-  return layer.clips.find((c) => t >= c.start && t < c.start + c.duration) || null;
+  return layer.clips.find((c) => !c.disabled && t >= c.start && t < c.start + c.duration) || null;
 }
 
 // ------------------------------------------------------------ store with history

@@ -995,6 +995,25 @@ Center for what is rising today. The trend list lives in `js/inspiration.js`.
 - An empty-track click still moves the playhead. A drag on empty track space now draws the box, so scrub on the
   ruler.
 
+### Turning items off without deleting them (Video Studio)
+
+- Any block on the timeline can be turned off and back on: clips on the Video track and on video layers (split
+  pieces too), texts, lyric lines, extra audio blocks, layers (visualizers, tabs, drum charts, MIDI, rhythm game),
+  the song and the end card. Press **E**, use **Turn off** at the top of its settings (on a phone, in the item's
+  sheet), click the small eye in the block's corner (shown on hover and on the selected block, on blocks wide enough
+  to keep room for grabbing; not on touch, where a tap opens the sheet), or right-click the block (long press on
+  touch) and pick **Turn off**. Do it again to turn it back on.
+- An item that's off stays where it is with its timing, keyframes and settings. It is dimmed and hatched on the
+  timeline, struck through and tagged **OFF**; its eye turns it back on. The preview, the export, the captions file,
+  the sound and the level meter skip it, and it can't be grabbed on the preview.
+- A clip turned off on the main Video track keeps its slot, so the clips after it don't move: the video shows black
+  there (the project background), with no clip sound. A transition into the next clip starts from black.
+- With several blocks selected, **E** (or **Turn off N selected**) turns them all off; if all of them are already
+  off it turns them all on. One Ctrl+Z undoes a toggle.
+- Off is saved with the edit (autosave, project files, Projects, backups). Copy, paste, duplicate and split keep
+  it: both halves of a split clip stay off. Older saves load with everything on. A layer, the song and the end card
+  each sit alone on their row, so turning them off is the same as their row's eye.
+
 ### Editing keys (Video Studio)
 
 | Key | Does |
@@ -1004,6 +1023,7 @@ Center for what is rising today. The trend list lives in `js/inspiration.js`.
 | **Ctrl+D** | Duplicate the selection right after itself (clip, text, lyric line, audio block, layer) |
 | **Ctrl+C**, **Ctrl+V** | Copy, then paste at the playhead |
 | Delete, Ctrl+Z, Ctrl+Shift+Z, G, O | Delete, undo, redo, safe-area guide, phone-app preview |
+| **E** | Turn the selection (one block or a multi-selection) off or back on, without deleting it |
 | Arrows (after clicking the preview) | Nudge the selected text, lyric line, layer or picture by 0.5% of the frame (Shift = 5%). With nothing movable selected they move the playhead as usual |
 
 **Drag on the preview to reposition.** Press on a text, a lyric line, a graphics layer (tab, drum chart, MIDI,
@@ -1201,6 +1221,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/panels.js` | Tool panels and inspector |
 | `js/stock.js` | Pexels / Pixabay / Wikimedia search and download |
 | `js/app.js` | Layout, wiring, shortcuts, the four workspaces, save banner and export lock |
+| `js/itemoff.js` | Turning timeline items off and on: which flag each kind uses, toggling a selection or group (unit tested) |
 | `js/studioedit.js` | Pure editing helpers: split, duplicate, copy and paste of timeline items, safe areas, level maths (unit tested) |
 | `js/previewdrag.js` | Drag to reposition on the preview: what is under the pointer, its box, and moving it (keyframe-aware, unit tested) |
 | `js/projectfile.js` | Project files and the earlier-projects list (unit tested) |

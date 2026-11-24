@@ -86,14 +86,14 @@ export function videoCues(p, { which = 'all' } = {}) {
     for (const l of p.lyrics || []) {
       const start = l.start - off;
       const end = l.end - off;
-      if (end <= 0 || start >= ecStart || !String(l.text || '').trim()) continue;
+      if (end <= 0 || start >= ecStart || l.disabled || !String(l.text || '').trim()) continue;
       const cue = { start: Math.max(0, start), end: Math.min(end, ecStart), text: l.text.trim() };
       // Auto-sync's word times (moved to video time), so word-by-word captions land on the sung words
       if (Array.isArray(l.words) && l.words.length && l.text.trim() === l.text.trimEnd()) cue.words = l.words.map((k) => ({ ...k, t: +(k.t - off).toFixed(3), ...(typeof k.end === 'number' ? { end: +(k.end - off).toFixed(3) } : {}) }));
       cues.push(cue);
     }
   }
-  if (which !== 'lyrics') for (const t of p.texts || []) if (t.caption && t.end > 0 && t.start < p.duration) cues.push({ start: Math.max(0, t.start), end: Math.min(t.end, p.duration), text: t.text });
+  if (which !== 'lyrics') for (const t of p.texts || []) if (t.caption && !t.disabled && t.end > 0 && t.start < p.duration) cues.push({ start: Math.max(0, t.start), end: Math.min(t.end, p.duration), text: t.text });
   return cues.sort((a, b) => a.start - b.start).map((c) => ({ ...c, start: +c.start.toFixed(3), end: +c.end.toFixed(3) }));
 }
 

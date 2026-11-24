@@ -5,6 +5,7 @@
 // shortcut: boxes ignore rotation, entrance motion and a picture's own aspect; upgrade if people miss small rotated items.
 import { layoutClips, activeLyric, timelineToSong, clamp } from './core.js';
 import { isVisible, findClip, overlayClipAt } from './state.js';
+import { onOnly } from './itemoff.js';
 import { animate, isKeyed, setKey, propInfo, KEY_EPS } from './keyframes.js';
 import { lineStyle } from './linestyle.js';
 import { kfTarget } from './panel-kf.js';
@@ -38,7 +39,7 @@ export function draggablesAt(p, t, { W = 1080, H = 1920, measure = roughMeasure 
   const s = p.lyricStyle || {};
   if (isVisible(p, 'lyrics') && (!s.display || s.display === 'line')) {
     const ts = timelineToSong(t, p.song);
-    const l0 = activeLyric(p.lyrics || [], ts);
+    const l0 = activeLyric(onOnly(p.lyrics), ts);
     if (l0) {
       const l = animate(l0, ts - l0.start);
       const ls = lineStyle(s, l, p.theme);
@@ -51,7 +52,7 @@ export function draggablesAt(p, t, { W = 1080, H = 1920, measure = roughMeasure 
   }
   if (isVisible(p, 'text')) {
     for (const tx0 of [...(p.texts || [])].reverse()) {
-      if (t < tx0.start || t >= tx0.end) continue;
+      if (t < tx0.start || t >= tx0.end || tx0.disabled) continue;
       const tx = animate(tx0, t - tx0.start);
       out.push({ sel: { type: 'text', id: tx0.id }, box: textBox(tx.text, tx.size || 9, 0.88, (tx.x ?? 50) / 100, (tx.y ?? 50) / 100, W, H, measure, tx.font) });
     }
@@ -77,7 +78,7 @@ export function draggablesAt(p, t, { W = 1080, H = 1920, measure = roughMeasure 
   }
   if (isVisible(p, 'video')) {
     const at = layoutClips(p.clips || []).find((x) => t >= x.start && t < x.end);
-    if (at) out.push({ sel: { type: 'clip', id: at.clip.id }, box: clipBox(at.clip, t - at.start) });
+    if (at && !at.clip.disabled) out.push({ sel: { type: 'clip', id: at.clip.id }, box: clipBox(at.clip, t - at.start) });
   }
   return out;
 }
