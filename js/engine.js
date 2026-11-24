@@ -5,6 +5,7 @@ import { midiNotesFor } from './midiviz.js';
 import { gameChart } from './gamechart.js';
 import { isVisible } from './state.js';
 import { renderFrame } from './renderer.js';
+import { gridOf } from './tempo.js';
 import { peakOf } from './studioedit.js';
 import { matteFor, preparePerson, onMatteChange } from './bgremove.js';
 
@@ -501,7 +502,7 @@ export class Engine {
         }
         return drumTimeline(media.get(l.mediaId), l.track, l.drumMap);
       },
-      game: (l) => gameChart(l, { bpm: this.project.beats ? this.project.beats.bpm : 0, onReady: () => !this.playing && this.render() }) || null,
+      game: (l) => gameChart(l, { bpm: (gridOf(this.project, l) || {}).bpm || 0, onReady: () => !this.playing && this.render() }) || null,
       midi: (l) => {
         const rec = media.get(l.mediaId);
         return rec && rec.midi ? midiNotesFor(rec.midi, l.tracks) : null;

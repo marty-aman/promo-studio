@@ -23,6 +23,7 @@ import { drawDrums } from './drums.js';
 import { drawViz } from './viz.js';
 import { drawLyricDisplay } from './lyricviz.js';
 import { lineStyle } from './linestyle.js';
+import { beatsOf, gridOf } from './tempo.js';
 import { drawBackdrop } from './backgrounds.js';
 import { blurred } from './canvasfx.js';
 import { animate } from './keyframes.js';
@@ -979,7 +980,7 @@ function drawVideoLane(ctx, W, H, project, t, env) {
   if (cur.clip.disabled) return; // a clip turned off keeps its slot: the background (black) shows there
   const local = t - cur.start;
   const fx = cur.clip.effects || {};
-  const beat = beatEnvelope(project.beats && project.beats.beats, timelineToSong(t, project.song));
+  const beat = beatEnvelope(beatsOf(project, cur.clip), timelineToSong(t, project.song));
   // motion effects become part of how the current clip is framed
   const frame = Math.floor(t * 24);
   const shake = (fx.shake || 0) * W * 0.025;
@@ -1451,7 +1452,7 @@ export function renderFrame(ctx, W, H, project, t, env) {
     drawVideoLayer(ctx, W, H, L, t, env);
     ctx.restore();
   }
-  drawLook(ctx, W, H, project.look, t, beat);
+  drawLook(ctx, W, H, project.look, t, project.look.tempo ? beatEnvelope(beatsOf(project, project.look), songT) : beat);
   // graphics layers in stack order
   for (const l0 of layers) {
     if (l0.type === 'video') continue;
@@ -1480,9 +1481,9 @@ export function renderFrame(ctx, W, H, project, t, env) {
     }
     if (l.type === 'viz' && env.viz) drawViz(ctx, W, H, l, env.viz(l0), t, songT, visEnd, project.beats);
     else if (l.type === 'tab' && env.tab && l.mediaId) drawTab(ctx, W, H, l, env.tab(l.mediaId, l.track), t, songT, visEnd);
-    else if (l.type === 'drums' && env.drums) drawDrums(ctx, W, H, l, env.drums(l0), t, songT, visEnd, project.beats && project.beats.period);
+    else if (l.type === 'drums' && env.drums) drawDrums(ctx, W, H, l, env.drums(l0), t, songT, visEnd, (gridOf(project, l) || {}).period);
     else if (l.type === 'midi' && env.midi && l.mediaId) drawMidi(ctx, W, H, l, env.midi(l0), t, songT);
-    else if (l.type === 'game' && env.game && l.mediaId) drawGame(ctx, W, H, l, env.game(l0), t, songT, { beat });
+    else if (l.type === 'game' && env.game && l.mediaId) drawGame(ctx, W, H, l, env.game(l0), t, songT, { beat: l.tempo ? beatEnvelope(beatsOf(project, l), songT) : beat });
     if (fadeOwn) ctx.restore();
     if (moving) ctx.restore();
   }

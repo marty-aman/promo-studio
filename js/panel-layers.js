@@ -27,11 +27,13 @@ import { drawTab } from './tab.js';
 import { REAL_PLACEMENT } from './vizreal.js';
 import { themeById, themeLayer } from './themes.js';
 import { defaultVizLayer, VIZ_STYLES, BLENDS, setVizStyle } from './viz.js';
-import { isPoly, polyTiming, parseRatios, POLY_DEFAULTS } from './vizpoly.js';
+import { isPoly, parseRatios, POLY_DEFAULTS } from './vizpoly.js';
 import { tabIntoLayout } from './templates.js';
 import { EXITS, ENTRANCES } from './exits.js';
 import { KIT_FINISHES, KIT_WRAPS, kitDoubleKick } from './drumkit.js';
 import { h, icon, button, iconButton, toast, field, section, fold, pickFiles } from './dom.js';
+import { gridOf } from './tempo.js';
+import { tempoControl, layerTempoTarget, polyTempoTarget, chartTempoTarget } from './panel-tempo.js';
 
 export const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.gp7,.gp8,.musicxml,.mxl,.xml';
 
@@ -465,6 +467,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
               {},
               b.range('Tempo', get((x) => x.tempoScale ?? 1), S((x, v) => (x.tempoScale = v)), { min: 0.5, max: 1.5, step: 0.001, fmt: (v) => `${Math.round(((tlFn() && tlFn().tempo) || 120) * v)} BPM` }),
               h('div', { class: 'row' }, button('Match the song’s detected BPM', matchBpm, { iconName: 'activity', variant: 'sm' }), button('Use the file’s tempo', () => store.update(S((x) => (x.tempoScale = 1))), { variant: 'ghost sm' })),
+              tempoControl(b, { store, engine, ui }, chartTempoTarget(L.id, () => (tlFn() && tlFn().tempo) || 120), { title: 'Chart tempo', first: false, songButton: false, note: 'The BPM this chart plays at. Tap along with the song, or type it.' }),
             ),
       );
     };
@@ -696,6 +699,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         isStem ? b.range('Hit sensitivity', g('sensitivity', 0.5), set((x, v) => (x.sensitivity = Math.round(v * 20) / 20)), { min: 0.05, max: 0.95, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` }) : null,
         status,
         isStem ? h('p', { class: 'muted tiny' }, 'Works best with an isolated drum track. Detection finds kick, snare and hi-hat only; for toms and cymbals use a Guitar Pro drum track.') : null,
+        tempoControl(b, { store, engine, ui }, layerTempoTarget(L.id), { title: 'Beat lines tempo', first: false, note: 'Sets the bar length of charts without bars. It follows the project tempo (Audio tab) unless you set its own.' }),
         h('div', { class: 'lbl' }, 'Style'),
         h(
           'div',
@@ -775,7 +779,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         : rec && L.source === 'midi' && rec.midi
           ? b.select('Track', () => String(findLayer(store.get(), L.id)?.track ?? -1), set((x, v) => (x.track = parseInt(v, 10))), [['-1', 'Every track'], ...rec.midi.tracks.filter((t) => t.notes).map((t) => [String(t.index), `${t.name} · ${t.notes} notes`])])
           : null;
-      const chart = rec ? gameChart(L, { bpm: p.beats ? p.beats.bpm : 0, onReady: () => ui.refreshPanels(true) }) : null;
+      const chart = rec ? gameChart(L, { bpm: (gridOf(p, L) || {}).bpm || 0, onReady: () => ui.refreshPanels(true) }) : null;
       return h(
         'div',
         {},
@@ -789,6 +793,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         L.source === 'stem' ? b.range('Note sensitivity', g('sensitivity', 0.5), set((x, v) => (x.sensitivity = Math.round(v * 20) / 20)), { min: 0.1, max: 0.9, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` }) : null,
         h('p', { class: 'muted tiny' }, chart === undefined ? 'Listening to the stem…' : chart ? `${chart.notes} notes on the highway.` : rec ? 'No notes found in it.' : 'Pick the file the notes come from.'),
         rec ? syncTools(() => chart || null, L.source === 'stem') : null,
+        tempoControl(b, { store, engine, ui }, layerTempoTarget(L.id), { title: 'Beat lines tempo', first: false, note: 'Where the beat lines fall for a stem. It follows the project tempo (Audio tab) unless you set its own.' }),
         visibleRange(),
         section(
           'Theme',
@@ -915,7 +920,6 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       section('Style', styleGrid),
       isPoly(L.style)
         ? (() => {
-            const T = polyTiming({ beats: p.beats, bpm: L.bpm, bars: L.bars ?? (L.style === 'arcs' ? 4 : 1), beatsPerBar: L.beatsPerBar || 4, followSong: L.followSong !== false }, 0);
             const counts = parseRatios(L.ratios || POLY_DEFAULTS[L.style]);
             const presets = L.style === 'polymeter' ? ['4, 5, 7', '3, 4', '4, 5, 6, 7', '5, 7, 9', '3, 5, 7, 11'] : L.style === 'arcs' ? ['1-12', '1-8', '2-16', '3, 4, 5, 7'] : ['3, 4, 5, 6', '3, 4', '2, 3', '3, 5, 7', '3-9'];
             return section(
@@ -931,9 +935,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
                   : b.select('Cycle', g('bars', L.style === 'arcs' ? 4 : 1), set((x, v) => (x.bars = +v)), [[0.5, 'Half a bar'], [1, '1 bar'], [2, '2 bars'], [4, '4 bars'], [8, '8 bars']]),
                 b.select('Beats per bar', g('beatsPerBar', 4), set((x, v) => (x.beatsPerBar = +v)), [[3, '3'], [4, '4'], [5, '5'], [6, '6'], [7, '7']]),
               ),
-              b.toggle('Follow the song’s tempo', g('followSong', true), set((x, v) => (x.followSong = v))),
-              L.followSong === false || !p.beats ? b.number('Tempo (BPM)', g('bpm', 120), set((x, v) => (x.bpm = Math.max(20, Math.min(300, +v || 120)))), { step: 1 }) : null,
-              h('p', { class: 'muted tiny' }, T.fromSong ? `Locked to the song: ${T.bpm} BPM from Audio → Detect BPM.` : p.beats ? `Running at ${T.bpm} BPM.` : `Running at ${T.bpm} BPM. Detect the song’s tempo in Audio → Detect BPM to lock it to the music.`),
+              tempoControl(b, { store, engine, ui }, polyTempoTarget(L.id), { title: 'Tempo', note: 'It follows the project tempo (Audio tab) unless you set its own here.' }),
               h('div', { class: 'grid2' }, b.toggle('Rainbow colours', g('polyRainbow', true), set((x, v) => (x.polyRainbow = v))), b.toggle('Show the numbers', g('showLabels', true), set((x, v) => (x.showLabels = v)))),
             );
           })()

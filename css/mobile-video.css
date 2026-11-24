@@ -185,3 +185,5 @@ body.m-sheets input.m-scrub { height: 44px; }
 body.m-compact .mode-btn.on { min-height: 44px; }
 /* the other workspaces get a container that never widens the page: anything wider than the screen scrolls inside it */
 body.m-sheets .photo, body.m-sheets .tabws, body.m-sheets .manager { min-width: 0; overflow-x: auto; }
+/* tempo control: finger-sized box, and 16 px so iOS does not zoom in on it */
+body.touch .tempo-ctl input.num { min-height: 44px; font-size: 16px; width: 96px; }

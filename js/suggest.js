@@ -26,6 +26,8 @@ export function inventory(mediaAll, p) {
     if (!beatCache.has(song.id)) beatCache.set(song.id, detectBeats(song.envelope, song.envRate || 100));
     beats = beatCache.get(song.id);
   }
+  // a tempo you set (typed, tapped or from the song) is what the cuts land on, not the detected one
+  if (p.beats && p.beats.source) beats = p.beats;
   return {
     song,
     beats,
