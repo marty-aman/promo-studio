@@ -5,7 +5,7 @@
 import { h, button, iconButton, toast } from './dom.js';
 import { timelineToSong, hasSongParts } from './core.js';
 import { fmtTime } from './manager/releases.js';
-import { PART_KINDS, DEFAULT_FADE, partSections, describePart, linesInParts, applySongPart, defaultPicture, usableChoice } from './songpart.js';
+import { PART_KINDS, DEFAULT_FADE, partSections, describePart, linesInParts, applySongPart, defaultPicture, usableChoice, defaultTemplatePart } from './songpart.js';
 
 const KEY = 'pvm.songpart.v1';
 export function rememberedPart(songId) {
@@ -15,7 +15,7 @@ export function rememberedPart(songId) {
     return null;
   }
 }
-function rememberPart(songId, choice) {
+export function rememberPart(songId, choice) {
   try {
     const all = JSON.parse(localStorage.getItem(KEY)) || {};
     all[songId] = choice;
@@ -49,7 +49,9 @@ export function partSummary(p, ctx) {
 }
 
 /**
- * Open the dialog. env: { store, engine, ctx: () => song template context, refresh, detect(songId), picture? }.
+ * Open the dialog. env: { store, engine, ctx: () => song template context, refresh, detect(songId), picture?,
+ * choose?(choice): pick a part for the templates instead of applying it (start?: the choice to start from),
+ * remake?: { name, edited, run(choice) -> facts }: the edit was made by a song template; re-make it for the part }.
  * Returns the dialog element.
  */
 export function openSongPart(env) {
@@ -62,7 +64,7 @@ export function openSongPart(env) {
   const sections = partSections(song, dur);
   const p0 = env.store.get();
   const cur = currentPart(p0, ctx0);
-  const start = usableChoice(cur && !cur.byTemplate ? cur : null, sections, dur) || usableChoice(rememberedPart(song.id), sections, dur) || { kind: 'all', ids: [], join: { kind: 'fade', fade: DEFAULT_FADE } };
+  const start = usableChoice(env.start || null, sections, dur) || usableChoice(cur && !cur.byTemplate ? cur : null, sections, dur) || usableChoice(rememberedPart(song.id), sections, dur) || { kind: 'all', ids: [], join: { kind: 'fade', fade: DEFAULT_FADE } };
   const st = {
     kind: start.kind,
     one: start.kind === 'one' ? start.ids[0] : (sections.find((s) => /^chorus/i.test(s.label)) || sections[0] || {}).id,
@@ -72,7 +74,9 @@ export function openSongPart(env) {
     join: start.join && start.join.kind === 'cut' ? 'cut' : 'fade',
     fade: start.join && Number.isFinite(+start.join.fade) ? +start.join.fade : DEFAULT_FADE,
     picture: env.picture || start.picture || null,
+    remake: !!env.remake,
   };
+  const templateMade = () => !!env.choose || (env.remake && st.remake);
   const pictures = () => {
     const c = env.ctx();
     const d = env.store.get();
@@ -225,7 +229,21 @@ export function openSongPart(env) {
     );
   }
 
+  function remakeBox() {
+    if (!env.remake) return null;
+    const opt = (on, label) =>
+      h('label', { class: 'songpart-row' }, h('input', { type: 'radio', name: 'songpart-remake', checked: st.remake === on, 'data-remake': on ? 'yes' : 'no', onchange: () => ((st.remake = on), render()) }), h('span', {}, label));
+    return h(
+      'div',
+      { class: 'songpart-remake', role: 'radiogroup', 'aria-label': 'Template' },
+      opt(true, `Re-make “${env.remake.name}” for this part`),
+      opt(false, 'Only change the song part, keep the edit as it is'),
+      st.remake && env.remake.edited ? h('p', { class: 'warn-list small', 'data-k': 'songpart-handwarn' }, `You changed this edit by hand since the template made it. Re-making it replaces those changes (clips, texts, layers and look). Undo (Ctrl+Z) puts them back.`) : null,
+    );
+  }
+
   function pictureBox() {
+    if (templateMade()) return null; // the template picks its own picture
     const list = pictures();
     const sel = h('select', { 'aria-label': 'Picture', 'data-k': 'songpart-picture' }, list.map((k) => h('option', { value: k, selected: st.picture === k }, pictureLabel[k])));
     sel.addEventListener('change', () => ((st.picture = sel.value), render()));
@@ -240,7 +258,7 @@ export function openSongPart(env) {
     const mine = (d.clips || []).filter((x) => !x.songPart).length;
     const ec = d.endCard && d.endCard.enabled ? d.endCard.duration || 0 : 0;
     const lyr = linesInParts(d.lyrics, r.parts).length;
-    const notes = [
+    const notes = templateMade() ? [env.choose ? 'The template is built for this part: the song, the music video in sync, lyrics, layers and the end card.' : `Re-makes “${env.remake.name}” for this part, in one undo step.`, d.lyrics.length ? `${lyr} lyric line${lyr === 1 ? '' : 's'} in this part, kept in time.` : ''].filter(Boolean) : [
       st.picture !== 'keep' && mine ? `Replaces the ${mine} clip${mine === 1 ? '' : 's'} on your video track (Undo puts ${mine === 1 ? 'it' : 'them'} back).` : '',
       st.picture === 'keep' && (d.clips || []).length ? 'Your clips stay where they are; music video clips are put back in sync.' : '',
       d.lyrics.length ? `${lyr} lyric line${lyr === 1 ? '' : 's'} in this part, kept in time.` : song.instrumental ? '' : 'The song’s lyrics go on (timed when they are).',
@@ -261,8 +279,22 @@ export function openSongPart(env) {
 
   function apply() {
     const c = choice();
+    if (env.choose) {
+      close();
+      return env.choose(c);
+    }
     const ctx = { ...env.ctx(), picture: st.picture };
     let facts = [];
+    if (env.remake && st.remake) {
+      try {
+        facts = env.remake.run(c);
+      } catch (e) {
+        return toast(e.message, 'error', 6000);
+      }
+      rememberPart(song.id, c);
+      close();
+      return toast(`“${env.remake.name}”, ${KIND_LABEL[c.kind].toLowerCase()}: ${facts.join('. ')}. Undo (Ctrl+Z) puts it back.`, 'info', 9000);
+    }
     try {
       env.store.update((d) => (facts = applySongPart(d, c, ctx)));
     } catch (e) {
@@ -279,13 +311,94 @@ export function openSongPart(env) {
     const kindBody = st.kind === 'one' ? oneList() : st.kind === 'several' ? severalList() : st.kind === 'range' ? rangeBox() : h('p', { class: 'muted small' }, `All ${fmtTime(dur)} of the song, from the start.`);
     const ok = describePart(choice(), sections, dur).ok;
     body.replaceChildren(
-      kindTabs(),
-      h('div', { class: 'songpart-kind' }, kindBody),
-      pictureBox(),
-      preview(),
-      h('div', { class: 'row songpart-actions' }, button('Cancel', close, { variant: 'ghost' }), button('Apply', apply, { variant: 'primary', iconName: 'check', disabled: !ok })),
+      ...[
+        kindTabs(),
+        h('div', { class: 'songpart-kind' }, kindBody),
+        remakeBox(),
+        pictureBox(),
+        preview(),
+        h('div', { class: 'row songpart-actions' }, button('Cancel', close, { variant: 'ghost' }), button(env.choose ? 'Use for the templates' : 'Apply', apply, { variant: 'primary', iconName: 'check', disabled: !ok })),
+      ].filter(Boolean), // replaceChildren would write "null"
     );
   }
   render();
   return dlg;
+}
+
+// ---- the part templates are built for (Templates tab, Suggested tab), kept per song while the page is open
+const tplPick = { songId: null, edit: '', choice: null, picked: false };
+
+/** Was the part picked on the picker itself (not just started from the edit or memory)? The Chorus promo keeps its chorus otherwise. */
+export const templatePartPicked = () => tplPick.picked;
+
+/** The part the templates use for the song in ctx, or null for each template's own pick. */
+export function templatePartChoice(p, ctx) {
+  if (!ctx || !ctx.song || !ctx.audio) return null;
+  const dur = ctx.audio.duration || 0;
+  const sections = partSections(ctx.song, dur);
+  const edit = JSON.stringify(p.songPart || null);
+  if (tplPick.songId !== ctx.song.id) {
+    tplPick.picked = false;
+    tplPick.choice = defaultTemplatePart(currentPart(p, ctx), rememberedPart(ctx.song.id), sections, dur);
+  } else if (tplPick.edit !== edit) {
+    // the edit's Song part changed (Song part → Change): follow it when it is a real choice
+    const next = defaultTemplatePart(currentPart(p, ctx), null, sections, dur);
+    if (next.kind !== 'own') tplPick.choice = next;
+  }
+  tplPick.songId = ctx.song.id;
+  tplPick.edit = edit;
+  const c = tplPick.choice && tplPick.choice.kind !== 'own' ? usableChoice(tplPick.choice, sections, dur) : null;
+  return c;
+}
+
+/**
+ * The inline "Part of the song" line over template cards. env: { store, ctx(), openMore(start, choose), detect(id),
+ * onChange() }. Returns null when no song with a song file is picked.
+ */
+export function templatePartPicker(env) {
+  const ctx = env.ctx();
+  if (!ctx || !ctx.song || !ctx.audio) return null;
+  const dur = ctx.audio.duration || 0;
+  const sections = partSections(ctx.song, dur);
+  const cur = templatePartChoice(env.store.get(), ctx);
+  const set = (c) => {
+    tplPick.choice = c;
+    tplPick.songId = ctx.song.id;
+    tplPick.picked = c.kind !== 'own';
+    if (c.kind !== 'own') rememberPart(ctx.song.id, c);
+    env.onChange();
+  };
+  const value = !cur ? 'own' : cur.kind === 'all' ? 'all' : cur.kind === 'one' ? `one:${cur.ids[0]}` : 'picked';
+  const r = cur ? describePart(cur, sections, dur) : null;
+  const opts = [
+    ['own', 'Each template’s own pick'],
+    ['all', `Entire song (${fmtTime(dur)})`],
+    ...sections.map((s) => [`one:${s.id}`, `${s.label} · ${fmtTime(s.start)}–${fmtTime(s.end)}`]),
+    ...(value === 'picked' && r && r.ok ? [['picked', `${r.parts.map((q) => q.label).join(', ')} (${fmtTime(r.length)})`]] : []),
+    ['more', 'Several sections or a custom range…'],
+  ];
+  const sel = h('select', { 'aria-label': 'Part of the song for templates', 'data-k': 'tplpart' }, opts.map(([v, label]) => h('option', { value: v, selected: v === value }, label)));
+  sel.addEventListener('change', () => {
+    const v = sel.value;
+    if (v === 'more') {
+      sel.value = value;
+      return env.openMore(cur, (c) => set(c));
+    }
+    if (v === 'own') return set({ kind: 'own' });
+    if (v === 'all') return set({ kind: 'all', ids: [], join: { kind: 'fade', fade: DEFAULT_FADE } });
+    if (v.startsWith('one:')) return set({ kind: 'one', ids: [v.slice(4)], join: { kind: 'fade', fade: DEFAULT_FADE } });
+  });
+  return h(
+    'div',
+    { class: 'tplpart', 'data-tplpart': cur ? cur.kind : 'own' },
+    h('label', { class: 'small tplpart-lbl' }, h('span', {}, 'Part of the song '), sel),
+    h(
+      'p',
+      { class: 'muted tiny', role: 'status' },
+      cur && r && r.ok ? `Templates are built for ${fmtTime(r.length)} of “${ctx.song.title}”: the song, its music video in sync, lyrics, layers and the end card.${tplPick.picked ? '' : ' The Chorus promo keeps its chorus unless you pick a part here.'}` : `Each template picks its own stretch (its best 15–30 s, or the chorus). Pick a part of “${ctx.song.title}” to build them for it.`,
+      sections.length ? null : ' No sections yet: ',
+      sections.length ? null : h('button', { type: 'button', class: 'link', 'data-k': 'tplpart-detect', onclick: () => env.detect(ctx.song.id) }, 'Detect sections from the audio'),
+      sections.length ? null : ' or use a custom range.',
+    ),
+  );
 }

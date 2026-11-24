@@ -253,6 +253,34 @@ export function applySongPart(d, choice, ctx) {
   return facts;
 }
 
+/**
+ * The part a template is built for: null when the choice is the template's own pick (no choice, or kind 'own'),
+ * else its layout ({ parts, length, fade }). ctx: { song, audio }. Throws an Error with a message to show.
+ */
+export function templatePart(choice, ctx) {
+  if (!choice || choice.kind === 'own') return null;
+  const dur = (ctx && ctx.audio && ctx.audio.duration) || 0;
+  return partLayout(partRanges(choice, partSections(ctx.song, dur), dur), choice.join || { kind: 'fade', fade: DEFAULT_FADE });
+}
+
+/** A short fingerprint of what a template builds (clips, texts, layers, look), to tell when it was changed by hand. */
+export function editSignature(d) {
+  const s = JSON.stringify([d.clips || [], d.texts || [], d.layers || [], d.look || {}]);
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return `${s.length.toString(36)}.${h.toString(36)}`;
+}
+
+/**
+ * The part templates start on for a song: the edit's own Song part when you chose one (not Entire song, not a
+ * template's pick), else the part remembered for the song, else each template's own pick ({ kind: 'own' }).
+ * Entire song counts as no choice, so templates keep their own length unless you pick a part.
+ */
+export function defaultTemplatePart(cur, remembered, sections, duration) {
+  const real = (c) => c && c.kind !== 'all' && !c.byTemplate ? usableChoice(c, sections, duration) : null;
+  return real(cur && cur.same !== false ? cur : null) || real(remembered) || { kind: 'own' };
+}
+
 /** A remembered choice that still fits the song (sections may have been renamed or removed since). */
 export function usableChoice(saved, sections, duration) {
   if (!saved || !PART_KINDS.some(([k]) => k === saved.kind)) return null;

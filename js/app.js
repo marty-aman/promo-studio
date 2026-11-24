@@ -1,7 +1,8 @@
 // App shell: layout, wiring, keyboard shortcuts and autosave.
-import { openSongPart, partSummary } from './panel-songpart.js';
+import { openSongPart, partSummary, templatePartPicker, templatePartChoice, templatePartPicked } from './panel-songpart.js';
+import { editSignature } from './songpart.js';
 import { ASPECTS, clipAt, layoutClips, splitClip, clamp, linesFromText, timelineToSong, songOffsetAt, uid, detectBeats } from './core.js';
-import { gameParts, applySongTemplate } from './songtemplates.js';
+import { gameParts, applySongTemplate, SONG_TEMPLATES } from './songtemplates.js';
 import { syncLayer } from './layersync.js';
 import { describeSyncPoint, inForSyncPoint } from './clipsync.js';
 import { savedVideoSync, setVideoSync, sameVideoSync, savedTabSync, setTabSync, sameTabSync, syncPatch, tabSyncChanges, videoSyncChange, autoSyncDecision, describeTabSync } from './songsync.js';
@@ -1637,8 +1638,36 @@ ui.openSongPart = (opts = {}) => {
     }
     ui.refreshPanels(true);
   }
-  return openSongPart({ store, engine, ctx: () => ui.songTemplateContext(), refresh: () => ui.refreshPanels(true), detect: (id) => ui.detectSongSections(id), picture: opts.picture || null });
+  // an edit a song template made is re-made for the new part (with a warning when it was changed by hand since)
+  const p = store.get();
+  const tpl = SONG_TEMPLATES.find((t) => t.id === p.template);
+  const made = tpl && p.songPart && p.songPart.songId === p.managerSongId && (p.songPart.template === tpl.id || p.songPart.byTemplate === tpl.id);
+  const remake = made && !opts.picture
+    ? {
+        name: tpl.name,
+        edited: !p.songPart.sig || p.songPart.sig !== editSignature(p),
+        run: (choice) => {
+          const game = (p.layers || []).find((l) => l.type === 'game' && l.fromTemplate);
+          return ui.applySongTemplate(tpl.id, { part: choice, ...(game && game.gameTheme ? { gameTheme: game.gameTheme } : {}) });
+        },
+      }
+    : null;
+  return openSongPart({ store, engine, ctx: () => ui.songTemplateContext(), refresh: () => ui.refreshPanels(true), detect: (id) => ui.detectSongSections(id), picture: opts.picture || null, remake });
 };
+/** The part of the song templates are built for (null: each template's own pick), and its inline picker. */
+// the Chorus promo keeps its own chorus unless the part was picked on the picker
+ui.templatePart = (id = '') => {
+  const c = templatePartChoice(store.get(), ui.songTemplateContext());
+  return id === 'st-chorus' && !templatePartPicked() ? null : c;
+};
+ui.templatePartPicker = () =>
+  templatePartPicker({
+    store,
+    ctx: () => ui.songTemplateContext(),
+    detect: (id) => ui.detectSongSections(id),
+    onChange: () => ui.refreshPanels(true),
+    openMore: (start, choose) => openSongPart({ store, engine, ctx: () => ui.songTemplateContext(), refresh: () => ui.refreshPanels(true), detect: (id) => ui.detectSongSections(id), start, choose }),
+  });
 ui.songPartSummary = () => partSummary(store.get(), ui.songTemplateContext());
 /** Open a song's Sections tab in the Manager and start detecting its sections from the audio. */
 ui.detectSongSections = (songId) => {
@@ -1648,9 +1677,11 @@ ui.detectSongSections = (songId) => {
 };
 /** Make a song template, then line its highways up with the song by listening. Returns the facts, or throws. */
 ui.applySongTemplate = (id, opts = {}) => {
-  const ctx = { ...ui.songTemplateContext(), ...opts };
+  // opts.part: the part of the song (null or kind 'own': the template's own pick); the Templates tab's pick by default
+  const ctx = { ...ui.songTemplateContext(), part: 'part' in opts ? opts.part : ui.templatePart(id), ...opts };
   let facts = [];
-  store.update((d) => (facts = applySongTemplate(d, id, ctx)));
+  const key = `songtpl-${Date.now()}-${Math.random()}`; // the template and its auto-sync are one undo step
+  store.update((d) => (facts = applySongTemplate(d, id, ctx)), key);
   if (id === 'st-game') {
     const synced = [];
     const kept = [];
@@ -1666,11 +1697,13 @@ ui.applySongTemplate = (id, opts = {}) => {
       const r = syncLayer(p, L);
       if (!r.error) (patches.set(L.id, r.patch), synced.push(r.sure === 'unsure' ? `${L.label || L.name} (check it)` : L.label || L.name));
     }
-    if (patches.size) store.update((d) => d.layers.forEach((x) => patches.has(x.id) && Object.assign(x, patches.get(x.id))));
+    if (patches.size) store.update((d) => d.layers.forEach((x) => patches.has(x.id) && Object.assign(x, patches.get(x.id))), key);
     if (kept.length) facts.push(`On the sync saved on the song: ${kept.join(', ')}`);
     if (synced.length) facts.push(`Auto-synced to the song: ${synced.join(', ')}`);
     else if (!kept.length) facts.push('Stems are still being analysed: press Auto-sync on each highway in a moment');
   }
+  // what the template made, to tell later (Song part → Change) whether it was changed by hand
+  store.patch((d) => d.songPart && (d.songPart.sig = editSignature(d)));
   engine.seek(0);
   ui.refreshPanels(true);
   return facts;

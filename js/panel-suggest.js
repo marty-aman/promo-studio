@@ -4,7 +4,7 @@ import { h, button, section, toast } from './dom.js';
 import { renderFrame } from './renderer.js';
 import { layoutClips } from './core.js';
 import { media, tabTimeline } from './media.js';
-import { inventory, inventorySignature, canSuggest, planTakes, applyTake } from './suggest.js';
+import { inventory, inventorySignature, canSuggest, planTakes, applyTakePart } from './suggest.js';
 import { coverPalette } from './backgrounds.js';
 import { loadScan, hotTemplates, ago } from './trendscan.js';
 import { TRENDS } from './inspiration.js';
@@ -115,10 +115,13 @@ export function buildSuggestPanel({ store, engine, ui }) {
   const seed = suggestState.seed;
   const takes = planTakes(inv, { seed, hot: hotTemplates(TRENDS, scan) });
   const base = engine.env(false);
+  // the part of the song picked on the Templates tab (or here): the takes are cut for it
+  const partCtx = ui.songTemplateContext ? ui.songTemplateContext() : null;
+  const part = ui.templatePart ? ui.templatePart() : null;
 
   const cards = takes.map((take, i) => {
     const draft = structuredClone(p);
-    const facts = applyTake(draft, take, { inv, seed: seed + i, palette, tabTempo, extraScore: activeExtraScore() });
+    const facts = applyTakePart(draft, take, { inv, seed: seed + i, palette, tabTempo, extraScore: activeExtraScore() }, part, partCtx);
     draft.look.overlay = 'off';
     const W = 135;
     const dims = engine.dims();
@@ -191,7 +194,7 @@ export function buildSuggestPanel({ store, engine, ui }) {
     });
     const use = button('Use this edit', () => {
       stop();
-      store.update((d) => applyTake(d, take, { inv, seed: seed + i, palette, tabTempo, extraScore: activeExtraScore() }));
+      store.update((d) => applyTakePart(d, take, { inv, seed: seed + i, palette, tabTempo, extraScore: activeExtraScore() }, part, partCtx));
       engine.seek(0);
       toast(`“${take.title}” edit applied. Undo (Ctrl+Z) to go back.`);
       ui.refreshPanels(true);
@@ -219,6 +222,7 @@ export function buildSuggestPanel({ store, engine, ui }) {
       h('p', { class: 'muted small' }, 'Three edits built from what you added. Play one to see and hear it, then use it. It replaces the video track and look; your lyrics, text and files stay.'),
       h('p', { class: 'muted tiny' }, scan && scan.videos ? `Leaning on the formats trending on Shorts (refreshed ${ago(scan.fetchedAt)}). ` : 'Refresh the trends on the Inspiration page and these lean on what’s working right now. ', h('button', { type: 'button', class: 'link', onclick: () => ui.openTab('inspiration') }, scan && scan.videos ? 'Refresh trends' : 'Open Inspiration')),
       have,
+      ui.templatePartPicker ? ui.templatePartPicker() : null,
       h('div', { class: 'sugg-list' }, cards),
       h('div', { class: 'row' },
         button('Show 3 different takes', () => {

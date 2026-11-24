@@ -9,6 +9,7 @@ import { applyTake } from './suggest.js';
 import { defaultGameLayer } from './rhythmgame.js';
 import { isBassTrack } from './tab.js';
 import { autoCover, sectionSpans, fmtTime } from './manager/releases.js';
+import { templatePart, applySongPart } from './songpart.js';
 
 export const SONG_TEMPLATES = [
   {
@@ -141,9 +142,21 @@ export function songTemplateReady(id, ctx) {
   }
   if (id === 'st-mv') return ctx.video ? { ok: true, uses: [`Music video: ${ctx.video.rec.name}`, lyricsUse(ctx)], missing: '' } : { ok: false, uses: [], missing: `Add the music video to “${ctx.song.title}” (its Files tab).` };
   if (id === 'st-chorus') {
+    const pic = chorusPicture(ctx);
+    let part = null;
+    try {
+      part = templatePart(ctx.part, ctx);
+    } catch (e) {
+      return { ok: false, uses: [], missing: e.message };
+    }
+    if (part) {
+      // a part you picked: no Chorus section needed
+      if (!pic) return { ok: false, uses: [], missing: `Add raw footage, the music video or cover art to “${ctx.song.title}”.` };
+      const picText = pic.kind === 'footage' ? `${ctx.footage.length} footage clip${ctx.footage.length === 1 ? '' : 's'}, cut on the beat` : pic.kind === 'video' ? `Music video: ${ctx.video.rec.name}, in sync` : 'The cover art, pulsing on the beat';
+      return { ok: true, uses: [`${part.parts.map((q) => q.label).join(', ')} (${Math.round(part.length)} s)`, picText], missing: '' };
+    }
     const sec = firstChorus(ctx.song, ctx.audio.duration || 0);
     if (!sec) return { ok: false, uses: [], missing: `“${ctx.song.title}” has no Chorus section yet. Detect the sections from the audio (or type them) on its Sections tab.`, detect: true };
-    const pic = chorusPicture(ctx);
     if (!pic) return { ok: false, uses: [], missing: `Add raw footage, the music video or cover art to “${ctx.song.title}”.` };
     const w = chorusWindow(sec, ctx.audio.duration || 0);
     const picText = pic.kind === 'footage' ? `${ctx.footage.length} footage clip${ctx.footage.length === 1 ? '' : 's'}, cut on the beat` : pic.kind === 'video' ? `Music video: ${ctx.video.rec.name}, the same moment, cut on the beat` : 'The cover art, pulsing on the beat';
@@ -154,12 +167,16 @@ export function songTemplateReady(id, ctx) {
 }
 const lyricsUse = (ctx) => (ctx.song.instrumental ? 'No lyrics (instrumental)' : ctx.hasLyrics ? 'The lyrics in the edit' : ctx.song.lyricTiming ? 'The song’s timed lyrics' : ctx.song.lyrics && ctx.song.lyrics.trim() ? 'The song’s lyrics (tap-sync them, or find timed ones)' : 'No lyrics yet: add them on the Lyrics tab');
 
-/** Put the song in and pick its hook: `len` seconds from the loudest part. Returns the hook start (song seconds). */
-function setSong(d, audio, len) {
+/** Put the song in and pick its hook: `len` seconds from the loudest part, or the part you picked. Returns the length. */
+function setSong(d, audio, len, part = null) {
   if (!d.song || d.song.mediaId !== audio.id) d.song = { mediaId: audio.id, offset: 0, volume: 1, fadeIn: 0.3, fadeOut: 1.2 };
+  d.song.fadeIn = 0.3;
+  if (part) {
+    d.song.offset = part.parts[0].from;
+    return +part.length.toFixed(2);
+  }
   const L = Math.min(len, Math.max(5, Math.floor(audio.duration || len)));
   d.song.offset = audio.envelope ? findHook(audio.envelope, audio.envRate || 100, L, audio.duration) : 0;
-  d.song.fadeIn = 0.3;
   return L;
 }
 
@@ -279,16 +296,19 @@ export function applySongTemplate(d, id, ctx) {
   const facts = [];
   const ready = songTemplateReady(id, ctx);
   if (!ready.ok) throw new Error(ready.missing);
+  // ctx.part: the part of the song you picked (songpart.js); none = the template's own pick
+  const part = templatePart(ctx.part, ctx);
+  const partText = part ? `${part.parts.map((q) => q.label).join(', ')} (${fmtTime(part.length)})` : '';
   d.layers = d.layers || [];
   d.texts = [];
   if (d.song) delete d.song.parts; // a template plays one stretch of the song (see songpart.js)
   if (d.song) delete d.song.join;
   if (id === 'st-chorus') {
     hideParts(d);
-    const sec = firstChorus(ctx.song, ctx.audio.duration || 0);
-    const w = chorusWindow(sec, ctx.audio.duration || 0);
+    const sec = part ? null : firstChorus(ctx.song, ctx.audio.duration || 0);
+    const w = part ? { start: part.parts[0].from, len: +part.length.toFixed(2) } : chorusWindow(sec, ctx.audio.duration || 0);
     const pic = chorusPicture(ctx);
-    facts.push(`${Math.round(w.len)} s of ${sec.label} from ${fmtTime(w.start)}`);
+    facts.push(part ? partText : `${Math.round(w.len)} s of ${sec.label} from ${fmtTime(w.start)}`);
     if (pic.kind === 'video') {
       if (!d.song || d.song.mediaId !== ctx.audio.id) d.song = { mediaId: ctx.audio.id, offset: 0, volume: 1, fadeIn: 0.3, fadeOut: 1.2 };
       Object.assign(d.song, { offset: w.start, fadeIn: 0.3 });
@@ -318,16 +338,18 @@ export function applySongTemplate(d, id, ctx) {
       c.transition = i ? { type: 'none', duration: 0.3 } : { type: 'fade', duration: 0.4 };
       c.effects = { ...(c.effects || {}), beatPulse: 0.35 };
     });
-    chorusLyricsOn(d, ctx, w, facts);
+    // a part you picked that is a chorus keeps the chorus lyrics; any other part gets the song's lyrics
+    if (!part || (part.parts.length === 1 && /^chorus\b/i.test(part.parts[0].label))) chorusLyricsOn(d, ctx, w, facts);
+    else lyricsOn(d, ctx, facts);
   } else if (id === 'st-footage') {
     hideParts(d);
-    const take = { id: 'st-footage', template: 'spotlight', title: 'Raw footage + lyrics', hookLen: 15, beatsPerCut: 4 };
+    const take = { id: 'st-footage', template: 'spotlight', title: 'Raw footage + lyrics', hookLen: part ? part.length : 15, beatsPerCut: 4, ...(part ? { start: part.parts[0].from } : {}) };
     facts.push(...applyTake(d, take, { inv: { song: ctx.audio, beats: ctx.beats || null, clips: ctx.footage, sources: [], lyrics: 0 } }));
     hideParts(d); // the template can add band layers back
     lyricsOn(d, ctx, facts);
   } else if (id === 'st-mv') {
     hideParts(d);
-    const len = setSong(d, ctx.audio, 15);
+    const len = setSong(d, ctx.audio, 15, part);
     d.duration = +(len + 3.5).toFixed(2);
     // the same moment of the music video as the song: its 0:00 is `offset` seconds into the video
     d.clips = [videoClip(ctx.video.rec, d.song.offset + (ctx.video.offset || 0), len, { transition: { type: 'fade', duration: 0.5 } })];
@@ -336,10 +358,10 @@ export function applySongTemplate(d, id, ctx) {
     hideParts(d);
     d.look.letterbox = 0; // cinema bars would cover the lyrics on a phone
     for (const c of d.clips) c.kenBurns = { fromZoom: 1, toZoom: 1.06, fromX: 0, toX: 0, fromY: 0, toY: 0 };
-    facts.push(`${len} s hook from ${fmt(d.song.offset)} over the same moment of the music video${ctx.video.offset ? ` (it starts the song ${fmt(ctx.video.offset)} in)` : ''}`);
+    facts.push(`${part ? partText : `${len} s hook from ${fmt(d.song.offset)}`} over the same moment of the music video${ctx.video.offset ? ` (it starts the song ${fmt(ctx.video.offset)} in)` : ''}`);
     lyricsOn(d, ctx, facts);
   } else {
-    const len = setSong(d, ctx.audio, 30);
+    const len = setSong(d, ctx.audio, 30, part);
     d.duration = +(len + 4).toFixed(2);
     if (ctx.beats) d.beats = ctx.beats;
     // behind the highways: the music video dimmed, or the rock arena
@@ -384,14 +406,40 @@ export function applySongTemplate(d, id, ctx) {
     d.layerVis = { ...(d.layerVis || {}), lyrics: false };
     Object.assign(d.look, { vignette: 0.3, grain: 0, lightLeak: 0, scanlines: 0, beatFlash: 0, letterbox: 0 });
     d.template = 'st-game';
-    facts.push(`${len} s from ${fmt(d.song.offset)}, the loudest part`, `${n} highway${n === 1 ? '' : 's'}: ${parts.map((p) => `${p.label} from ${p.from}`).join('; ')}`, bgVideo ? 'The music video, dimmed, behind them' : 'The rock arena behind them');
+    facts.push(part ? partText : `${len} s from ${fmt(d.song.offset)}, the loudest part`, `${n} highway${n === 1 ? '' : 's'}: ${parts.map((p) => `${p.label} from ${p.from}`).join('; ')}`, bgVideo ? 'The music video, dimmed, behind them' : 'The rock arena behind them');
   }
   endCardFor(d, ctx, ctx.today || '');
   d.template = id;
+  if (part) {
+    fitToPart(d, id, ctx, part);
+    return facts.concat(`Ends on the end card for “${ctx.song.title}”${ctx.cover ? ' with its cover' : ''}`);
+  }
   // the stretch it picked shows as the Song part, so it can be changed from there
   if (d.song) d.songPart = { songId: ctx.song.id, kind: 'range', ids: [], from: d.song.offset, to: +(d.song.offset + Math.max(1, d.duration - (d.endCard.enabled ? d.endCard.duration : 0))).toFixed(3), join: { kind: 'fade', fade: 0.3 }, picture: 'keep', length: +Math.max(1, d.duration - (d.endCard.enabled ? d.endCard.duration : 0)).toFixed(3), byTemplate: id };
   facts.push(`Ends on the end card for “${ctx.song.title}”${ctx.cover ? ' with its cover' : ''}`);
   return facts;
+}
+
+/**
+ * After a template was built for the part's first stretch and length: set the part on the edit (applySongPart:
+ * song.parts for several sections, the length plus the end card, the Song part record). Several stretches get one
+ * picture per stretch (the music video in sync, footage on the beat or the cover) in the template's own style.
+ */
+function fitToPart(d, id, ctx, part) {
+  const many = part.parts.length > 1;
+  const chorusPic = id === 'st-chorus' ? chorusPicture(ctx).kind : null;
+  const picture = !many ? 'keep' : id === 'st-mv' ? 'video' : id === 'st-footage' ? 'footage' : id === 'st-chorus' ? chorusPic : ctx.video ? 'video' : 'keep';
+  const proto = (d.clips || [])[0] || null;
+  applySongPart(d, ctx.part, { ...ctx, picture });
+  if (many && proto && picture !== 'keep') {
+    for (const c of d.clips) {
+      if (proto.filter) c.filter = structuredClone(proto.filter);
+      if (proto.grade) c.grade = structuredClone(proto.grade);
+      if (proto.effects) c.effects = structuredClone(proto.effects);
+      if (id === 'st-mv' && c.kind === 'video') c.kenBurns = proto.kenBurns ? structuredClone(proto.kenBurns) : null;
+    }
+  }
+  d.songPart.template = id;
 }
 
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;

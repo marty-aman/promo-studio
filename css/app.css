@@ -1773,6 +1773,15 @@ body.touch .wt-h.e { right: -8px; }
 .songpart-notes { list-style: disc inside; }
 .songpart-actions { justify-content: flex-end; }
 .songpart-range input[type='number'] { width: 100%; }
+.songpart-remake { display: grid; gap: 6px; }
+/* "Part of the song" over the template cards and Suggested edits */
+.tplpart { display: grid; gap: 4px; min-width: 0; }
+.tplpart-lbl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.tplpart select { flex: 1 1 220px; min-width: 0; max-width: 100%; }
+.tplpart p { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .tplpart select { min-height: 44px; }
+}
 @media (max-width: 700px) {
   .songpart-dialog { width: 100%; max-width: 100%; margin: auto 0 0; max-height: 88vh; border-radius: 14px 14px 0 0; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
   .songpart-row, .songpart-kinds .btn, .songpart-actions .btn { min-height: 44px; }

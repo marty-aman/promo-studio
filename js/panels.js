@@ -66,6 +66,7 @@ import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS, MA
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate, tabIntoLayout, lyricsIntoLayout, tabSources, templateNeeds } from './templates.js';
 import { SONG_TEMPLATES, songTemplateReady, applySongTemplate } from './songtemplates.js';
+import { applySongPart, describePart, partSections } from './songpart.js';
 import { speechCaptionsFor } from './ai/panel-speechcaptions.js';
 import { clipTarget } from './ai/captionsync.js';
 import { parseSubtitles, toSRT, toVTT, videoCues, CAPTION_STYLES, setCaptions, styleCaptions, shiftCaptions, captionY } from './subtitles.js';
@@ -811,8 +812,17 @@ export function createPanels({ store, engine, ui }) {
           h('span', { class: 'muted tiny' }, tpl.blurb),
           needs ? h('span', { class: 'tpl-needs tiny' }, `Needs a Guitar Pro file with a ${needs} track. Add one in the Guitar Pro tab.`) : null,
           button(p.template === tpl.id ? 'Applied · re-apply' : 'Use this template', () => {
-            store.update((d) => applyTemplate(d, tpl.id, tabSources(media.all())));
-            toast(`“${tpl.name}” applied. Undo (Ctrl+Z) to go back.`);
+            // the part of the song picked above, if any: the edit plays it, then the template styles it (one undo)
+            const part = ui.templatePart ? ui.templatePart() : null;
+            try {
+              store.update((d) => {
+                if (part) applySongPart(d, part, { ...ui.songTemplateContext(), picture: 'keep' });
+                applyTemplate(d, tpl.id, tabSources(media.all()));
+              });
+            } catch (e) {
+              return toast(e.message, 'error', 6000);
+            }
+            toast(`“${tpl.name}” applied${part ? ` to ${describeChoice(part)}` : ''}. Undo (Ctrl+Z) to go back.`);
             ui.refreshPanels(true);
           }, { variant: `sm${p.template === tpl.id ? '' : ' primary'}` }),
         ),
@@ -824,6 +834,7 @@ export function createPanels({ store, engine, ui }) {
       'div',
       {},
       isCanvas(p) ? canvasSect : null,
+      templatePartSection(),
       songTemplatesSection(),
       themeSection(p, previewT),
       section(
@@ -842,12 +853,25 @@ export function createPanels({ store, engine, ui }) {
     );
   }
 
+  /** "Part of the song": which part the templates below (and the Suggested edits) are built for. */
+  function templatePartSection() {
+    const el = ui.templatePartPicker ? ui.templatePartPicker() : null;
+    return el ? section('Part of the song', el) : null;
+  }
+  const describeChoice = (c) => {
+    const ctx = ui.songTemplateContext();
+    const r = ctx && ctx.audio ? describePart(c, partSections(ctx.song, ctx.audio.duration || 0), ctx.audio.duration || 0) : null;
+    return r && r.ok ? `${r.parts.map((q) => q.label).join(', ')} (${formatTime(r.length, false)})` : 'the part you picked';
+  };
+  ui.templatePartLabel = describeChoice;
+
   // ---------------------------------------------------------------- TEMPLATES FROM THE SONG'S FILES
   /** Rhythm game, music video + lyrics, raw footage + lyrics: built from the current song's own files. */
   function songTemplatesSection() {
     const ctx0 = ui.songTemplateContext ? ui.songTemplateContext() : null;
-    const ctx = ctx0 ? { ...ctx0, gameTheme: songTplUI.gameTheme } : null;
+    const ctxAll = ctx0 ? { ...ctx0, gameTheme: songTplUI.gameTheme } : null;
     const cards = SONG_TEMPLATES.map((tpl) => {
+      const ctx = ctxAll ? { ...ctxAll, part: ui.templatePart ? ui.templatePart(tpl.id) : null } : null;
       const r = songTemplateReady(tpl.id, ctx);
       const c = h('canvas', { width: 108, height: 192, class: 'tpl-thumb', 'aria-hidden': 'true' });
       if (r.ok) {
@@ -884,7 +908,7 @@ export function createPanels({ store, engine, ui }) {
           r.ok
             ? button(on ? 'Applied · re-apply' : 'Use this template', () => {
                 try {
-                  const facts = ui.applySongTemplate(tpl.id, { gameTheme: songTplUI.gameTheme });
+                  const facts = ui.applySongTemplate(tpl.id, { gameTheme: songTplUI.gameTheme }); // the part picked now (ui.templatePart)
                   toast(`“${tpl.name}” for “${ctx.song.title}”: ${facts.join('. ')}. Undo (Ctrl+Z) to go back.`, 'info', 9000);
                 } catch (e) {
                   toast(e.message, 'error', 6000);
@@ -898,7 +922,7 @@ export function createPanels({ store, engine, ui }) {
     });
     return section(
       'From your song’s files',
-      h('p', { class: 'muted small' }, ctx && ctx.song ? `Made from “${ctx.song.title}” and the files on its Files tab in Songs & releases. Each ends on the song’s end card.` : 'Pick one of your songs in the Audio tab: these templates are made from its tabs, MIDI, stems, music video and footage, and end on its end card.'),
+      h('p', { class: 'muted small' }, ctxAll && ctxAll.song ? `Made from “${ctxAll.song.title}” and the files on its Files tab in Songs & releases. Each ends on the song’s end card.` : 'Pick one of your songs in the Audio tab: these templates are made from its tabs, MIDI, stems, music video and footage, and end on its end card.'),
       h('div', { class: 'tpl-grid' }, cards),
     );
   }
