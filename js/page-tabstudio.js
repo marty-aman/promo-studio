@@ -13,6 +13,7 @@ import { transcribeStem } from './ai/basicpitch.js';
 import * as ST from './stemtab.js';
 import { wrapBars, clampZoom, nextSpeed, loopPosition, readGesture } from './tablayout.js';
 import { songTabChoices, tabToFollow } from './manager/files.js';
+import { savedTabSync } from './songsync.js';
 import { relinkButton } from './relink.js';
 
 // Phones and tablets (and any touch screen) get the touch layout: bars wrap to the screen, a playback bar at
@@ -259,6 +260,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
     S.model = E.fromScore(rec.score);
     E.alignTracks(S.model);
     if (L && L.offset != null) S.model.offset = L.offset;
+    else if (savedTabSync(song, id)) S.model.offset = savedTabSync(song, id).offset; // the sync saved on the song
     S.sourceId = id;
     S.savedId = null;
     S.auto = { songId: song.id, mediaId: id };

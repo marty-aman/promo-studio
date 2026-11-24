@@ -49,7 +49,8 @@ import { markTimed, timingSummary, SOURCE_LABELS } from './manager/lyrictiming.j
 
 const themeState = { motion: false };
 import { ensureLayerAnalyses, videoWaveform } from './media.js';
-import { syncPoint, autoLineUp, describeSyncPoint } from './clipsync.js';
+import { syncPoint, autoLineUp, describeSyncPoint, inForSyncPoint } from './clipsync.js';
+import { savedOn, sameVideoSync } from './songsync.js';
 import { media, addMedia, removeMedia, tabTimeline } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
@@ -149,14 +150,14 @@ export function createPanels({ store, engine, ui }) {
       ui.openTab('stock');
       ui.refreshPanels(true);
     },
-    /** `from`/`len`: start that many seconds into the video and keep `len` seconds (Find a moment). */
-    addClip(rec, at = null, { from = 0, len = null } = {}) {
+    /** `from`/`len`: start that many seconds into the video and keep `len` seconds (Find a moment). Without `from`, the song's music video starts on its saved sync. */
+    addClip(rec, at = null, { from = null, len = null } = {}) {
       store.update((d) => {
         const clip = {
           id: uid('clip'),
           mediaId: rec.id,
           kind: rec.kind,
-          in: rec.kind === 'video' ? from : 0,
+          in: rec.kind === 'video' ? from || 0 : 0,
           duration: rec.kind === 'image' ? 3 : len != null ? len : +Math.min(rec.duration || 5, 6).toFixed(2),
           speed: 1,
           fit: 'cover',
@@ -172,6 +173,11 @@ export function createPanels({ store, engine, ui }) {
         };
         if (at == null) d.clips.push(clip);
         else d.clips.splice(at, 0, clip);
+        const pt = from == null && rec.kind === 'video' && ui.songSync ? ui.songSync.videoPoint(rec) : null;
+        if (pt != null) {
+          const laid = layoutClips(d.clips).find((l) => l.clip.id === clip.id);
+          clip.in = inForSyncPoint(pt, laid ? laid.start : 0, d.song ? d.song.offset || 0 : 0, rec.duration, clip.duration);
+        }
         const total = d.clips.reduce((s, c) => s + c.duration, 0);
         if (d.clips.length === 1 && !d.song) d.duration = Math.max(d.duration, +(total + (d.endCard.enabled ? d.endCard.duration : 0)).toFixed(2));
       });
@@ -2275,15 +2281,30 @@ export function createPanels({ store, engine, ui }) {
       toast(`${describeSyncPoint(r.point)} ${r.sure === 'sure' ? 'A clear match.' : r.sure === 'likely' ? 'A likely match: play it to check.' : 'No clear match: play it, and nudge or drag if it’s off.'} Undo (Ctrl+Z) to go back.`, r.sure === 'unsure' ? 'error' : 'info', 7000);
       ui.refreshPanels(true);
     };
-    // the song's own music video: keep the sync point on the song, for templates and section exports
-    const sc = ui.songContext ? ui.songContext() : null;
-    const isMv = sc && sc.song && sc.song.files && sc.song.files.video && sc.song.files.video.mediaId === rec.id;
-    const saveMv = () => {
+    // the song's own music video (matched by its file, however it got into the edit): its sync is kept on the song
+    // and saved by itself shortly after each change here (see songSync in app.js)
+    const mv = ui.songSync ? ui.songSync.video() : null;
+    const isMv = !!(mv && mv.mvId === rec.id);
+    const saveMv = (replace) => {
       const pp = store.get();
       const pt = syncPoint(findClip(pp, sel.id).clip, startOf(pp), pp.song.offset);
-      ui.saveVideoSyncPoint && ui.saveVideoSyncPoint(sc.song.id, Math.max(0, pt));
-      toast(`Saved on “${sc.song.title}”: ${describeSyncPoint(Math.max(0, pt))} Templates and section exports use it.`, 'info', 5000);
+      ui.songSync.saveVideo(pt, { replace });
     };
+    const mvNow = isMv ? syncPoint(x0, startOf(p), p.song.offset) : 0;
+    const mvState = !isMv
+      ? null
+      : h(
+          'div',
+          { class: 'sync-saved', 'data-k': 'mv-sync-saved' },
+          h('p', { class: 'small' }, mv.saved
+            ? `Saved on “${mv.song.title}”: ${describeSyncPoint(mv.saved.offset)}${mv.saved.savedAt ? ` (${savedOn(mv.saved.savedAt)})` : ''}${sameVideoSync(mv.saved.offset, mvNow) ? '' : ' This clip is placed differently.'}`
+            : `This is “${mv.song.title}”’s music video. Line it up and the sync is saved on the song by itself, for templates, section exports and new clips of it.`),
+          mv.conflict ? h('p', { class: 'warn-note small' }, 'The song already had a different sync, so it was kept. Save to replace it.') : null,
+          h('div', { class: 'row wrap' },
+            button(`Save as “${mv.song.title}”’s music video sync`, () => saveMv(true), { variant: mv.conflict ? 'sm primary' : 'sm', title: 'Save where this clip is lined up on the song now (replacing what it had). Templates and section exports use it.' }),
+            mv.saved && !sameVideoSync(mv.saved.offset, mvNow) ? button('Use the saved sync', () => setIn(() => inForSyncPoint(mv.saved.offset, startOf(store.get()), store.get().song.offset)), { variant: 'sm', title: 'Put this clip on the sync saved on the song' }) : null,
+          ),
+        );
     const hear = h('input', { type: 'checkbox', checked: (x0.volume || 0) > 0 });
     hear.addEventListener('change', () => store.update(c((x) => (x.volume = hear.checked ? 1 : 0))));
     return section(
@@ -2298,8 +2319,8 @@ export function createPanels({ store, engine, ui }) {
       ),
       h('div', { class: 'row wrap' },
         button('Line it up by listening', auto, { iconName: 'activity', variant: 'sm primary', title: 'Compare the video’s sound with the song and set where it plays from' }),
-        isMv ? button(`Save as “${sc.song.title}”’s music video sync`, saveMv, { variant: 'sm', title: 'Templates and section exports use where the song starts in its music video' }) : null,
       ),
+      mvState,
       h('label', { class: 'toggle' }, hear, h('span', {}, 'Play the video’s own sound too (to check by ear)')),
     );
   }

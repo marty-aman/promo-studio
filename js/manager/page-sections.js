@@ -3,6 +3,7 @@
 import { h, button, iconButton, toast } from '../dom.js';
 import { SECTION_NAMES, newSection, parseTime, fmtTime, parseSections, sectionSpans, numberRepeats, normalizeSections } from './releases.js';
 import { lyricsFromTiming } from './lyrictiming.js';
+import { setVideoSync } from '../songsync.js';
 import { decodeMono, detectSections, proposalAgainst } from '../sectiondetect.js';
 
 export const sectionsUI = { paste: '' };
@@ -170,7 +171,7 @@ export function sectionsTab(ctx, song, S) {
         el.addEventListener('change', () => {
           const t = parseTime(el.value);
           if (t == null) return toast('Type a time like 0:08.', 'error');
-          ctx.update(S((s) => (s.files.video.offset = t)));
+          ctx.update(S((s) => setVideoSync(s, t)));
         });
         return el;
       })()

@@ -2,6 +2,8 @@
 import { ASPECTS, clipAt, layoutClips, splitClip, formatTime, clamp, linesFromText, timelineToSong, uid, detectBeats } from './core.js';
 import { gameParts, applySongTemplate } from './songtemplates.js';
 import { syncLayer } from './layersync.js';
+import { describeSyncPoint, inForSyncPoint } from './clipsync.js';
+import { savedVideoSync, setVideoSync, sameVideoSync, savedTabSync, setTabSync, sameTabSync, syncPatch, tabSyncChanges, videoSyncChange, autoSyncDecision, describeTabSync } from './songsync.js';
 import { createStore, newProject, loadProject, saveProject, FONTS, findClip, loadRecent, saveRecent, setSaveFailHandler } from './state.js';
 import { splitItem, splitClipAt, duplicateItem, copyItem, pasteItem, safeRect, meterFill, meterHold } from './studioedit.js';
 import { makeProjectFile, parseProjectFile, projectFileName, pushRecent, hasContent } from './projectfile.js';
@@ -259,13 +261,9 @@ const ui = {
     rebuildLeft();
     rebuildInspector();
   },
-  /** Save "the song's 0:00 is `sec` seconds into its music video" on the Manager song (templates use it). */
+  /** "Save as the song's music video sync": save `sec` on the Manager song, replacing what it had. */
   saveVideoSyncPoint(songId, sec) {
-    if (!manager) return;
-    manager.store.update((m) => {
-      const s = m.songs.find((x) => x.id === songId);
-      if (s && s.files && s.files.video) s.files.video.offset = +Math.max(0, sec).toFixed(3);
-    });
+    return songSync.saveVideo(sec, { replace: true, songId });
   },
   split() {
     const p = store.get();
@@ -1479,15 +1477,23 @@ ui.applySongTemplate = (id, opts = {}) => {
   store.update((d) => (facts = applySongTemplate(d, id, ctx)));
   if (id === 'st-game') {
     const synced = [];
+    const kept = [];
     const patches = new Map();
     const p = store.get();
     for (const L of p.layers.filter((l) => l.type === 'game' && l.visible !== false)) {
+      // a highway on one of the song's tab files already started on its saved sync: keep it (Auto-sync re-listens)
+      const own = L.source === 'tab' && songSync.tab(L.mediaId);
+      if (own && own.saved) {
+        kept.push(L.label || L.name);
+        continue;
+      }
       const r = syncLayer(p, L);
       if (!r.error) (patches.set(L.id, r.patch), synced.push(r.sure === 'unsure' ? `${L.label || L.name} (check it)` : L.label || L.name));
     }
     if (patches.size) store.update((d) => d.layers.forEach((x) => patches.has(x.id) && Object.assign(x, patches.get(x.id))));
+    if (kept.length) facts.push(`On the sync saved on the song: ${kept.join(', ')}`);
     if (synced.length) facts.push(`Auto-synced to the song: ${synced.join(', ')}`);
-    else facts.push('Stems are still being analysed: press Auto-sync on each highway in a moment');
+    else if (!kept.length) facts.push('Stems are still being analysed: press Auto-sync on each highway in a moment');
   }
   engine.seek(0);
   ui.refreshPanels(true);
@@ -1602,6 +1608,146 @@ store.subscribe((p, meta) => {
   timingTimer = setTimeout(() => saveTimingToSong({ auto: true }), 800);
 });
 
+// ------------------------------------------------------------ music video and Guitar Pro sync kept on the song
+// Lining up the song's music video (Sound sync, nudges, Line it up by listening, trimming its in-point) or one of the
+// song's Guitar Pro files (Auto-sync, Put bar at the playhead, nudges, speed, dragging the layer) saves it on the song
+// shortly after, by the same rules as lyric timing: an automatic save never replaces a different value the song
+// already has (made in another edit or another session); the panel offers "Replace" instead. A new layer of one of
+// the song's tab files starts on its saved sync. Undo changes the edit only, not what was saved on the song.
+const syncConflicts = new Set(); // 'video:<song id>' / 'tab:<song id>:<file id>'
+const syncSavedHere = new Map(); // the same keys → savedAt of what this tab saved there last
+let pointerHeld = false;
+addEventListener('pointerdown', () => (pointerHeld = true), true);
+addEventListener('pointerup', () => (pointerHeld = false), true);
+addEventListener('pointercancel', () => (pointerHeld = false), true);
+/** Rebuild the panels, but not in the middle of a drag (that would drop it): after it ends. */
+const refreshSoon = () => (pointerHeld ? addEventListener('pointerup', () => setTimeout(() => ui.refreshPanels(true), 0), { once: true, capture: true }) : ui.refreshPanels(true));
+/** The edit plays the song's own song file, so times in it are times in the song. */
+const playsSong = (p, song) => !!(p.song && song && (!song.audioId || p.song.mediaId === song.audioId));
+const tabName = (id) => {
+  const r = media.get(id);
+  return r ? r.title || r.name : 'the tab';
+};
+function commitSync({ key, song, decision, auto, write, savedText, conflictText }) {
+  if (decision === 'conflict') {
+    if (!syncConflicts.has(key)) toast(conflictText, 'info', 7000);
+    syncConflicts.add(key);
+    refreshSoon();
+    return 'conflict';
+  }
+  if (decision === 'same') {
+    if (syncConflicts.delete(key)) refreshSoon();
+    if (!auto) toast(`That is already saved on “${song.title}”.`);
+    return 'same';
+  }
+  let saved = null;
+  manager.store.update((m) => {
+    const s = m.songs.find((x) => x.id === song.id);
+    if (s) saved = write(s);
+  });
+  if (!saved) return 'none';
+  syncSavedHere.set(key, saved.savedAt);
+  syncConflicts.delete(key);
+  toast(savedText(saved), 'info', 5000);
+  refreshSoon();
+  return 'saved';
+}
+const songSync = {
+  /** The edit's song (one of the open artist's songs), or null. */
+  song: () => {
+    const sc = manager && ui.songContext ? ui.songContext() : null;
+    return (sc && sc.song) || null;
+  },
+  /** The song's music video: { song, mvId, saved, conflict }, or null when the edit's song has none. */
+  video() {
+    const song = songSync.song();
+    const v = song && song.files && song.files.video;
+    return v ? { song, mvId: v.mediaId, saved: savedVideoSync(song), conflict: syncConflicts.has(`video:${song.id}`) } : null;
+  },
+  /** One of the song's Guitar Pro files: { song, saved, conflict }, or null when the file isn't on the edit's song. */
+  tab(mediaId) {
+    const song = songSync.song();
+    if (!song || !((song.files && song.files.tabs) || []).some((t) => t.mediaId === mediaId)) return null;
+    return { song, saved: savedTabSync(song, mediaId), conflict: syncConflicts.has(`tab:${song.id}:${mediaId}`) };
+  },
+  /** Save the music video's sync point (`replace` saves over a different one; `songId` picks the song). */
+  saveVideo(point, { auto = false, replace = false, songId = '' } = {}) {
+    const song = songId && manager ? manager.store.get().songs.find((s) => s.id === songId) : songSync.song();
+    if (!song || !song.files || !song.files.video) return 'none';
+    const key = `video:${song.id}`;
+    const decision = replace ? 'save' : autoSyncDecision(savedVideoSync(song), point, (a, b) => sameVideoSync(a.offset, b), syncSavedHere.get(key));
+    return commitSync({
+      key,
+      song,
+      decision,
+      auto,
+      write: (s) => setVideoSync(s, point),
+      savedText: (s) => `Music video sync saved on “${song.title}”: ${describeSyncPoint(s.offset)} Templates, section exports and new clips of it start there.`,
+      conflictText: `“${song.title}” already has a different music video sync saved, so it was kept. Press “Save as “${song.title}”’s music video sync” in Sound sync to replace it.`,
+    });
+  },
+  /** Save a Guitar Pro file's sync { offset, tempoScale, bar? } on the song. */
+  saveTab(mediaId, sync, { auto = false, replace = false } = {}) {
+    const song = songSync.song();
+    if (!songSync.tab(mediaId)) return 'none';
+    const key = `tab:${song.id}:${mediaId}`;
+    const decision = replace ? 'save' : autoSyncDecision(savedTabSync(song, mediaId), sync, sameTabSync, syncSavedHere.get(key));
+    return commitSync({
+      key,
+      song,
+      decision,
+      auto,
+      write: (s) => setTabSync(s, mediaId, sync),
+      savedText: (s) => `Sync of “${tabName(mediaId)}” saved on “${song.title}”: ${describeTabSync(s)}. New layers of it start there.`,
+      conflictText: `“${song.title}” already has a different sync saved for “${tabName(mediaId)}”, so it was kept. Press “Replace the song’s sync” in the layer’s Sync section to save this one.`,
+    });
+  },
+  /** Where a new clip of `rec` should start (its saved sync point) when it's the song's music video, else null. */
+  videoPoint(rec) {
+    const v = songSync.video();
+    return v && rec && v.mvId === rec.id && v.saved && playsSong(store.get(), v.song) ? v.saved.offset : null;
+  },
+};
+ui.songSync = songSync;
+/** Each clip with where it starts on the timeline: the main track's and the picture-in-picture layers'. */
+const clipPlaces = (p) => [
+  ...layoutClips(p.clips || []).map((l) => ({ id: l.clip.id, mediaId: l.clip.mediaId, in: l.clip.in, speed: l.clip.speed, start: l.start })),
+  ...(p.layers || []).filter((L) => L.type === 'video').flatMap((L) => (L.clips || []).map((c) => ({ id: c.id, mediaId: c.mediaId, in: c.in, speed: c.speed, start: c.start || 0 }))),
+];
+// what the edit had last time (every layer and clip), so only what an edit changes counts
+let tabSeen = tabSyncChanges(new Map(), store.get().layers, [], () => null).seen;
+let vidSeen = videoSyncChange(new Map(), clipPlaces(store.get()), '').seen;
+let syncTimer = null;
+const pendingSync = { video: null, tabs: new Map() };
+function flushSync() {
+  const v = pendingSync.video;
+  pendingSync.video = null;
+  if (v != null) songSync.saveVideo(v, { auto: true });
+  for (const [id, s] of pendingSync.tabs) songSync.saveTab(id, s, { auto: true });
+  pendingSync.tabs.clear();
+}
+store.subscribe((p, meta) => {
+  const song = songSync.song();
+  const ok = playsSong(p, song);
+  const tabIds = ok ? ((song.files && song.files.tabs) || []).map((t) => t.mediaId) : [];
+  const tc = tabSyncChanges(tabSeen, p.layers, tabIds, (id) => savedTabSync(song, id));
+  tabSeen = tc.seen;
+  const vc = videoSyncChange(vidSeen, clipPlaces(p), ok && song.files && song.files.video ? song.files.video.mediaId : '', p.song ? p.song.offset || 0 : 0);
+  vidSeen = vc.seen;
+  if (meta.type !== 'update' || !ok) return;
+  if (tc.fresh.length) {
+    const map = new Map(tc.fresh.map((f) => [f.id, f.sync]));
+    store.patch((d) => d.layers.forEach((L) => map.has(L.id) && Object.assign(L, syncPatch(map.get(L.id)))));
+    toast(`Started on the sync saved on “${song.title}” (${describeTabSync(tc.fresh[0].sync)}). Auto-sync still re-listens if you want.`, 'info', 5000);
+  }
+  for (const e of tc.edited) pendingSync.tabs.set(e.mediaId, e.sync);
+  if (vc.point != null) pendingSync.video = vc.point;
+  if (tc.edited.length || vc.point != null) {
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(flushSync, 800);
+  }
+});
+
 /** Open the Photo Studio on a template (from the Manager: a song, a show, a tour). */
 function openPhoto(templateId, { songId = '', showId = '', tourId = '', releaseId = '' } = {}) {
   const c = photoContext();
@@ -1621,7 +1767,8 @@ function sendToEdit(rec, how) {
   if (how === 'clip') return panels.actions.addClip(rec);
   if (how === 'tab') return panels.actions.useTab(rec);
   if (how === 'tabstudio') {
-    openInTabStudio(rec, +timelineToSong(0, store.get().song).toFixed(3));
+    const own = songSync.tab(rec.id);
+    openInTabStudio(rec, own && own.saved ? own.saved.offset : +timelineToSong(0, store.get().song).toFixed(3));
     setMode('tabstudio');
     return;
   }
@@ -1634,7 +1781,11 @@ function sendToEdit(rec, how) {
         L = makeLayer(d, 'video');
         d.layers.push(L);
       }
-      L.clips.push(makeOverlayClip(rec, Math.min(engine.t, Math.max(0, d.duration - 1))));
+      const clip = makeOverlayClip(rec, Math.min(engine.t, Math.max(0, d.duration - 1)));
+      // the song's music video starts in sync with the song
+      const pt = songSync.videoPoint(rec);
+      if (pt != null) clip.in = inForSyncPoint(pt, clip.start, d.song ? d.song.offset || 0 : 0, rec.duration, clip.duration);
+      L.clips.push(clip);
       selectId = L.id;
     } else if (how === 'drums') {
       const L = { ...makeLayer(d, 'drums'), source: 'audio', mediaId: rec.id, offset: 0, name: `Drums: ${rec.name.replace(/\.[a-z0-9]+$/i, '')}` };
