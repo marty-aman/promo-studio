@@ -1131,6 +1131,29 @@ The search covers the same photos as a word search: every folder, narrowed by a 
 
 Details: `docs/ai-search.md`.
 
+## Performance
+
+Measured in headless Firefox (software canvas, so the picture itself is slower than on a real machine) with a 25 minute
+edit (120 clips, 40 overlay clips, 300 timed lyric lines, 60 texts, 3 visualizers, 3 audio tracks) and a Manager with
+200 songs, 500 posts, 600 photos and 1,500 fans.
+
+- **Timeline:** only the blocks and ruler ticks near the visible part are drawn (about 40 of 530), plus the selected and
+  multi-selected ones. Scrolling or zooming past the margin draws the new part before the next paint. Zoomed all the way
+  out, everything is drawn. Tabbing through blocks only reaches the drawn ones.
+- **Content page:** the schedule draws 100 posts, with "Show 100 more" and "Show all". The post whose stats are open
+  always stays drawn.
+- **Undo history:** 150 steps, but a big edit keeps fewer so the history stays under about 24 million characters (at
+  least the newest 20). Before, a 1.5 MB Manager (1,500 fans) could hold up to 150 × 1.5 MB = 225 MB of history.
+- **Tab Studio** (and the stem-to-tab code only it uses) loads the first time it opens. `performance.getEntriesByType('mark')`
+  has `pvm-first-screen` and `pvm-ready` for timing a start.
+- **Local server:** text files are gzipped (about 3.3 MB of code becomes 1.1 MB) and carry an `ETag`, so a reload asks and
+  gets a 304 for each file that did not change.
+- **Left alone on purpose:** the frame renderer (a 540 × 960 preview frame costs about 10 ms of fixed canvas work plus
+  about 4 ms per visualizer, mostly the software rasterizer), the Photo Studio (it already caches each layer and draws
+  on `requestAnimationFrame`), and saving (the video edit is 160 KB and saves in 2 ms, 500 ms after the last change).
+- Ideas not done: module preloading for a static host (the start-up import graph is 19 levels deep, about 200 files),
+  and loading the Photo Studio, Carousel and Inspiration pages on demand (about 230 KB more).
+
 ## Tests
 
 ```bash

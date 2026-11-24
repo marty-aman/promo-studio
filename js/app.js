@@ -22,7 +22,6 @@ import { h, icon, iconButton, button, toast, setFold, Binder, download, tablistK
 import { modeUrl } from './modeurl.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { buildInspirationPage } from './page-inspiration.js';
-import { buildTabStudio, openInTabStudio, presetStemTab } from './page-tabstudio.js';
 import { buildDrumConvertPage } from './page-drumconvert.js';
 import { buildCarouselPage } from './page-carousel.js';
 import { createPostCheck } from './panel-postcheck.js';
@@ -51,6 +50,9 @@ const store = createStore(loadProject() || newProject());
 let manager = null; // the Manager workspace (created below)
 let photo = null; // the Photo Studio (created below)
 let tabPage = null; // Tab Studio, built each time its workspace opens
+// The Tab Studio and what only it uses (about 120 KB) load the first time they are needed, not at start-up.
+let tabModule = null;
+const loadTabStudio = () => (tabModule ||= import('./page-tabstudio.js'));
 
 // ------------------------------------------------------------ layout
 const app = document.getElementById('app');
@@ -1205,8 +1207,10 @@ manager = createManager({
     stemToTab(id, role) {
       const rec = media.get(id);
       if (!rec) return toast('That file is no longer in the media library.', 'error');
-      presetStemTab(rec, role);
-      setMode('tabstudio');
+      loadTabStudio().then((t) => {
+        t.presetStemTab(rec, role);
+        setMode('tabstudio');
+      });
     },
     artistsChanged: () => (syncArtistSel(), syncNowOn()),
     /** The Manager's page, artist or song changed: update the header badge. */
@@ -1945,8 +1949,11 @@ function sendToEdit(rec, how) {
   if (how === 'tab') return panels.actions.useTab(rec);
   if (how === 'tabstudio') {
     const own = songSync.tab(rec.id);
-    openInTabStudio(rec, own && own.saved ? own.saved.offset : +timelineToSong(0, store.get().song).toFixed(3));
-    setMode('tabstudio');
+    const offset = own && own.saved ? own.saved.offset : +timelineToSong(0, store.get().song).toFixed(3);
+    loadTabStudio().then((t) => {
+      t.openInTabStudio(rec, offset);
+      setMode('tabstudio');
+    });
     return;
   }
   if (how === 'audio') return panels.actions.addAudioTrack(rec);
@@ -2026,9 +2033,14 @@ function setMode(m) {
   tabRoot.hidden = m !== 'tabstudio';
   if (tabPage) (tabPage.leave && tabPage.leave(), (tabPage = null));
   if (m === 'tabstudio') {
-    tabPage = buildTabStudio({ store, engine, ui, panels });
-    tabRoot.replaceChildren(tabPage.el);
     tabRoot.scrollTop = 0;
+    loadTabStudio().then((t) => {
+      // the workspace may have changed while the file loaded
+      if (mode !== 'tabstudio' || tabPage) return;
+      tabPage = t.buildTabStudio({ store, engine, ui, panels });
+      tabRoot.replaceChildren(tabPage.el);
+      tabRoot.scrollTop = 0;
+    });
   } else tabRoot.replaceChildren();
   for (const b of modeSwitch.children) {
     const on = b.dataset.mode === m;
@@ -2066,6 +2078,7 @@ async function boot() {
   // Pick the workspace before the first await, so the first paint is the Manager home (or the workspace the
   // link asks for) and never the Video Studio while fonts and media are still loading. Set again below once loaded.
   setMode(mode);
+  performance.mark('pvm-first-screen');
   // Bundled fonts must be loaded before canvas text uses them.
   await Promise.all(FONTS.map((f) => document.fonts.load(`40px "${f.id}"`).catch(() => {})));
   engine.render();
@@ -2086,6 +2099,7 @@ async function boot() {
   syncArtistSel();
   setMode(mode);
   document.body.classList.add('ready');
+  performance.mark('pvm-ready');
 }
 mobile = initMobile({ header, modeSwitch, nowOn, keep: [undoBtn, redoBtn, exportBtn], tabRail, pageEl, transport, tlToolbar, engine, store, ui, panels, getMode: () => mode });
 boot();
