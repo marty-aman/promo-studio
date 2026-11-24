@@ -894,6 +894,15 @@ Center for what is rising today. The trend list lives in `js/inspiration.js`.
 | **Ctrl+D** | Duplicate the selection right after itself (clip, text, lyric line, audio block, layer) |
 | **Ctrl+C**, **Ctrl+V** | Copy, then paste at the playhead |
 | Delete, Ctrl+Z, Ctrl+Shift+Z, G, O | Delete, undo, redo, safe-area guide, phone-app preview |
+| Arrows (after clicking the preview) | Nudge the selected text, lyric line, layer or picture by 0.5% of the frame (Shift = 5%). With nothing movable selected they move the playhead as usual |
+
+**Drag on the preview to reposition.** Press on a text, a lyric line, a graphics layer (tab, drum chart, MIDI,
+rhythm game, visualizer), a picture on a video layer or the main video and drag it; it is selected as you press
+(a dashed box shows it). Shift keeps the move to one direction, and Ctrl+Z undoes a whole drag in one step. A lyric
+line moves on its own (the Lyrics tab's shared position moves them all). When the position is keyframed, the drag
+sets a keyframe at the playhead instead. Where items overlap the one on top wins, unless the selected one is under
+the pointer. On a phone, drag with one finger. The hit areas are boxes: they ignore rotation, and the sheet, poster
+and tunnel lyric displays can't be dragged (set their position in the Lyrics tab).
 
 While a video exports, the panels, timeline and top bar are locked (greyed, not clickable) and these keys do
 nothing, so the file can't freeze or change; the bar at the bottom has **Cancel export**.
@@ -1053,6 +1062,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/stock.js` | Pexels / Pixabay / Wikimedia search and download |
 | `js/app.js` | Layout, wiring, shortcuts, the four workspaces, save banner and export lock |
 | `js/studioedit.js` | Pure editing helpers: split, duplicate, copy and paste of timeline items, safe areas, level maths (unit tested) |
+| `js/previewdrag.js` | Drag to reposition on the preview: what is under the pointer, its box, and moving it (keyframe-aware, unit tested) |
 | `js/projectfile.js` | Project files and the earlier-projects list (unit tested) |
 
 ### Mobile: Photo Studio

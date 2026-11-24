@@ -20,6 +20,7 @@ import { buildCarouselPage } from './page-carousel.js';
 import { createPostCheck } from './panel-postcheck.js';
 import { createTips } from './panel-tips.js';
 import { kfTarget, kfSignature } from './panel-kf.js';
+import { hitTest, boxOf, movable, positionAt, moveBy, constrain } from './previewdrag.js';
 import { createManager } from './manager/shell.js';
 import { initMobile } from './mobile.js';
 import { photoStyle } from './manager/artists.js';
@@ -186,6 +187,7 @@ const ui = {
     }
     rebuildInspector();
     timeline.render();
+    if (this.onSelect) this.onSelect();
     if ((sel && sel.type === 'lyric' && this.tab === 'lyrics') || leftSignature() !== leftSig) rebuildLeft();
   },
   setZoom(v) {
@@ -725,6 +727,98 @@ new ResizeObserver(() => {
   fitStage();
   timeline.render();
 }).observe(stage);
+
+// ------------------------------------------------------------ drag to reposition on the preview
+// Press on a text, lyric line, layer or picture to select it and drag it; Shift keeps one direction. With the preview
+// focused, the arrow keys nudge the selection (Shift for bigger steps). One drag is one Ctrl+Z step.
+canvas.tabIndex = 0;
+const measureCtx = document.createElement('canvas').getContext('2d');
+const measure = (text, font, px) => {
+  measureCtx.font = `${Math.round(px)}px "${font}", Impact, "Arial Black", sans-serif`;
+  return measureCtx.measureText(String(text || '')).width;
+};
+const frameOpts = () => {
+  const { w, h: hh } = ASPECTS[store.get().aspect];
+  return { W: w, H: hh, measure, selected: ui.selection };
+};
+const framePoint = (e) => {
+  const r = canvas.getBoundingClientRect();
+  return { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height, r };
+};
+const selBox = h('div', { class: 'preview-selbox', hidden: true, 'aria-hidden': 'true' });
+stageInner.append(selBox);
+function paintSelBox() {
+  const p = store.get();
+  const b = ui.selection && !engine.playing && !engine.exporting && canvas.offsetParent && movable(p, ui.selection) ? boxOf(p, engine.t, ui.selection, frameOpts()) : null;
+  selBox.hidden = !b;
+  if (!b) return;
+  Object.assign(selBox.style, { left: `${(b.cx - b.w / 2) * 100}%`, top: `${(b.cy - b.h / 2) * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%` });
+}
+let pdrag = null;
+let pdragN = 0;
+canvas.addEventListener('pointerdown', (e) => {
+  if (engine.exporting || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  if (pdrag) return; // a second finger: leave the first drag alone
+  const { fx, fy } = framePoint(e);
+  const p = store.get();
+  const sel = hitTest(p, engine.t, fx, fy, frameOpts());
+  canvas.focus({ preventScroll: true });
+  if (!sel) return;
+  e.preventDefault();
+  if (!ui.selection || ui.selection.type !== sel.type || ui.selection.id !== sel.id) ui.select(sel);
+  pdrag = { id: e.pointerId, sel, x: e.clientX, y: e.clientY, from: positionAt(p, sel, engine.t), key: `pdrag-${++pdragN}`, moved: false, axes: { x: false, y: false } };
+  try {
+    canvas.setPointerCapture(e.pointerId);
+  } catch {
+    /* a pointer the browser doesn't track (synthetic): moves still reach the canvas */
+  }
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!pdrag) {
+    if (e.pointerType === 'mouse' && !engine.exporting) {
+      const { fx, fy } = framePoint(e);
+      canvas.style.cursor = hitTest(store.get(), engine.t, fx, fy, frameOpts()) ? 'move' : '';
+    }
+    return;
+  }
+  if (e.pointerId !== pdrag.id) return;
+  const r = canvas.getBoundingClientRect();
+  let dx = e.clientX - pdrag.x;
+  let dy = e.clientY - pdrag.y;
+  if (!pdrag.moved && Math.hypot(dx, dy) < 3) return; // a click, not a drag
+  if (!pdrag.moved) {
+    pdrag.moved = true;
+    if (engine.playing) engine.pause(); // a keyframe lands where the playhead is, so hold it still
+  }
+  if (e.shiftKey) [dx, dy] = constrain(dx, dy);
+  if (dx) pdrag.axes.x = true;
+  if (dy) pdrag.axes.y = true;
+  const d = pdrag;
+  store.update((draft) => moveBy(draft, d.sel, engine.t, d.from, dx / r.width, dy / r.height, d.axes), d.key);
+});
+const endPdrag = (e) => {
+  if (!pdrag || e.pointerId !== pdrag.id) return;
+  pdrag = null;
+  paintSelBox();
+};
+canvas.addEventListener('pointerup', endPdrag);
+canvas.addEventListener('pointercancel', endPdrag);
+canvas.addEventListener('lostpointercapture', endPdrag);
+canvas.addEventListener('keydown', (e) => {
+  if (!/^Arrow/.test(e.key) || e.ctrlKey || e.metaKey || e.altKey || engine.exporting) return;
+  const p = store.get();
+  if (!movable(p, ui.selection)) return; // nothing to nudge: the arrows move the playhead as elsewhere
+  e.preventDefault();
+  e.stopPropagation();
+  const step = e.shiftKey ? 0.05 : 0.005;
+  const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+  const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+  const sel = ui.selection;
+  store.update((d) => moveBy(d, sel, engine.t, positionAt(d, sel, engine.t), dx, dy), `pnudge-${sel.id}`);
+});
+store.subscribe(() => paintSelBox());
+engine.on(() => paintSelBox());
+ui.onSelect = paintSelBox;
 
 // ------------------------------------------------------------ keyboard
 window.addEventListener('keydown', (e) => {
