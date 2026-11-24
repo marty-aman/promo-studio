@@ -37,6 +37,7 @@ export function parseProjectFile(text) {
   const p = raw.project;
   for (const k of ['clips', 'lyrics', 'texts', 'audioTracks']) if (p[k] != null && !Array.isArray(p[k])) throw new Error(`That project file is damaged (${k} is not a list).`);
   const project = normalizeProject(JSON.parse(JSON.stringify(p)));
+  delete project.projectId; // a file opens as its own edit, never as (and over) a project saved in this browser
   const names = raw.mediaNames && typeof raw.mediaNames === 'object' && !Array.isArray(raw.mediaNames) ? raw.mediaNames : {};
   return { project, names, savedAt: typeof raw.savedAt === 'string' ? raw.savedAt : '' };
 }

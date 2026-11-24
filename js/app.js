@@ -8,6 +8,8 @@ import { createStore, newProject, loadProject, saveProject, FONTS, findClip, loa
 import { splitItem, splitClipAt, duplicateItem, copyItem, pasteItem, safeRect, meterFill, meterHold } from './studioedit.js';
 import { liveGroup, inGroup, rowOf, allItems, planMove, applyMove, deleteGroup, copyGroup, pasteGroup, duplicateGroup } from './multimove.js';
 import { makeProjectFile, parseProjectFile, projectFileName, pushRecent, hasContent } from './projectfile.js';
+import { createVideoProjects } from './projects-video.js';
+import { readProjects } from './projectlib.js';
 import { media, restoreMedia, restoreMissing, fileKind, addMedia, kindOf } from './media.js';
 import { configureRelink, refreshRelink, relinkButton, openRelink, missingFor } from './relink.js';
 import { Engine, exportVideo } from './engine.js';
@@ -126,6 +128,7 @@ const header = h(
   h('div', { class: 'spacer' }),
   studioOnly(
     postSlot,
+    button('Projects', () => ui.openProjects(), { iconName: 'file', variant: 'ghost', title: 'Your saved projects: open, rename, copy, recover an earlier version or use one as a template' }),
     button('New project', () => ui.newProject(), { variant: 'ghost', title: 'Start a blank edit. The current one is kept under Start → Earlier projects, and Ctrl+Z brings it back.' }),
     exportBtn,
   ),
@@ -179,6 +182,22 @@ document.body.append(exportBar, saveBanner);
 
 // ------------------------------------------------------------ engine + ui state
 const engine = new Engine(store, canvas);
+// the Projects library: the open edit, when saved there, follows each save (projects-video.js)
+const projects = createVideoProjects({
+  store,
+  media,
+  canvas,
+  replaceEdit: (next) => replaceEdit(next),
+  remember: (p) => rememberProject(p),
+  after() {
+    ui.select(null);
+    engine.seek(0);
+    refreshRelink();
+    ui.refreshPanels(true);
+  },
+  missing: () => missingFor('studio'),
+  openRelink: () => openRelink('studio'),
+});
 
 const ui = {
   selection: null,
@@ -370,12 +389,13 @@ const ui = {
   newProject() {
     const cur = store.get();
     const blank = !hasContent(cur);
-    if (!blank && !confirm('Start a new project? Your media library is kept. The current edit is saved under Start → Earlier projects, and Ctrl+Z brings it back.')) return;
+    const linked = !!cur.projectId;
+    if (!blank && !confirm(`Start a new project? Your media library is kept. The current edit is saved ${linked ? 'in Projects' : 'under Start → Earlier projects'}, and Ctrl+Z brings it back.`)) return;
     const kept = rememberProject(cur);
     replaceEdit(newProject());
     ui.select(null);
     engine.seek(0);
-    if (!blank) toast(kept ? 'New project. Your last edit is under Start → Earlier projects (or press Ctrl+Z).' : 'New project. The last edit could not be kept in the list (the browser’s storage is full), but Ctrl+Z still brings it back.', 'info', 6000);
+    if (!blank) toast(linked ? `New project. “${cur.name}” is in Projects (or press Ctrl+Z).` : kept ? 'New project. Your last edit is under Start → Earlier projects (or press Ctrl+Z).' : 'New project. The last edit could not be kept in the list (the browser’s storage is full), but Ctrl+Z still brings it back.', 'info', 6000);
   },
   /** Download the edit as a file. */
   saveProjectFile() {
@@ -404,6 +424,13 @@ const ui = {
     const missing = missingFor('studio');
     toast(missing.length ? `Opened “${parsed.project.name}”. ${missing.length} file${missing.length === 1 ? ' is' : 's are'} not in this browser yet.` : `Opened “${parsed.project.name}”.`, 'info', 5000);
     if (missing.length) openRelink('studio');
+  },
+  /** The Projects library (saved edits, their versions, templates). */
+  openProjects: () => projects.openDialog({ addDesigns: (docs) => photo.addDesigns(docs) }),
+  /** Put an Earlier projects entry in Projects without opening it. */
+  async saveRecentToProjects(id) {
+    const r = loadRecent().find((x) => x.id === id);
+    if (r && (await projects.add(parseProjectFile(makeProjectFile(r.project)).project, r.name))) toast(`“${r.name}” is in Projects now.`);
   },
   /** Earlier projects (newest first). */
   recent: () => loadRecent(),
@@ -462,6 +489,7 @@ function replaceEdit(next) {
 }
 /** Keep a copy of an edit that is about to be replaced. Returns false when the browser had no room for it. */
 function rememberProject(p) {
+  if (p.projectId) return projects.flush(true), true; // a saved project keeps itself (and a version) in Projects
   if (!hasContent(p)) return true;
   const list = saveRecent(pushRecent(loadRecent(), p));
   return !!list.length && list[0].project === p;
@@ -648,6 +676,7 @@ function writeProject() {
   clearTimeout(saveTimer);
   savePending = false;
   const ok = saveProject(store.get());
+  if (ok) projects.autosave();
   saveState.textContent = ok ? 'Saved in this browser' : 'NOT saved: storage full';
   saveState.classList.toggle('bad', !ok);
   showSaveBanner(ok ? null : { what: 'your latest edits' });
@@ -689,6 +718,7 @@ setSaveFailHandler((what, detail = {}) => {
 // leaving, closing or hiding the tab: save what is waiting, in every workspace
 function flushAll() {
   flushSave();
+  projects.flush();
   if (manager && manager.flush) manager.flush();
   if (photo && photo.flush) photo.flush();
 }
@@ -1085,6 +1115,15 @@ manager = createManager({
     /** The names this browser knows for these media ids (they go into a backup so another browser can ask for the files). */
     mediaNames: (ids) => Object.fromEntries([...ids].filter((id) => media.names()[id]).map((id) => [id, media.names()[id]])),
     learnNames: (names) => media.learnNames(names),
+    /** The Projects library for a backup: saved video edits (no versions) and photo designs. */
+    projectsBackup: () => ({ video: projects.entries(), photo: photo ? photo.designs() : [] }),
+    /** Projects from a backup, added next to the ones here (nothing replaced). Resolves { video, photo } counts added. */
+    async restoreProjects(raw) {
+      const b = readProjects(raw);
+      const video = b && Array.isArray(b.video) && b.video.length ? await projects.addEntries(b.video) : 0;
+      const ph = b && Array.isArray(b.photo) && b.photo.length && photo ? photo.addDesigns(b.photo) : 0;
+      return { video, photo: ph };
+    },
     /** What a media id was called, even when its file is gone ('' when never known). */
     fileName: (id) => (media.names()[id] || [])[0] || '',
     /** Library files of some kinds, for "pick from the library" menus. */
@@ -1267,6 +1306,9 @@ photo = createPhotoStudio({
     images: () => media.all().filter((x) => x.kind === 'image').map((x) => ({ id: x.id, name: x.name, thumb: x.thumb, url: x.url, width: x.width, height: x.height })),
     get: (id) => media.get(id),
     fileName: (id) => (media.names()[id] || [])[0] || '',
+    mediaNames: () => media.names(),
+    learnNames: (names) => media.learnNames(names),
+    addVideoProjects: (entries) => projects.addEntries(entries),
     fonts: () => media.all().filter((x) => x.kind === 'font' && x.family).map((x) => x.family),
     async upload(files) {
       const out = [];

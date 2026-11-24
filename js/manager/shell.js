@@ -4,7 +4,7 @@ import { h, icon, button, toast, download, pickFiles, onDateCommit } from '../do
 import { createStore } from '../state.js';
 import { openDriveSetup } from '../gdrive.js';
 import { todayISO } from './model.js';
-import { loadWorkspace, saveWorkspace, viewOf, mergeView, addArtist, removeArtist, restoreArtist, artistList, photoStyle, workspaceBackup, parseWorkspaceBackup, backupMediaNames } from './artists.js';
+import { loadWorkspace, saveWorkspace, viewOf, mergeView, addArtist, removeArtist, restoreArtist, artistList, photoStyle, workspaceBackup, parseWorkspaceBackup, backupMediaNames, backupProjects } from './artists.js';
 import { relinkButton } from '../relink.js';
 import { referencedIds } from '../mediamatch.js';
 import { buildHome } from './page-home.js';
@@ -166,15 +166,21 @@ export function createManager({ root, studio }) {
     undoBar.hidden = false;
     undoTimer = setTimeout(() => (undoBar.hidden = true), 15000);
   };
+  /** The backup file's text: every artist, the Projects library (saved edits and designs), and the names of the media they use. */
+  const backupText = (opts = {}) => {
+    const projects = studio.projectsBackup ? studio.projectsBackup() : null;
+    const ids = referencedIds(current(), projects ? projects.video.map((e) => e.data) : [], projects ? projects.photo : []);
+    return workspaceBackup(current(), studio.mediaNames ? studio.mediaNames(ids) : null, { ...opts, projects });
+  };
   const backUp = () => {
-    download(new Blob([workspaceBackup(current(), studio.mediaNames ? studio.mediaNames(referencedIds(current())) : null)], { type: 'application/json' }), `band-manager-${todayISO()}.json`);
+    download(new Blob([backupText()], { type: 'application/json' }), `band-manager-${todayISO()}.json`);
     writeBackupInfo({ lastBackupAt: Date.now() });
     renderBackupNote();
     if (view.page === 'home') render();
   };
   /** The same backup with every artist's fan list left out (the lists here are not touched). */
   const backUpWithoutFans = () => {
-    download(new Blob([workspaceBackup(current(), studio.mediaNames ? studio.mediaNames(referencedIds(current())) : null, { withoutFans: true })], { type: 'application/json' }), `band-manager-${todayISO()}-no-fans.json`);
+    download(new Blob([backupText({ withoutFans: true })], { type: 'application/json' }), `band-manager-${todayISO()}-no-fans.json`);
     writeBackupInfo({ lastBackupAt: Date.now() });
     renderBackupNote();
     toast('Backup saved without the fan list.');
@@ -211,7 +217,10 @@ export function createManager({ root, studio }) {
         studio.learnNames && studio.learnNames(backupMediaNames(text)); // so files this browser doesn't have can be asked for by name
         replaceWorkspace(next);
         const editsAt = edits;
-        toast('Backup restored');
+        // saved projects in the backup are added next to the ones here (none are replaced, and Undo restore leaves them)
+        const got = studio.restoreProjects ? await studio.restoreProjects(backupProjects(text)) : { video: 0, photo: 0 };
+        const extra = [got.video ? `${got.video} video project${got.video === 1 ? '' : 's'}` : '', got.photo ? `${got.photo} design${got.photo === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
+        toast(extra ? `Backup restored, with ${extra} added to Projects` : 'Backup restored');
         offerUndo('Backup restored.', 'Undo restore', () => {
           // undoing puts back exactly what you had before; changes made since the restore go with it
           const since = edits - editsAt;

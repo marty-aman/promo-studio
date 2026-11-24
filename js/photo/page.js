@@ -13,6 +13,7 @@ import { drawDoc, renderDoc, renderSlides, canvasBlob, layoutText } from './rend
 import { TEMPLATES, templateById, countdownSet, carouselSlides } from './templates.js';
 import { dist, mid, pinchScale, scrollDelta, keyboardInset, dropAfter, previewSize, isDoubleTap, cropShift } from './gesture.js';
 import { PAGE_SIZES, loadPageSize, savePageSize, paginate, folderPath, folderTree } from '../manager/photos.js';
+import { createPhotoProjects } from '../projects-photo.js';
 
 // [where, label, icon] for the align buttons (left, centre and right; top, middle and bottom)
 const ALIGNS = [['left', 'left', 'alignLeft'], ['center', 'centre', 'alignCenter'], ['right', 'right', 'alignRight'], ['top', 'top', 'alignTop'], ['middle', 'middle', 'alignMiddle'], ['bottom', 'bottom', 'alignBottom']];
@@ -57,8 +58,10 @@ export function createPhotoStudio({ root, studio }) {
     saved.docs = saved.docs.map((x) => (x.id === d.id ? d : x));
     if (!saved.docs.some((x) => x.id === d.id)) saved.docs.push(d);
     saved.current = d.id;
-    if (saveDesigns(saved)) saveEl.textContent = 'Saved in this browser';
-    else {
+    if (saveDesigns(saved)) {
+      saveEl.textContent = 'Saved in this browser';
+      projects.saved(d); // a version every couple of minutes (Projects)
+    } else {
       saveEl.textContent = 'Could not save';
       saveEl.classList.add('warn');
       toast('Could not save designs (browser storage full?)', 'error');
@@ -83,6 +86,27 @@ export function createPhotoStudio({ root, studio }) {
     store.replace(doc);
     saveDesigns(saved);
   };
+
+  /** Delete a design (its photos stay in the media library); the open one gives way to the next. */
+  const removeDesign = (id) => {
+    saved.docs = saved.docs.filter((x) => x.id !== id);
+    thumbs.delete(id);
+    if (id === store.get().id) openDoc(saved.docs[0] || newDoc(), { isNew: !saved.docs.length });
+    saveDesigns(saved);
+    renderLeft();
+  };
+  // the Projects dialog for designs (versions, templates, files)
+  const projects = createPhotoProjects({
+    saved: () => saved,
+    current: () => store.get(),
+    update: (fn) => update(fn),
+    openDoc: (doc, o) => (openDoc(doc, o), renderLeft(), renderBar(true), renderRight(), draw()),
+    write: () => saveDesigns(saved),
+    remove: removeDesign,
+    thumb: (d) => designThumb(d),
+    studio,
+    refresh: () => renderLeft(),
+  });
 
   // ---- text boxes grow and shrink with their text
   const fitText = (d) => {
@@ -886,11 +910,7 @@ export function createPhotoStudio({ root, studio }) {
           iconButton('copy', `Copy ${d.name}`, () => openDoc(normalizeDoc({ ...structuredClone(d), id: '', name: `${d.name} copy` }), { isNew: true }), 'ghost'),
           iconButton('trash', `Delete ${d.name}`, () => {
             if (!confirm(`Delete “${d.name}”? Its photos stay in the media library.`)) return;
-            saved.docs = saved.docs.filter((x) => x.id !== d.id);
-            thumbs.delete(d.id);
-            if (d.id === cur.id) openDoc(saved.docs[0] || newDoc(), { isNew: !saved.docs.length });
-            saveDesigns(saved);
-            renderLeft();
+            removeDesign(d.id);
           }, 'ghost'),
         );
       });
@@ -921,6 +941,7 @@ export function createPhotoStudio({ root, studio }) {
       slidesSel,
       button('Create', blank, { iconName: 'plus', variant: 'sm primary' }),
       h('h3', { class: 'ph-h3' }, `Your designs · ${all.length}`),
+      button('Projects…', () => projects.openDialog(), { iconName: 'file', variant: 'sm', title: 'Versions, rename, copy, use as a template, download or import designs' }),
       all.length > 4 ? find : null,
       list,
     );
@@ -1422,6 +1443,9 @@ export function createPhotoStudio({ root, studio }) {
       drawOverlay();
     },
     designs: () => saved.docs,
+    /** Designs from a projects file or a backup, added next to the ones here. Returns how many came in. */
+    addDesigns: (docs) => projects.addDesigns(docs),
+    openProjects: () => projects.openDialog(),
     /** The saved designs and the open one, for finding the photos they point at. */
     refSources: () => [saved.docs, store.get()],
   };

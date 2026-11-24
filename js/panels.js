@@ -442,7 +442,7 @@ export function createPanels({ store, engine, ui }) {
       fold('start-suggested', 'Suggested for you', { badge: hasNewSuggestions(p) ? 'New' : null, hint: 'From your song, clips and lyrics' }, () => [buildLyricIdeas(), buildSuggestPanel({ store, engine, ui })]),
       fold('start-templates', 'Templates and themes', { hint: 'One click restyles everything' }, () => buildTemplates()),
       fold('start-mine', 'My templates', { open: false, hint: 'Save this edit to reuse' }, () => buildMyTemplates()),
-      fold('start-projects', 'Project file and earlier projects', { open: false, hint: 'Keep a copy, or go back' }, () => buildProjectFiles()),
+      fold('start-projects', 'Projects, project file and earlier projects', { open: false, hint: 'Save, recover, reuse' }, () => buildProjectFiles()),
       fold(
         'start-more',
         'Inspiration, Carousel and the drum converter',
@@ -473,7 +473,8 @@ export function createPanels({ store, engine, ui }) {
       'div',
       {},
       h('p', { class: 'muted small' }, 'A project file holds the edit (clips, texts, lyrics, layers, the song and its settings), not the media. Open it on another computer and Replace missing files picks the media up by name.'),
-      h('div', { class: 'row' }, button('Save project file', () => ui.saveProjectFile(), { iconName: 'download', variant: 'sm primary' }), button('Open project file…', () => file.click(), { iconName: 'upload', variant: 'sm' }), file),
+      h('div', { class: 'row' }, button('Projects…', () => ui.openProjects(), { iconName: 'file', variant: 'sm primary', title: 'Saved edits with their versions: open, copy, recover or use as a template' })),
+      h('div', { class: 'row' }, button('Save project file', () => ui.saveProjectFile(), { iconName: 'download', variant: 'sm' }), button('Open project file…', () => file.click(), { iconName: 'upload', variant: 'sm' }), file),
       h('h4', { class: 'sub-head' }, 'Earlier projects'),
       recent.length
         ? h(
@@ -484,7 +485,7 @@ export function createPanels({ store, engine, ui }) {
                 'li',
                 {},
                 h('span', { class: 'recent-info' }, h('strong', {}, r.name), h('span', { class: 'muted tiny' }, `${when(r.at)} · ${describeProject(r.project)}`)),
-                h('span', { class: 'row' }, button('Restore', () => ui.restoreRecent(r.id), { variant: 'sm' }), iconButton('trash', `Forget ${r.name}`, () => ui.forgetRecent(r.id), 'ghost danger')),
+                h('span', { class: 'row' }, button('Restore', () => ui.restoreRecent(r.id), { variant: 'sm' }), iconButton('download', `Save ${r.name} to Projects`, () => ui.saveRecentToProjects(r.id), 'ghost'), iconButton('trash', `Forget ${r.name}`, () => ui.forgetRecent(r.id), 'ghost danger')),
               ),
             ),
           )
