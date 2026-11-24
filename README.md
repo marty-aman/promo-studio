@@ -323,7 +323,7 @@ The rail on the left has one **Start** tab for ideas, then a tab for each kind o
 
 | Tab | What's in it |
 |---|---|
-| **Start** | Stacked, collapsible sections: *Suggested for you* (ideas from your lyrics and three ready-made edits), *Templates and themes*, *My templates*, *Project file and earlier projects*, and links to the full-screen *Inspiration* and *Carousel* pages (and the drum converter) |
+| **Start** | Stacked, collapsible sections: *Suggested for you* (ideas from your lyrics and three ready-made edits), *Templates and themes*, *My templates*, *Projects, project file and earlier projects*, and links to the full-screen *Inspiration* and *Carousel* pages (and the drum converter) |
 | **Video** | My clips (upload and arrange), Stock video, From your YouTube channel, Video layers |
 | **Audio** | Song and your own audio (beats, hook, voice-over, clip sound), Sound effects (Your sounds: your clips, the free pack and built-ins, starred, renamed and tagged; Freesound; Openverse; Add your own sounds) |
 | **Lyrics** | Lines, sync, display and style; select a line for its own look |
@@ -969,8 +969,30 @@ nothing, so the file can't freeze or change; the bar at the bottom has **Cancel 
 
 ### Keeping your work safe
 
-- **New project** keeps the edit it replaces: **Start → Project file and earlier projects** lists the last 5, and
-  Ctrl+Z straight after also brings it back. Opening a project file does the same.
+- **Projects** (top bar, and Start → Projects, project file and earlier projects) is the library of saved edits:
+  each with a frame as its picture, its length, song and when it was last edited, with search and sort.
+  **Save to Projects** names the open edit and from then on every change is saved into it; **Save as…** goes on
+  as a new project and leaves the saved one as it was; **Save a copy** puts a copy there and keeps you on this one.
+  Each project has **Rename**, **Duplicate**, **Delete** (asks first), **Versions** (one kept every couple of
+  minutes while you work, and when you switch away; the last 10, with **Restore this version**, which Ctrl+Z
+  undoes) and **Use as template**: a new edit with the same layout, texts, styles and timing, where you pick a
+  different file for the song, each clip and each layer (or keep them); a shorter new clip has its in-point and
+  length pulled in. **Download** (one) and **Download all** make a `.projects.json` file with the edits and the
+  names of their media (and which were already missing), not the media; **Import…** adds the projects in such a
+  file (or in a project file) next to what is there, never over it, and Replace missing files asks for media this
+  browser lacks. The dialog shows how much of the browser's storage is used and warns from 80 % (or under
+  300 MB free). On a phone it is a bottom sheet.
+- The Photo Studio has the same dialog for designs (**Designs → Projects…**): versions, rename, duplicate, use as
+  template (swap each picture), download and import.
+- Projects live in IndexedDB (`pvm-projects`, code in `js/projectlib.js`, `js/projectstore.js`,
+  `js/projects-ui.js`, `js/projects-video.js`, `js/projects-photo.js`). A save writes the project, its new version
+  and the trimmed version list in one transaction, so a crash or a full disk mid-save keeps the earlier save.
+- A Manager **Back up** also carries the Projects library (saved edits without their versions, and the Photo
+  Studio designs); **Restore** adds them next to the ones here (none replaced, and Undo restore leaves them).
+  Older backups without projects restore as before.
+- **New project** keeps the edit it replaces: a saved one stays in Projects; any other is listed under
+  **Start → Earlier projects** (the last 5, with a button to put it in Projects), and Ctrl+Z straight after also
+  brings it back. Opening a project file does the same (a file always opens as a new, unsaved edit).
 - **Save project file** (Start, and Export) downloads the edit as `name.promo.json`: clips, texts, lyrics, layers
   and the song with its settings, plus the names of the media it uses, but not the media. **Open project file…**
   restores it (also on another computer); any media that isn't in that browser is listed in **Replace missing

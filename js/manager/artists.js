@@ -138,9 +138,22 @@ export const workspaceBackup = (ws, mediaNames = null, opts = {}) => {
   // workspaceBackup(ws, { withoutFans: true }) also works: an options object in the second place
   if (mediaNames && mediaNames.withoutFans !== undefined && opts && !Object.keys(opts).length) [mediaNames, opts] = [null, mediaNames];
   const out = opts && opts.withoutFans ? { ...ws, artists: ws.artists.map((a) => ({ ...a, fans: [] })) } : ws;
-  return workspaceJson(out, mediaNames);
+  return workspaceJson(out, mediaNames, opts && opts.projects);
 };
-const workspaceJson = (ws, mediaNames) => JSON.stringify({ promoStudioManager: WORKSPACE_VERSION, savedAt: new Date().toISOString(), ...ws, ...(mediaNames && Object.keys(mediaNames).length ? { mediaNames } : {}) }, null, 1);
+// `projects`: the Projects library ({ video: [saved edits], photo: [designs] }), left out when empty
+const workspaceJson = (ws, mediaNames, projects = null) => {
+  const hasProjects = projects && ((projects.video || []).length || (projects.photo || []).length);
+  return JSON.stringify({ promoStudioManager: WORKSPACE_VERSION, savedAt: new Date().toISOString(), ...ws, ...(mediaNames && Object.keys(mediaNames).length ? { mediaNames } : {}), ...(hasProjects ? { projects } : {}) }, null, 1);
+};
+/** The Projects library a backup carries ({ video, photo }), or null (older backups have none). */
+export function backupProjects(text) {
+  try {
+    const p = JSON.parse(text).projects;
+    return p && typeof p === 'object' && !Array.isArray(p) ? p : null;
+  } catch {
+    return null;
+  }
+}
 /** The file names a backup carries for the media its songs and photos use (id -> [name, path, kind]), or {}. */
 export function backupMediaNames(text) {
   try {
@@ -161,5 +174,6 @@ export function parseWorkspaceBackup(text) {
   delete raw.promoStudioManager;
   delete raw.savedAt;
   delete raw.mediaNames;
+  delete raw.projects;
   return normalizeWorkspace(raw);
 }
