@@ -5,6 +5,7 @@ import { isVisible } from './state.js';
 import { OFF_KEY, isOff } from './itemoff.js';
 import { h, icon, toast } from './dom.js';
 import { kfTarget } from './panel-kf.js';
+import { resolveRange, setRangeSide, toFrame, MIN_RANGE } from './exportrange.js';
 import { allKeys, moveKey, removeKey, EASES, KEY_EPS, snapToBeat, propInfo } from './keyframes.js';
 import { markTimed } from './manager/lyrictiming.js';
 import { qualityMarks } from './panel-quality.js';
@@ -255,7 +256,13 @@ export function createTimeline({ root, store, engine, ui }) {
     }
     ruler.append(h('div', { class: 'tl-outside', style: { left: `${total * s}px` } }));
     ruler.append(h('div', { class: 'tl-end-handle', style: { left: `${total * s}px` }, dataset: { op: 'duration' }, title: 'Drag to change the video length' }));
+    // export range: In / Out flags on the ruler (draggable) and a dim over what the export leaves out
+    const rg = resolveRange(p);
+    if (p.exportRange && p.exportRange.start != null) ruler.append(h('div', { class: 'tl-range-mark in', style: { left: `${rg.start * s}px` }, dataset: { op: 'range-in' }, title: 'Export starts here. Drag to move it', role: 'img', 'aria-label': `Export start ${formatTime(rg.start)}` }, h('span', {}, 'In')));
+    if (p.exportRange && p.exportRange.end != null) ruler.append(h('div', { class: 'tl-range-mark out', style: { left: `${rg.end * s}px` }, dataset: { op: 'range-out' }, title: 'Export ends here. Drag to move it', role: 'img', 'aria-label': `Export end ${formatTime(rg.end)}` }, h('span', {}, 'Out')));
     content.append(ruler);
+    if (rg.start > 0) content.append(h('div', { class: 'tl-range-dim', style: { left: '0px', width: `${rg.start * s}px` } }));
+    if (rg.end < total) content.append(h('div', { class: 'tl-range-dim', style: { left: `${rg.end * s}px`, width: `${(total - rg.end) * s}px` } }));
 
     // stacked layers, topmost first
     const visEnd = p.endCard.enabled ? total - p.endCard.duration : total;
@@ -723,6 +730,12 @@ export function createTimeline({ root, store, engine, ui }) {
       /* capture is a nicety; drags still work without it */
     }
 
+    const rop = e.target.closest && e.target.closest('[data-op^="range-"]');
+    if (rop) {
+      const side = rop.dataset.op === 'range-in' ? 'start' : 'end';
+      drag = { op: 'range', side, x0: e.clientX, orig: resolveRange(p)[side] };
+      return;
+    }
     if (e.target.dataset.op === 'duration') {
       drag = { op: 'duration', x0: e.clientX, orig: p.duration };
       return;
@@ -860,7 +873,14 @@ export function createTimeline({ root, store, engine, ui }) {
     const key = `drag:${drag.op}:${drag.id}`;
     const p = store.get();
 
-    if (drag.op === 'duration') {
+    if (drag.op === 'range') {
+      // snaps like clips (edges, the playhead, beats); the other flag keeps MIN_RANGE away, the edit's ends hold it in
+      const cur = resolveRange(p);
+      const lo = drag.side === 'start' ? 0 : cur.start + MIN_RANGE;
+      const hi = drag.side === 'start' ? cur.end - MIN_RANGE : p.duration;
+      const v = toFrame(clamp(snapT(drag.orig + dt), lo, Math.max(lo, hi)));
+      store.update((d) => setRangeSide(d, drag.side, v), `drag:range:${drag.side}`);
+    } else if (drag.op === 'duration') {
       const v = clamp(snapT(drag.orig + dt), 3, MAX_LENGTH);
       store.update((d) => (d.duration = +v.toFixed(2)), key);
     } else if (drag.kind === 'clip' && drag.op === 'reorder') {

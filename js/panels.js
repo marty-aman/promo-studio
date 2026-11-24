@@ -61,6 +61,8 @@ import { placeIn, placeOnPoint, pointToDirection, directionToPoint } from './cli
 import { media, addMedia, removeMedia, tabTimeline } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
+import { exportRangePanel } from './panel-exportrange.js';
+import { resolveRange, shiftCues } from './exportrange.js';
 import { exportAdvice, exportEnv, keepAwake } from './mobilelogic.js';
 import { SAFE_CHOICES } from './studioedit.js';
 import { describeProject } from './projectfile.js';
@@ -2783,10 +2785,16 @@ export function createPanels({ store, engine, ui }) {
   });
   // what this browser will produce and what to do before exporting (phones: keep the screen on)
   function exportNote(p) {
-    const a = exportAdvice(exportEnv(p.duration, pickMimeType));
+    const a = exportAdvice(exportEnv(resolveRange(p).length || p.duration, pickMimeType));
     const wl = !!navigator.wakeLock;
     return h('ul', { class: `warn-list export-advice${a.phone || !a.format ? '' : ' calm'}`, role: 'note' }, a.lines.map((l) => h('li', {}, l)), a.phone ? h('li', {}, wl ? 'This browser can keep the screen awake for you while it exports.' : 'This browser cannot keep the screen awake by itself: turn off auto-lock for now.') : null);
   }
+  /** The closed-caption cues of an exported video: only its part of the edit, starting at 0. */
+  const rangeCues = (res) => {
+    const p = store.get();
+    const rg = (res && res.range) || resolveRange(p);
+    return shiftCues(videoCues(p), rg.start, rg.end);
+  };
   function buildExport(b) {
     const p = store.get();
     const mp4 = pickMimeType('mp4');
@@ -2814,7 +2822,14 @@ export function createPanels({ store, engine, ui }) {
     const contentLen = layoutClips(p.clips).reduce((m, l) => Math.max(m, l.end), 0);
     if (p.clips.length && contentLen < p.duration - (p.endCard.enabled && p.endCard.background !== 'video' ? p.endCard.duration : 0) - 0.05) issues.push(`Clips end at ${formatTime(contentLen)}; after that the background shows until ${formatTime(p.duration)}.`);
 
+    const range = resolveRange(p);
     const start = async () => {
+      const rg = resolveRange(store.get());
+      if (rg.error) {
+        exportState.error = rg.error;
+        toast(rg.error, 'error');
+        return ui.refreshPanels(true);
+      }
       const awake = await keepAwake(); // phones: keep the screen on while it records (released below)
       exportState.running = true;
       exportState.progress = 0;
@@ -2838,6 +2853,8 @@ export function createPanels({ store, engine, ui }) {
           fps: Number(fps.value),
           monitor: monitor.checked,
           audio: !cv, // a Canvas is silent: Spotify plays the track under it
+          start: rg.start,
+          end: rg.end,
           onProgress: (f) => {
             exportState.progress = f;
             ui.exportProgress && ui.exportProgress(f);
@@ -2848,7 +2865,7 @@ export function createPanels({ store, engine, ui }) {
           },
         });
         const ext = res.mime.includes('mp4') ? 'mp4' : 'webm';
-        exportState.result = { ...res, name: `${slug(p.name)}-${cv ? 'spotify-canvas' : p.aspect.replace(':', 'x')}.${ext}`, url: URL.createObjectURL(res.blob), stamp: stampOf(store.get()) };
+        exportState.result = { ...res, name: `${slug(p.name)}-${cv ? 'spotify-canvas' : p.aspect.replace(':', 'x')}.${ext}`, url: URL.createObjectURL(res.blob), stamp: stampOf(store.get()), range: rg };
         toast('Export finished');
       } catch (e) {
         if (e.message !== 'cancelled') exportState.error = e.message || 'Export failed';
@@ -2867,9 +2884,10 @@ export function createPanels({ store, engine, ui }) {
     return h(
       'div',
       {},
+      exportRangePanel({ store, engine, ui, settings, saveSettings }),
       section(
         'Export video',
-        h('p', { class: 'small' }, `${w}×${hgt} · ${formatTime(p.duration)} long. The video plays through once while it records, so exporting takes about ${Math.ceil(p.duration)} seconds. Keep this tab in front.`),
+        h('p', { class: 'small' }, `${w}×${hgt} · ${formatTime(range.length)} long${range.whole ? '' : ` (of ${formatTime(p.duration)})`}. The video plays through once while it records, so exporting takes about ${Math.ceil(range.length)} seconds. Keep this tab in front.`),
         issues.length ? h('ul', { class: 'warn-list' }, issues.map((i) => h('li', {}, i))) : null,
         exportNote(p),
         cv ? canvasExportNote(p) : null,
@@ -2879,7 +2897,7 @@ export function createPanels({ store, engine, ui }) {
         limiterToggle,
         exportState.running
           ? h('div', {}, h('div', { class: 'export-progress' }, h('div', { style: { width: `${Math.round(exportState.progress * 100)}%` } })), h('div', { class: 'row' }, h('span', { class: 'export-pct' }, `${Math.round(exportState.progress * 100)}%`), button('Cancel', () => exportVideo.cancel && exportVideo.cancel(), { variant: 'ghost sm' })))
-          : button('Export video', start, { iconName: 'download', variant: 'primary big wide' }),
+          : button('Export video', start, { iconName: 'download', variant: 'primary big wide', disabled: !!range.error }),
         exportState.error ? h('p', { class: 'error-text' }, exportState.error) : null,
         exportState.result
           ? h(
@@ -2888,8 +2906,8 @@ export function createPanels({ store, engine, ui }) {
               freshResult() ? null : h('p', { class: 'warn-list stale-note', role: 'status' }, 'Out of date. You changed the edit after exporting this video, so it does not match any more. Export again to get the new version.'),
               h('video', { src: exportState.result.url, controls: true, playsInline: true }),
               h('a', { class: `btn wide${freshResult() ? ' primary' : ' ghost'}`, href: exportState.result.url, download: exportState.result.name }, icon('download', 16), h('span', {}, `${freshResult() ? 'Download' : 'Download the old version of'} ${exportState.result.name} (${(exportState.result.blob.size / 1e6).toFixed(1)} MB)`)),
-              !cv && videoCues(p).length
-                ? h('div', { class: 'row' }, h('span', { class: 'muted tiny' }, 'Closed captions for it:'), button('.srt', () => download(new Blob([toSRT(videoCues(store.get()))], { type: 'application/x-subrip' }), exportState.result.name.replace(/\.\w+$/, '.srt')), { iconName: 'download', variant: 'sm ghost', title: 'The lyrics and captions in this video, to upload with it (YouTube, Facebook, LinkedIn)' }), button('.vtt', () => download(new Blob([toVTT(videoCues(store.get()))], { type: 'text/vtt' }), exportState.result.name.replace(/\.\w+$/, '.vtt')), { variant: 'sm ghost' }))
+              !cv && rangeCues(exportState.result).length
+                ? h('div', { class: 'row' }, h('span', { class: 'muted tiny' }, 'Closed captions for it:'), button('.srt', () => download(new Blob([toSRT(rangeCues(exportState.result))], { type: 'application/x-subrip' }), exportState.result.name.replace(/\.\w+$/, '.srt')), { iconName: 'download', variant: 'sm ghost', title: 'The lyrics and captions in this video, to upload with it (YouTube, Facebook, LinkedIn)' }), button('.vtt', () => download(new Blob([toVTT(rangeCues(exportState.result))], { type: 'text/vtt' }), exportState.result.name.replace(/\.\w+$/, '.vtt')), { variant: 'sm ghost' }))
                 : null,
               exportState.result.mime.includes('webm') ? h('p', { class: cv ? 'warn-list' : 'muted tiny' }, cv ? 'This browser saved WebM, but Spotify only takes MP4 for a Canvas. Export it again in Chrome or Edge, which save MP4.' : 'WebM uploads fine to YouTube. Instagram prefers MP4, which Chrome and Edge can export.') : null,
             )

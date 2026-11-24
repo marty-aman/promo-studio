@@ -17,6 +17,7 @@ export class Engine {
     this.t = 0;
     this.playing = false;
     this.loop = false;
+    this.region = null; // { from, to, loop }: playing just the export range (playRegion)
     this.listeners = new Set();
     onMatteChange(() => !this.playing && this.render());
     this.audioEls = new Map(); // key -> {el, mediaId}
@@ -145,7 +146,7 @@ export class Engine {
     if (this.playing) return;
     if (this.exporting && !force) return;
     this.ensureAudio();
-    if (this.t >= this.project.duration - 0.01) this.t = 0;
+    if (this.t >= (this.region ? Math.min(this.region.to, this.project.duration) : this.project.duration) - 0.01) this.t = this.region ? this.region.from : 0;
     this.playing = true;
     this._startWall = performance.now();
     this._startT = this.t;
@@ -156,8 +157,18 @@ export class Engine {
     this._emit();
   }
 
+  /** Play just `from`..`to` (the export range), looping when asked. Pausing, or playing again, goes back to the whole edit. */
+  playRegion(from, to, loop = false) {
+    if (this.exporting) return;
+    this.pause();
+    this.region = { from, to, loop };
+    this.t = from;
+    this.play();
+  }
+
   pause() {
     this.playing = false;
+    this.region = null;
     cancelAnimationFrame(this._raf);
     clearTimeout(this._timer);
     this._pauseAll();
@@ -224,16 +235,19 @@ export class Engine {
       this.t = this._startT + (now - this._startWall) / 1000;
     }
     const dur = this.project.duration;
-    if (this.t >= dur) {
-      this.t = dur;
+    const rg = this.region && !this.exporting ? this.region : null;
+    const stop = rg ? Math.min(rg.to, dur) : dur;
+    if (this.t >= stop) {
+      this.t = stop;
       this.render();
-      if (this.loop && !this.exporting) {
-        this.t = 0;
+      if ((rg ? rg.loop : this.loop) && !this.exporting) {
+        this.t = rg ? rg.from : 0;
         this._startWall = performance.now();
-        this._startT = 0;
+        this._startT = this.t;
         this._sync(true, true);
       } else {
         this.playing = false;
+        this.region = null;
         this._pauseAll();
         this._emit();
         if (this.onEnded) this.onEnded();
