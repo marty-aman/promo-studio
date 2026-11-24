@@ -58,7 +58,7 @@ async function start(env, language) {
   const lines = env.lines();
   const src = env.sources();
   const pick = src.vocal || src.mix;
-  const blob = pick && env.blob(pick.mediaId);
+  const blob = pick && (await env.blob(pick.mediaId)); // the file may not be open yet: read it from storage
   if (!lines.length) return fail(st, env, 'Add the lyrics first.');
   if (!blob) return fail(st, env, src.mix || src.vocal ? 'That audio file is missing from the library. Re-link it first.' : 'Pick the song first.');
   st.ctl = new AbortController();

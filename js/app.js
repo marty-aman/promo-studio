@@ -12,7 +12,10 @@ import { toggleOff, isOff, canTurnOff, OFF_KEY } from './itemoff.js';
 import { makeProjectFile, parseProjectFile, projectFileName, pushRecent, hasContent } from './projectfile.js';
 import { createVideoProjects } from './projects-video.js';
 import { readProjects } from './projectlib.js';
-import { media, restoreMedia, restoreMissing, fileKind, addMedia, kindOf } from './media.js';
+import { media, restoreMedia, restoreMissing, fileKind, addMedia, kindOf, ensureLoaded, ensureMany, idsIn, releaseUnused, removeFiles } from './media.js';
+import { biggestFiles } from './medialight.js';
+import { storagePanel } from './storagepanel.js';
+import { projectStore } from './projectstore.js';
 import { configureRelink, refreshRelink, relinkButton, openRelink, missingFor } from './relink.js';
 import { Engine, exportVideo } from './engine.js';
 import { createTimeline } from './timeline.js';
@@ -729,12 +732,7 @@ let savePending = false;
 let mediaFailures = [];
 function showSaveBanner(problem) {
   if (!problem && !mediaFailures.length) return (saveBanner.hidden = true);
-  const biggest = media
-    .all()
-    .filter((m) => m.blob)
-    .sort((a, b) => b.blob.size - a.blob.size)
-    .slice(0, 3)
-    .map((m) => `${m.name} (${(m.blob.size / 1048576).toFixed(0)} MB)`);
+  const biggest = biggestFiles(media.all(), 3).map((m) => `${m.name} (${(m.size / 1048576).toFixed(0)} MB)`);
   const mb = (n) => (n == null ? '?' : `${(n / 1048576).toFixed(0)} MB`);
   const lines = [];
   if (problem) lines.push(`This browser has no room left, so ${problem.what} are NOT being saved. Download a project file now, then free some space.`);
@@ -742,7 +740,7 @@ function showSaveBanner(problem) {
   saveBanner.replaceChildren(
     icon('x', 16),
     h('div', { class: 'save-banner-text' }, h('strong', {}, 'Storage is full. '), lines.join(' '), biggest.length ? h('span', { class: 'muted' }, ` Biggest files: ${biggest.join(', ')}.`) : null),
-    h('div', { class: 'row' }, button('Download project file', () => ui.saveProjectFile(), { iconName: 'download', variant: 'sm primary' }), button('Open the media library', () => (setMode('studio'), ui.openTab('video')), { variant: 'sm' }), button('Dismiss', () => ((mediaFailures = []), (saveBanner.hidden = true)), { variant: 'sm ghost' })),
+    h('div', { class: 'row' }, button('Download project file', () => ui.saveProjectFile(), { iconName: 'download', variant: 'sm primary' }), button('Clean up storage', () => openStorage(), { variant: 'sm' }), button('Open the media library', () => (setMode('studio'), ui.openTab('video')), { variant: 'sm' }), button('Dismiss', () => ((mediaFailures = []), (saveBanner.hidden = true)), { variant: 'sm ghost' })),
   );
   saveBanner.hidden = false;
 }
@@ -795,8 +793,9 @@ function syncNowOn() {
     if (tabPage) tabPage.songChanged();
   }
   const a = manager.artists().find((x) => x.id === artistId) || { name: 'No band yet' };
-  const ph = a.photoId && media.get(a.photoId);
-  const dot = ph && ph.url ? h('span', { class: 'now-dot photo', 'aria-hidden': 'true' }, h('img', { src: ph.url, alt: '', style: photoStyle(a.photoPos) })) : h('span', { class: 'now-dot', 'aria-hidden': 'true' }, (a.name[0] || '?').toUpperCase());
+  const ph = a.photoId && media.peek(a.photoId); // the small picture: the header never opens the file
+  const dotSrc = ph && (ph.thumb || ph.url);
+  const dot = dotSrc ? h('span', { class: 'now-dot photo', 'aria-hidden': 'true' }, h('img', { src: dotSrc, alt: '', style: photoStyle(a.photoPos) })) : h('span', { class: 'now-dot', 'aria-hidden': 'true' }, (a.name[0] || '?').toUpperCase());
   nowOn.replaceChildren(dot, h('span', { class: 'now-band' }, a.name), h('span', { class: 'now-sep', 'aria-hidden': 'true' }, '·'), h('span', { class: `now-song${song ? '' : ' none'}` }, song ? song.title : 'No song selected'));
   nowOn.setAttribute('aria-label', `Working on ${a.name}${song ? `, song “${song.title}”` : ', no song selected'}. Open it in the Manager.`);
   nowOn.onclick = () => {
@@ -854,6 +853,8 @@ ui.exportProgress = (f) => {
   exportLabel.textContent = `Exporting… ${pct}%`;
   exportFill.style.width = `${pct}%`;
 };
+/** Before the recording starts: "Opening files 2 of 5…" ('' for the usual label). */
+ui.exportLabel = (text) => (exportLabel.textContent = text || 'Exporting…');
 engine.on(syncExportLock);
 let meterShown = 0;
 let meterAt = performance.now();
@@ -1179,12 +1180,18 @@ manager = createManager({
     },
     /** A library file's details, or null when it was removed from the library. */
     /** A library file's audio/video data, for features that listen to it on this device (Auto-sync lyrics). */
-    mediaBlob: (id) => (media.get(id) || {}).blob || null,
+    /** Resolves the file's Blob (read from storage when it is not open), or null. */
+    mediaBlob: (id) => media.blob(id),
+    /** True when the library has the file (opened or not: a file not open yet is not missing). */
+    hasMedia: (id) => media.has(id),
+    /** Resolves a playable address for the file, opening it when needed (null when it is missing). */
+    mediaUrl: (id) => ensureLoaded(id).then((r) => (r && r.url) || null),
+    /** Details for lists and pages. Does not open the file: `url` is null until it is open (photos give their thumbnail). */
     mediaInfo(id) {
-      const m = id && media.get(id);
+      const m = id && media.peek(id);
       if (!m) return null;
       const tab = m.kind === 'tab' ? { title: m.title || '', tracks: (m.tracks || []).map((t) => t.name), drumTracks: (m.drumTracks || []).length } : {};
-      return { id: m.id, name: m.name, kind: m.kind, duration: Number.isFinite(m.duration) ? m.duration : 0, thumb: m.thumb || null, url: m.url, width: m.width || 0, height: m.height || 0, peaks: m.peaks || null, peaksPerSec: m.peaksPerSec || 0, ...tab };
+      return { id: m.id, name: m.name, kind: m.kind, duration: Number.isFinite(m.duration) ? m.duration : 0, thumb: m.thumb || null, url: m.url || (m.kind === 'image' ? m.thumb : null) || null, width: m.width || 0, height: m.height || 0, peaks: m.peaks || null, peaksPerSec: m.peaksPerSec || 0, ...tab };
     },
     /**
      * Put a song's file into the current edit. `how`: 'clip' (end of the main video track),
@@ -1210,7 +1217,13 @@ manager = createManager({
     },
     artistsChanged: () => (syncArtistSel(), syncNowOn()),
     /** The Manager's page, artist or song changed: update the header badge. */
-    contextChanged: () => syncNowOn(),
+    contextChanged: () => (syncNowOn(), soonReleaseMedia()),
+    /** The Storage section of the Manager home (measures when built). */
+    storagePanel: () => {
+      const open = storageOpenNext;
+      storageOpenNext = false;
+      return storagePanel(storageDeps, { open });
+    },
     /** Open this song's sections in the Video Studio's Export tab (loading the song first if the edit is another one). */
     openSections(song) {
       if (store.get().managerSongId !== song.id) this.openPromo(song);
@@ -1233,7 +1246,7 @@ manager = createManager({
     imageFiles: () => media.all().filter((m) => m.kind === 'image').map((m) => ({ id: m.id, name: m.name, thumb: m.thumb || null })),
     /** A library image as a JPEG data URL no larger than `max` px on its long side (for the press kit). */
     async imageDataUrl(id, max = 1400) {
-      const rec = media.get(id);
+      const rec = await ensureLoaded(id);
       const img = rec && rec.el;
       if (!img || !img.naturalWidth) return null;
       const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
@@ -1281,7 +1294,7 @@ manager = createManager({
 // The Video Studio's "From your songs" list: the open artist's stems, music videos and footage.
 ui.songFiles = () =>
   studioSongFiles(manager.store.get().songs, (id) => {
-    const m = id && media.get(id);
+    const m = id && media.peek(id); // names and lengths only: no file is opened for a list
     return m ? { id: m.id, name: m.name, kind: m.kind, duration: m.duration || 0, thumb: m.thumb || null, title: m.title || '' } : null;
   });
 ui.sendToEdit = (id, how) => {
@@ -1323,8 +1336,8 @@ function photoContext() {
   const m = manager.store.get();
   const b = m.band;
   const theme = b.theme ? themeById(b.theme) : null;
-  const logo = b.logoId && media.get(b.logoId);
-  const photoIds = [b.photoId, ...(b.epkPhotos || []), ...(m.photos || []).map((p) => p.mediaId)].filter((id, i, a) => id && a.indexOf(id) === i && media.get(id));
+  const logo = b.logoId && media.peek(b.logoId);
+  const photoIds = [b.photoId, ...(b.epkPhotos || []), ...(m.photos || []).map((p) => p.mediaId)].filter((id, i, a) => id && a.indexOf(id) === i && media.has(id));
   const venueName = (id) => (m.venues.find((v) => v.id === id) || {}).name || '';
   return {
     band: b,
@@ -1350,6 +1363,8 @@ photo = createPhotoStudio({
   studio: {
     images: () => media.all().filter((x) => x.kind === 'image').map((x) => ({ id: x.id, name: x.name, thumb: x.thumb, url: x.url, width: x.width, height: x.height })),
     get: (id) => media.get(id),
+    /** Open the files of a design (before an export). */
+    ensure: (ids) => ensureMany(ids),
     fileName: (id) => (media.names()[id] || [])[0] || '',
     mediaNames: () => media.names(),
     learnNames: (names) => media.learnNames(names),
@@ -1424,6 +1439,71 @@ const soonRefreshRelink = () => {
 store.subscribe(soonRefreshRelink);
 manager.store.subscribe(soonRefreshRelink);
 media.onChange(soonRefreshRelink);
+
+// ------------------------------------------------------------ storage and clean up (Manager home)
+// Text kept in localStorage that only indexes files (names, quality scores) is not a use of them.
+const INDEX_KEYS = new Set(['pvm.mediaNames.v1', 'pvm.frameQuality.v1']);
+const MEDIA_ID = /m_[0-9a-z]{6,}/g;
+let storageOpenNext = false;
+const storageDeps = {
+  recs: () => media.all(),
+  /** Every id something saved points at: the edit, every artist, the designs, the projects and their versions, and any other saved setting. */
+  async used() {
+    const versions = await projectStore.allVersions().catch(() => []);
+    const ids = idsIn(store.get(), manager.workspace(), photo ? photo.refSources() : [], projects.entries(), versions);
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || INDEX_KEYS.has(k)) continue;
+      for (const id of String(localStorage.getItem(k) || '').match(MEDIA_ID) || []) if (media.has(id)) ids.add(id);
+    }
+    return ids;
+  },
+  removeFiles: (ids) => removeFiles(ids),
+  versions: () => projectStore.allVersions(),
+  trimVersions: (keep) => projectStore.trimVersions(keep),
+  projects: () => projects.entries(),
+  async clearModels() {
+    const [rt, si] = await Promise.all([import('./ai/runtime.js'), import('./ai/searchindex.js')]);
+    await rt.clearModelCache();
+    await si.clearSearchIndex();
+  },
+  backUp: () => manager.backUp(),
+};
+/** Open the Manager home with the Storage section unfolded (from the storage-full banner). */
+function openStorage() {
+  storageOpenNext = true;
+  setMode('manager');
+  manager.go('home');
+  requestAnimationFrame(() => document.querySelector('[data-storage]')?.scrollIntoView({ block: 'start' }));
+}
+
+// ------------------------------------------------------------ files kept open
+// Photos, videos and songs are opened when used (media.js). The open edit's files are opened as soon as the edit
+// points at them, so playing never waits; a few seconds after the screen changes, files that neither the edit nor
+// the screen in front used since are let go (their element, address and data), and open again when used.
+let mediaRefs = new Set();
+let mediaBooted = false;
+const syncEditMedia = () => {
+  if (!mediaBooted) return;
+  const now = idsIn(store.get());
+  const added = [...now].filter((id) => !mediaRefs.has(id));
+  const dropped = [...mediaRefs].some((id) => !now.has(id));
+  mediaRefs = now;
+  if (added.length) ensureMany(added);
+  if (dropped) soonReleaseMedia();
+};
+let editMediaTimer = null;
+store.subscribe(() => {
+  clearTimeout(editMediaTimer);
+  editMediaTimer = setTimeout(syncEditMedia, 400);
+});
+let releaseTimer = null;
+function soonReleaseMedia() {
+  if (!mediaBooted) return;
+  clearTimeout(releaseTimer);
+  const since = performance.now();
+  releaseTimer = setTimeout(() => releaseUnused(idsIn(store.get()), since), 4000);
+}
 // ------------------------------------------------------------ lyrics for the chosen song
 /**
  * Fill the Lyrics tab for a song file. source: 'auto' (when a song is picked: your own lyrics from Songs &
@@ -1529,7 +1609,7 @@ ui.onSongChosen = (rec) => fillLyrics(rec, { source: 'auto' });
 ui.songContext = () => {
   if (!manager) return null;
   const p = store.get();
-  return studioSongContext(manager.store.get(), { songId: p.managerSongId || '', audioId: p.song ? p.song.mediaId : '', info: (id) => media.get(id), findSong });
+  return studioSongContext(manager.store.get(), { songId: p.managerSongId || '', audioId: p.song ? p.song.mediaId : '', info: (id) => media.peek(id), findSong });
 };
 // A new tab, drum chart or rhythm game layer starts on the edit's song's Guitar Pro file
 setSongTabs(() => (ui.songContext() || { tabs: [] }).tabs);
@@ -1555,7 +1635,7 @@ ui.openSongFiles = (songId) => {
 /** A song's cover (its own, else its EP's or album's) when the picture is in this library, else null. */
 const songCoverOf = (song) => {
   const id = song && manager ? coverOf(song, manager.store.get().releases || []) : null;
-  return id && media.get(id) ? id : null;
+  return id && media.has(id) ? id : null;
 };
 /** The edit's song's cover for the End card tab, and "Use the song's cover": hand the cover back to the song. */
 ui.songCover = () => {
@@ -1610,15 +1690,15 @@ ui.songTemplateContext = () => {
   const m = manager.store.get();
   const s = sc.song;
   const p = store.get();
-  const audio = (s.audioId && media.get(s.audioId)) || (p.song && media.get(p.song.mediaId)) || null;
+  const audio = (s.audioId && media.peek(s.audioId)) || (p.song && media.peek(p.song.mediaId)) || null;
   if (audio && audio.envelope && !beatsFor.has(audio.id)) beatsFor.set(audio.id, detectBeats(audio.envelope, audio.envRate || 100));
   const f = s.files || {};
-  const vrec = f.video && media.get(f.video.mediaId);
-  const footage = (f.footage || []).map((c) => media.get(c.mediaId)).filter((r) => r && (r.kind === 'video' || r.kind === 'image'));
+  const vrec = f.video && media.peek(f.video.mediaId);
+  const footage = (f.footage || []).map((c) => media.peek(c.mediaId)).filter((r) => r && (r.kind === 'video' || r.kind === 'image'));
   const key = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
   const midis = media.all().filter((r) => r.kind === 'midi' && key(s.title).length >= 3 && key(r.name).includes(key(s.title)));
-  const tabs = sc.tabs.map((id) => media.get(id)).filter(Boolean);
-  const stems = (f.stems || []).map((st) => ({ rec: media.get(st.mediaId), role: st.role })).filter((x) => x.rec);
+  const tabs = sc.tabs.map((id) => media.peek(id)).filter(Boolean);
+  const stems = (f.stems || []).map((st) => ({ rec: media.peek(st.mediaId), role: st.role })).filter((x) => x.rec);
   return {
     song: s,
     band: m.band.name || '',
@@ -1632,7 +1712,7 @@ ui.songTemplateContext = () => {
     today: new Date().toISOString().slice(0, 10),
     // the cover as a library image, for the Chorus promo when there's no footage or music video
     coverRec: (() => {
-      const r = media.get(coverOf(s, m.releases || []));
+      const r = media.peek(coverOf(s, m.releases || []));
       return r && r.kind === 'image' ? r : null;
     })(),
   };
@@ -1685,7 +1765,7 @@ ui.applySongTemplate = (id, opts = {}) => {
   ui.refreshPanels(true);
   return facts;
 };
-ui.songCovers = () => (manager ? songCovers(manager.store.get(), { firstSongId: store.get().managerSongId || '' }).filter((c) => media.get(c.mediaId)) : []);
+ui.songCovers = () => (manager ? songCovers(manager.store.get(), { firstSongId: store.get().managerSongId || '' }).filter((c) => media.has(c.mediaId)) : []);
 ui.lyricsTools = {
   fill: (rec, opts) => fillLyrics(rec, opts),
   /** What the Lyrics tab can offer for the song in the edit. */
@@ -1811,7 +1891,7 @@ const refreshSoon = () => (pointerHeld ? addEventListener('pointerup', () => set
 /** The edit plays the song's own song file, so times in it are times in the song. */
 const playsSong = (p, song) => !!(p.song && song && (!song.audioId || p.song.mediaId === song.audioId));
 const tabName = (id) => {
-  const r = media.get(id);
+  const r = media.peek(id);
   return r ? r.title || r.name : 'the tab';
 };
 function commitSync({ key, song, decision, auto, write, savedText, conflictText }) {
@@ -1999,7 +2079,7 @@ function applyArtist(id, { quiet = false } = {}) {
     d.artistId = id;
     if (band.name) d.endCard.artist = band.name;
     if (band.theme && themeById(band.theme)) applyTheme(d, band.theme);
-    if (band.logoId && media.get(band.logoId)) d.look.watermark = { ...d.look.watermark, mediaId: band.logoId };
+    if (band.logoId && media.has(band.logoId)) d.look.watermark = { ...d.look.watermark, mediaId: band.logoId };
   });
   if (!quiet) toast(`Promo set to ${band.name}${band.theme ? `, with the ${themeById(band.theme)?.name || ''} theme` : ''}${band.logoId ? ' and logo' : ''}. Undo (Ctrl+Z) to go back.`);
 }
@@ -2055,6 +2135,7 @@ function setMode(m) {
   }
   syncNowOn();
   if (mobile) mobile.refresh();
+  soonReleaseMedia();
 }
 let mobile = null;
 
@@ -2085,6 +2166,8 @@ async function boot() {
   await restoreMedia({ onProgress: (n, total) => (loadNote.textContent = `Loading your files (${n}/${total})…`) });
   clearTimeout(noteTimer);
   loadNote.remove();
+  mediaBooted = true;
+  syncEditMedia(); // open the edit's own files in the background
   configureRelink({ ready: true }); // from here on, a media id with no file is really missing
   configureTodoAuto({ has: (id) => media.has(id) }); // to-dos tick themselves only for files really in the library
   refreshRelink();

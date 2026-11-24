@@ -5,7 +5,14 @@
 import { h, icon, button, iconButton, toast, pickFiles, download } from '../dom.js';
 import { driveButton } from '../gdrive.js';
 import { relinkNotice } from '../relink.js';
-import { media } from '../media.js';
+import { media, ensureLoaded } from '../media.js';
+
+/** The full photo for the viewer: its small picture at once, the file once it is open. */
+function fullImage(x, alt) {
+  const img = h('img', { src: x.url || x.thumb, alt });
+  ensureLoaded(x.id).then((r) => r && r.url && img.src !== r.url && (img.src = r.url)); // also marks it as used by this screen
+  return img;
+}
 import { mixMatches } from '../ai/clipsearch.js';
 import { smartSearchBar, visualScorer, looksBadge, smartOn } from '../ai/panel-photosearch.js';
 import { addPhotos, filterPhotos, photoTags, toggleEpkPhoto, parseTags, EPK_PHOTO_MAX, newFolder, subfolders, folderPath, photosIn, deleteFolder, movePhotos, moveFolder, PAGE_SIZES, loadPageSize, savePageSize, paginate, tagPhotos, parseTagEdit, clickSelect } from './photos.js';
@@ -120,7 +127,7 @@ export function buildPhotos(ctx) {
   const byWords = filterPhotos(pool, { ...narrow, q: ui.q });
   // smart search: photos whose picture matches the words come after the word matches (same scope and filters)
   const scorer = visualScorer(ui.q);
-  const mixed = scorer ? mixMatches(byWords, filterPhotos(pool, narrow), (p) => scorer(media.get(p.mediaId))) : null;
+  const mixed = scorer ? mixMatches(byWords, filterPhotos(pool, narrow), (p) => scorer(media.peek(p.mediaId))) : null;
   const shown = mixed ? mixed.items.map((x) => x.photo) : byWords;
   const looks = new Map(mixed ? mixed.items.filter((x) => x.visual).map((x) => [x.photo.id, x.visual]) : []);
   const pg = paginate(shown, ui.page, ui.size);
@@ -316,7 +323,11 @@ export function buildPhotos(ctx) {
       button('Video', () => st.useInEditor(p.mediaId, 'clip', { open: false }), { iconName: 'film', variant: 'sm', title: 'Add to the end of the video track in the Video Studio' }),
       button(isProfile ? 'Profile ✓' : 'Profile', () => ctx.update((d) => (d.band.photoId = isProfile ? null : p.mediaId)), { variant: `sm${isProfile ? ' primary' : ' ghost'}`, title: isProfile ? 'This is the profile photo. Click to clear it.' : 'Use as this artist’s profile photo' }),
       button(isLogo ? 'Logo ✓' : 'Logo', () => ctx.update((d) => (d.band.logoId = isLogo ? null : p.mediaId)), { variant: `sm${isLogo ? ' primary' : ' ghost'}`, title: isLogo ? 'This is the logo on promos. Click to clear it.' : 'Use as this artist’s logo on promos' }),
-      iconButton('download', `Download ${x.name}`, async () => download(await (await fetch(x.url)).blob(), x.name), 'ghost'),
+      iconButton('download', `Download ${x.name}`, async () => {
+        const b = await media.blob(x.id); // read from storage: the photo may not be open
+        if (b) download(b, x.name);
+        else toast('That photo’s file is missing.', 'error');
+      }, 'ghost'),
       iconButton('trash', `Remove ${x.name} from this page`, () => removeOne(p), 'ghost'),
     );
   };
@@ -426,7 +437,7 @@ export function buildPhotos(ctx) {
       viewer = h(
         'div',
         { class: `mgr-lightbox${ui.details ? ' with-details' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': p.caption || x.name, onclick: (e) => e.target === e.currentTarget && close() },
-        h('img', { src: x.url, alt: p.caption || '' }),
+        fullImage(x, p.caption || ''),
         panel,
         h('div', { class: 'mgr-lightbox-bar' }, h('span', {}, [p.caption, p.credit && `Photo: ${p.credit}`].filter(Boolean).join(' · ') || x.name), h('span', { class: 'muted small' }, `${i + 1} of ${list.length}`), button(ui.details ? 'Hide details' : 'Details', () => ((ui.details = !ui.details), rerender()), { iconName: 'type', variant: 'sm' })),
         list.length > 1 ? iconButton('arrowLeft', 'Previous photo', () => go(-1), 'mgr-lightbox-prev') : null,
@@ -457,7 +468,7 @@ export function buildPhotos(ctx) {
     { class: 'mgr-sect mgr-photos-main' },
     crumbs,
     h('div', { class: 'mgr-photos-tools' }, search, modeSwitch),
-    smartSearchBar({ records: () => m.photos.map((p) => media.get(p.mediaId)).filter((r) => r && r.kind === 'image'), query: () => ui.q, refresh: redraw }),
+    smartSearchBar({ records: () => m.photos.map((p) => media.peek(p.mediaId)).filter((r) => r && r.kind === 'image'), query: () => ui.q, refresh: redraw }),
     h(
       'div',
       { class: 'chips' },

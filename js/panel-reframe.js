@@ -34,7 +34,7 @@ export const reframeFormat = (p) => {
 
 /** Main-track video clips with their media, for Reframe every clip. */
 export function everyClip(p, media) {
-  return (p.clips || []).filter((c) => c.kind === 'video').map((clip) => ({ clip, rec: media.get(clip.mediaId) })).filter((x) => x.rec && x.rec.url);
+  return (p.clips || []).filter((c) => c.kind === 'video').map((clip) => ({ clip, rec: media.get(clip.mediaId) })).filter((x) => x.rec && (x.rec.url || x.rec.loaded === false));
 }
 
 function select(label, value, choices, onChange) {

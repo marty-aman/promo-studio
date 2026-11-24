@@ -1097,11 +1097,66 @@ nothing, so the file can't freeze or change; the bar at the bottom has **Cancel 
   files**, matched by name.
 - Edits are saved half a second after the last change and also when the tab is closed, reloaded or hidden, in the
   Video Studio, the Manager and the Photo Studio.
-- If the browser has no room, a red banner stays up with **Download project file**, the biggest files and a link to the
-  media library. Saving settings or templates no longer throws, and a media file the browser refuses to store is
-  named (it works until a reload, then shows as missing). Persistent storage is requested when media is added.
+- If the browser has no room, a red banner stays up with **Download project file**, the biggest files, **Clean up
+  storage** (opens the Storage section on the Manager home) and a link to the media library. Saving settings or
+  templates no longer throws, and a media file the browser refuses to store is named (it works until a reload,
+  then shows as missing). Persistent storage is requested when media is added.
 - An exported video is marked **Out of date** as soon as the edit changes after it, and can't be shared until you
   export again (it can still be downloaded, labelled as the old version).
+
+## Media opened when used
+
+A big library used to be read, decoded and analysed in full at every start. Now photos, videos and songs come
+back as **light records**: name, kind, size, length, picture size, thumbnail and waveform, kept in IndexedDB's
+`meta` store (`pvm-media` version 2) next to the files themselves (`media` store, unchanged). The file is read
+only when something uses it, and let go again when nothing does.
+
+- **Opens a file:** putting it in the edit (the edit's files open as soon as it points at them, so playing never
+  waits), playing or previewing it, exporting (Export opens the edit's files first and says "Opening files 2 of 5…",
+  then waits for each clip's first frame), the song page's players, the photo viewer, the Photo Studio drawing a
+  design, Tab Studio stems, auto-sync, captions from speech, section detection, Find a moment. Jobs that read a
+  file once (smart photo search, weak-take flags, transcription) read it from storage without keeping it open.
+- **Never opens a file:** lists, pickers, the timeline's thumbnails and waveforms, the header avatar, suggestion
+  cards (they show the clip's still until a card plays), the Projects dialog, the press kit page (the PDF opens the
+  photos it prints), Replace missing files. A photo gets a small thumbnail (480 px, WebP) when it is added, so
+  the Photos page, the folder previews and the pickers never decode the full picture.
+- **Letting go:** a few seconds after the screen changes (workspace, Manager page or song), every open photo,
+  video or song that the edit does not use and that the screen in front has not used since is let go: its element
+  is emptied, its object URL revoked and its data dropped. It opens again the next time it is used.
+- **Not missing:** a file that is not open yet is in the library. A light record whose file is gone (the browser
+  cleared it) is dropped at start-up or when opening fails, so it shows as missing and Replace missing files
+  works as before.
+- **Older saves:** a file saved before this version has no light record, so it is read and analysed the old way
+  once; its light record is then written in the background, one file at a time, and the next visit is light. When
+  the light records can't be read at all, every file is read the old way. A file that fails to open from its
+  light record is read again from scratch under the same id.
+- Guitar Pro tabs, MIDI files and fonts are small and their parsed data (tracks, notes, font families) is read
+  everywhere at once, so they still open at start-up.
+- API (`js/media.js`): `media.get(id)` (the record; opens the file in the background), `media.peek(id)` (never
+  opens), `media.isLoaded(id)`, `ensureLoaded(id)`, `ensureMany(ids, onProgress)`, `ensureProjectMedia(p)`,
+  `blobOf(id)` / `media.blob(id)` (the Blob, not kept open), `releaseMedia(id)`, `releaseUnused(keep, since)`,
+  `removeFiles(ids)` (with undo). Records also carry `rec.open()` and `rec.file()` for modules that don't import
+  the library. The pure parts are in `js/medialight.js` (unit tested in `test/lazy-media.test.js`).
+- Measured (headless Firefox, 60 generated files: 20 videos, 25 photos of 2400 × 1600, 15 songs of 30 s): ready
+  in about 0.45–0.7 s instead of 1.5–1.9 s, with no file open at start (before: all 60, 366 MB of decoded photos,
+  35 media elements).
+
+## Storage and clean up
+
+The Manager home ends with a **Storage** section (folded; it unfolds by itself from 80 % full or after a save
+failed): how much of the browser's room is used of how much (`navigator.storage.estimate`), whether the browser
+keeps the files until you delete them, with **Ask the browser to keep them** when it may clear them on its own,
+what takes the room (videos, songs and stems, photos, AI models and caches, projects and versions, other), the
+five biggest files, and **Clean up**:
+
+- **Files nothing uses**: library files that no edit, artist, song, design, saved project or version, or any other
+  saved setting points at, biggest first, with select all. **Delete selected** asks first; the files leave the
+  library at once and are deleted for good after 15 seconds (or when the page closes), so **Undo** puts them back.
+- **Delete AI models and caches** (the downloaded speech and search models, and the Find a moment index) and
+  **Delete older project versions** (each project and design keeps its newest version).
+- A reminder that everything lives only in this browser, with **Back up now**.
+
+Code: `js/storagepanel.js`, `css/mgr-storage.css`; the measuring helpers are in `js/medialight.js`.
 
 ## Export
 
@@ -1170,7 +1225,9 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 |---|---|
 | `js/core.js` | Pure logic: time math, lyrics/LRC, tap-sync, audio analysis (unit tested) |
 | `js/state.js` | Project model, undo/redo store, persistence |
-| `js/media.js` | Media library, element creation, waveform/energy analysis, the name index and `restoreMissing` |
+| `js/media.js` | Media library, element creation, waveform/energy analysis, the name index and `restoreMissing`; light records, opening files when used (`ensureLoaded`) and letting them go (`releaseUnused`) |
+| `js/medialight.js` | Light media records, what to let go, unused files, the storage breakdown (pure, unit tested) |
+| `js/storagepanel.js` | The Storage section on the Manager home: meter, breakdown, biggest files, Clean up |
 | `js/mediamatch.js` | Finding missing media: which ids data points at, the name index, matching picked files by name and folder (unit tested) |
 | `js/relink.js` | The Replace missing files notice, button and dialog |
 | `js/renderer.js` | Draws a frame (video, transitions, effects, text, lyrics, end card) to a canvas |

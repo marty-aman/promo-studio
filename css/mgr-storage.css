@@ -1,0 +1,31 @@
+/* Storage on the Manager home (js/storagepanel.js) */
+.storage-panel { border: 1px solid var(--border, rgba(255, 255, 255, 0.12)); border-radius: 10px; padding: 0 14px; }
+.storage-panel > summary { display: flex; align-items: center; gap: 8px; padding: 12px 0; cursor: pointer; font-weight: 600; flex-wrap: wrap; }
+.storage-panel.warn { border-color: rgba(251, 146, 60, 0.6); background: rgba(251, 146, 60, 0.05); }
+.storage-panel.warn > summary { color: #fb923c; }
+.storage-body { padding: 0 0 14px; display: grid; gap: 10px; min-width: 0; }
+.storage-bar { height: 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.storage-bar > div { height: 100%; background: var(--accent, #22c55e); }
+.storage-bar.warn > div { background: #fb923c; }
+.storage-warn { color: #fb923c; font-weight: 600; margin: 0; }
+.storage-persist, .storage-backup { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.storage-h { font-size: 0.95rem; margin: 6px 0 0; }
+.storage-groups, .storage-big, .storage-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.storage-groups li { display: grid; grid-template-columns: minmax(120px, 11rem) 1fr auto; gap: 10px; align-items: center; }
+.storage-g-bar { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
+.storage-g-bar > span { display: block; height: 100%; background: var(--accent, #22c55e); opacity: 0.8; }
+.storage-big li { display: flex; justify-content: space-between; gap: 10px; min-width: 0; }
+.storage-f-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.storage-list { max-height: 320px; overflow: auto; }
+.storage-list label { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 36px; }
+.storage-list img, .storage-noimg { width: 36px; height: 36px; object-fit: cover; border-radius: 4px; flex: none; background: rgba(255, 255, 255, 0.06); }
+.storage-unused { display: grid; gap: 8px; }
+.storage-unused p { margin: 0; }
+.storage-actions { flex-wrap: wrap; gap: 8px; }
+.storage-undo { gap: 8px; align-items: center; }
+@media (max-width: 600px) {
+  .storage-groups li { grid-template-columns: 1fr auto; }
+  .storage-g-bar { grid-column: 1 / -1; order: 3; }
+  .storage-big li { flex-direction: column; gap: 0; }
+  .storage-actions .btn { width: 100%; }
+}

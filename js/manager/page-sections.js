@@ -16,7 +16,7 @@ export const detectUI = { songId: '', running: false, progress: 0, ac: null, res
 export const requestDetect = (songId) => (detectUI.auto = songId);
 
 async function runDetect(ctx, song) {
-  const blob = song.audioId ? ctx.studio.mediaBlob(song.audioId) : null;
+  const blob = song.audioId ? await ctx.studio.mediaBlob(song.audioId) : null; // read from storage when not open
   if (!blob) return toast('Add the song file on its Overview tab first.', 'error');
   if (detectUI.ac) detectUI.ac.abort();
   const ac = new AbortController();
@@ -54,7 +54,7 @@ function detectBox(ctx, song, S, dur) {
     detectUI.auto = '';
     if (!(mine && detectUI.running) && song.audioId) queueMicrotask(() => runDetect(ctx, song));
   }
-  const hasAudio = !!(song.audioId && ctx.studio.mediaBlob(song.audioId));
+  const hasAudio = !!(song.audioId && (ctx.studio.hasMedia ? ctx.studio.hasMedia(song.audioId) : ctx.studio.mediaBlob(song.audioId)));
   const kids = [
     h('h2', {}, 'Detect from the audio'),
     h('p', { class: 'muted small' }, `Listens to the song file in this browser (nothing is uploaded) and proposes where the intro, verses, choruses and bridge are${song.lyricTiming ? ', using the saved lyric timing to place them' : ''}. Your own sections are never changed.`),

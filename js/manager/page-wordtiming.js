@@ -10,11 +10,15 @@ const ui = new Map(); // song id → { line, word, target }, kept between page r
 let audio = null; // { el, id, url } the song file playing for "Play this line"
 
 function songPlayer(ctx, id) {
-  if (!id || !ctx.studio.mediaBlob || !ctx.studio.mediaBlob(id)) return null;
+  if (!id || !ctx.studio.mediaBlob || !(ctx.studio.hasMedia ? ctx.studio.hasMedia(id) : true)) return null;
+  // the song file is read from storage once (it may not be open yet); Play waits for it the first time
+  let blob = null;
+  const ready = Promise.resolve(ctx.studio.mediaBlob(id)).then((b) => (blob = b));
   const el = () => {
+    if (!blob) return null;
     if (!audio || audio.id !== id) {
       if (audio) (audio.el.pause(), URL.revokeObjectURL(audio.url));
-      const url = URL.createObjectURL(ctx.studio.mediaBlob(id));
+      const url = URL.createObjectURL(blob);
       audio = { id, url, el: new Audio(url) };
     }
     return audio.el;
@@ -22,6 +26,10 @@ function songPlayer(ctx, id) {
   return {
     play(from) {
       const a = el();
+      if (!a) {
+        ready.then(() => blob && this.play(from));
+        return true;
+      }
       a.currentTime = from;
       a.play().catch(() => {});
       return true;

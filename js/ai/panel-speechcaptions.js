@@ -49,7 +49,7 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 async function start(env, language) {
   const st = run(env.key);
   const target = env.target();
-  const blob = target && env.blob(target.mediaId);
+  const blob = target && (await env.blob(target.mediaId)); // the file may not be open yet: read it from storage
   if (!target || !blob) return fail(st, env, 'That file is missing from the library. Re-link it first.');
   st.ctl = new AbortController();
   st.phase = 'running';
@@ -201,7 +201,7 @@ export function speechCaptionsFor(sel, { store, media, style, y, target }) {
   return speechCaptionsBox({
     key: sel.id,
     target,
-    blob: (id) => (media.get(id) || {}).blob || null,
+    blob: (id) => (media.blob ? media.blob(id) : (media.get(id) || {}).blob || null),
     existing: (from, to) => captionsIn(store.get(), from, to).length,
     apply: (cues, mode, [from, to]) => {
       let n = 0;

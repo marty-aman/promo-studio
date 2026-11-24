@@ -22,7 +22,7 @@ export function createVideoProjects(deps) {
 
   const songName = (p) => {
     const id = p.song && p.song.mediaId;
-    const n = id ? (media.get(id) || {}).name || (media.names()[id] || [])[0] || '' : '';
+    const n = id ? (media.peek(id) || {}).name || (media.names()[id] || [])[0] || '' : '';
     return n.replace(/\.[a-z0-9]{2,4}$/i, '');
   };
   /** A small frame of the preview as it is now (the open edit only). */
@@ -87,7 +87,7 @@ export function createVideoProjects(deps) {
   const usedNames = () => projectStore.all().map((e) => e.name);
   const mediaOf = (data) =>
     mediaSlots('video', data).map((s) => {
-      const m = media.get(s.id);
+      const m = media.peek(s.id); // names only: listing projects opens no file
       return { ...s, present: !!m, kind: m ? m.kind : (media.names()[s.id] || [])[2] || '', name: m ? m.name : (media.names()[s.id] || [])[0] || '' };
     });
 
@@ -187,7 +187,7 @@ export function createVideoProjects(deps) {
       if (!map) return;
       swapMedia(fresh, map);
       fitClipsToMedia(fresh, (mid) => {
-        const m = media.get(mid);
+        const m = media.peek(mid);
         return m && m.kind === 'video' ? m.duration || 0 : 0;
       });
       await openData(fresh, `New project from “${e.name}”. Save to Projects keeps it.`);

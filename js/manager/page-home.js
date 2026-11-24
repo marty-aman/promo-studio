@@ -161,5 +161,6 @@ export function buildHome(ctx) {
     h('div', { class: 'mgr-cards' }, nextShow, nextRelease, bestCard),
     lateList,
     h('section', { class: 'mgr-sect' }, h('h2', {}, 'Next two weeks'), week),
+    ctx.studio && ctx.studio.storagePanel ? h('section', { class: 'mgr-sect' }, ctx.studio.storagePanel()) : null,
   );
 }

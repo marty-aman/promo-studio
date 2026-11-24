@@ -221,6 +221,7 @@ function seekTo(v, time) {
 }
 
 async function runPerson(rec, indices) {
+  if (!rec.url && rec.open) rec = (await rec.open()) || rec; // a library file that is not open yet
   const seg = await segmenter();
   let m = store.get(rec.id);
   const canvas = document.createElement('canvas');

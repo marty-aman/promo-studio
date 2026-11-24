@@ -1047,7 +1047,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
     S.progress = 0;
     render();
     try {
-      const { samples, duration } = await decodeStem(rec.blob);
+      const { samples, duration } = await decodeStem(await media.blob(rec.id)); // read from storage when not open
       const tuning = E.TUNINGS[form.tuning.value];
       const range = ST.playableRange(tuning);
       const songBeats = p.beats && p.beats.beats && p.beats.beats.length;
@@ -1112,13 +1112,14 @@ export function buildTabStudio({ store, engine, ui, panels }) {
     S.busy = `Listening to “${rec.name}”…`;
     render();
     try {
-      const { samples, sr, duration } = await decodeStem(rec.blob);
+      const stemBlob = await media.blob(rec.id); // read from storage when not open
+      const { samples, sr, duration } = await decodeStem(stemBlob);
       // the song's beat grid when we have it (stems line up with the song), otherwise the stem's own
       const songBeats = p.beats && p.beats.beats && p.beats.beats.length;
       const grid = form.grid.value === 'song' && songBeats ? { bpm: p.beats.bpm, firstBeat: p.beats.beats[0], ts: S.model ? S.model.ts : [4, 4] } : { ...gridFromSamples(samples, sr), ts: S.model ? S.model.ts : [4, 4] };
       let res;
       if (kind === 'drums') {
-        const hits = await drumHitsFromAudio(rec.blob);
+        const hits = await drumHitsFromAudio(stemBlob);
         res = drumsToTrack(hits.hits, grid);
       } else {
         const tuning = E.TUNINGS[form.tuning.value];

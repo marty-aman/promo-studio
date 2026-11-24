@@ -125,7 +125,7 @@ export class Engine {
 
   _audioEl(key, mediaId) {
     const rec = media.get(mediaId);
-    if (!rec) return null;
+    if (!rec || !rec.url) return null; // not open yet: media.get started opening it
     let entry = this.audioEls.get(key);
     if (!entry || entry.mediaId !== mediaId || entry.url !== rec.url) {
       if (entry) entry.el.pause();

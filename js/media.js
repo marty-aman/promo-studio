@@ -7,10 +7,21 @@ import { analyseAudioBlob } from './viz.js';
 import { ensureMattes } from './bgremove.js';
 import { MIDI_EXTENSIONS, parseMidi } from './midi.js';
 import { remember, trim, mergeIndex } from './mediamatch.js';
+import { isLazyKind, lightOf, lightUsable, recordFromLight, pickRelease, thumbSize } from './medialight.js';
 
 const library = new Map(); // id -> record
 const listeners = new Set();
 const emit = () => listeners.forEach((fn) => fn());
+// files that finish loading in the same moment redraw the screen once, not once each
+let emitTimer = null;
+const soonEmit = () => {
+  if (emitTimer) return;
+  emitTimer = setTimeout(() => {
+    emitTimer = null;
+    emit();
+  }, 30);
+};
+const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 // What every media id was called (and where it came from), kept apart from the records so a project, a song or a
 // design that points at a file which is gone still knows its name. Never shrinks when a record is removed.
@@ -37,9 +48,31 @@ const saveNames = () => {
 };
 
 export const media = {
-  get: (id) => library.get(id) || null,
+  /**
+   * The record for `id` (null when there is none). A photo, video or song that is not open yet is opened in the
+   * background (its `el`, `url` and `blob` arrive a moment later and the library's onChange fires); everything
+   * else on the record (name, kind, length, size, picture size, thumbnail, waveform) is there at once.
+   */
+  get: (id) => {
+    const rec = library.get(id);
+    if (!rec) return null;
+    rec.lastUse = now();
+    if (rec.loaded === false) ensureLoaded(id);
+    return rec;
+  },
+  /** The record without opening its file (for lists, names, sizes and thumbnails). */
+  peek: (id) => library.get(id) || null,
+  /** A file that is in the library, opened or not. A file that is not open yet is NOT missing. */
   has: (id) => library.has(id),
+  /** Every record, opened or not (does not open anything). */
   all: () => [...library.values()],
+  /** The file's data (Blob), read from storage when it is not open; resolves null when there is no file. */
+  blob: (id) => blobOf(id),
+  /** True when the file's data is in memory (always true for tabs, MIDI files and fonts). */
+  isLoaded: (id) => {
+    const rec = library.get(id);
+    return !!rec && rec.loaded !== false;
+  },
   /** "Missing: kick.wav" for an id with no record (falls back to `what`, e.g. "Missing audio"). */
   missingLabel: (id, what = 'media') => {
     const n = nameIndex()[id];
@@ -214,6 +247,7 @@ function background(key, rec, field, work, onReady) {
 
 /** Visualizer features for an audio (or video) file; undefined while analysing, null on failure. */
 export function vizFeatures(rec, onReady) {
+  if (waitForFile(rec, onReady)) return undefined;
   if (!rec || !rec.blob) return null;
   return background('viz', rec, 'vizCache', () => analyseAudioBlob(rec.blob), onReady);
 }
@@ -230,7 +264,7 @@ export function videoWaveform(rec, onReady) {
   if (rec.noAudio) return 'none';
   if (onReady) (waveWaiters.get(rec.id) || waveWaiters.set(rec.id, new Set()).get(rec.id)).add(onReady);
   if (!rec.waveLoading) {
-    rec.waveLoading = analyseAudio(rec).then(() => {
+    rec.waveLoading = ensureLoaded(rec.id).then((r) => (r ? analyseAudio(r) : null)).then(() => {
       if (!rec.peaks) rec.noAudio = true; // decodeAudioData refuses a file with no audio track
       rec.waveLoading = null;
       const fns = waveWaiters.get(rec.id);
@@ -243,13 +277,19 @@ export function videoWaveform(rec, onReady) {
 
 /** Drum hits detected from a drum stem at a given sensitivity. */
 export function drumHitsFromStem(rec, sensitivity, onReady) {
+  if (waitForFile(rec, onReady)) return undefined;
   if (!rec || !rec.blob) return null;
   const s = Math.round((sensitivity ?? 0.5) * 20) / 20;
   return background(`drums:${s}`, rec, 'drumCache', () => drumHitsFromAudio(rec.blob, { sensitivity: s }), onReady);
 }
 
-/** Resolve when every analysis a project needs is finished (used before exporting). */
-export async function ensureLayerAnalyses(p) {
+/**
+ * Resolve when every file and analysis a project needs is ready (used before exporting). `onLoad(done, total)` is
+ * called while the project's files are opened.
+ */
+export async function ensureLayerAnalyses(p, { onLoad = null } = {}) {
+  await ensureProjectMedia(p, onLoad);
+  await primeClipElements(p);
   const jobs = [];
   for (const l of p.layers || []) {
     if (l.visible === false) continue;
@@ -267,9 +307,23 @@ export async function ensureLayerAnalyses(p) {
   // person cut-outs must be ready so the real-time export never shows an uncut frame
   return ensureMattes(p, (id) => media.get(id));
 }
+/** A photo's small picture, as a data URL that outlives the file's object URL (lists show it; no full decode). */
+function imageThumb(img) {
+  try {
+    const { w, h } = thumbSize(img.naturalWidth, img.naturalHeight);
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    c.getContext('2d').drawImage(img, 0, 0, w, h);
+    const webp = c.toDataURL('image/webp', 0.82); // keeps transparency (logos) at a small size
+    return webp.startsWith('data:image/webp') ? webp : c.toDataURL('image/png');
+  } catch {
+    return null;
+  }
+}
 function makeThumb(rec) {
   return new Promise((resolve) => {
-    if (rec.kind === 'image') return resolve(rec.url);
+    if (rec.kind === 'image') return resolve(imageThumb(rec.el) || rec.url);
     if (rec.kind !== 'video') return resolve(null);
     const v = document.createElement('video');
     v.muted = true;
@@ -331,8 +385,13 @@ export async function addMedia(blob, name, meta = {}, { persist = true, id = nul
     url: URL.createObjectURL(blob),
     source: meta.source || 'upload',
     attribution: meta.attribution || null,
+    size: blob.size || 0,
+    type: blob.type || '',
+    addedAt: meta.addedAt || Date.now(),
     duration: 0,
     ready: false,
+    loaded: true,
+    lastUse: now(),
   };
   const ok = await loadElement(rec);
   if (!ok) {
@@ -347,12 +406,13 @@ export async function addMedia(blob, name, meta = {}, { persist = true, id = nul
   rec.thumb = fromCache && fromCache.thumb !== undefined ? fromCache.thumb : await makeThumb(rec);
   rec.ready = true;
   rec.path = meta.path || blob.webkitRelativePath || '';
+  withOpen(rec);
   library.set(rec.id, rec);
   remember(nameIndex(), rec.id, { name, path: rec.path, kind });
   saveNames();
   if (persist) {
     requestPersistence();
-    mediaDB.put(stored(rec)).catch(async (e) => {
+    mediaDB.put(stored(rec), lightOf(rec, analysisOf(rec))).catch(async (e) => {
       // the file works in this visit but would be gone after a reload: say so now, not later
       rec.unsaved = true;
       reportSaveFail(`the file “${name}”`, { media: true, name, bytes: blob.size, space: await spaceLeft(), error: e && e.name });
@@ -423,55 +483,306 @@ export async function restoreMissing(id, file) {
 export function removeMedia(id) {
   const rec = library.get(id);
   if (!rec) return;
-  URL.revokeObjectURL(rec.url);
+  if (rec.url) URL.revokeObjectURL(rec.url);
   library.delete(id);
   mediaDB.delete(id);
   emit();
 }
 
+// ------------------------------------------------------------------ opening files when they are used
+const opening = new Map(); // id -> promise of the record (or null)
 /**
- * Bring the saved files back. Each record carries its analysis from the last visit, so a file is only decoded the
- * first time; records saved before that get their analysis written back once, in the background. `onProgress(done, total)`
- * is called as files arrive.
+ * For modules that get a record but don't import this one: rec.open() resolves the record with its file open;
+ * rec.file() resolves its Blob without keeping it open (for a background job that reads it once).
+ */
+function withOpen(rec) {
+  Object.defineProperty(rec, 'open', { value: () => ensureLoaded(rec.id), configurable: true });
+  Object.defineProperty(rec, 'file', { value: () => blobOf(rec.id), configurable: true });
+  return rec;
+}
+
+/**
+ * Open a file that was restored as a light record: read its blob from IndexedDB, make its object URL and its
+ * element (picture, video, audio). Resolves the record, or null when it has no file any more (then it is taken out
+ * of the library, so it shows as missing and Replace missing files can give it back). Safe to call many times.
+ */
+export function ensureLoaded(id) {
+  const rec = library.get(id);
+  if (!rec) return Promise.resolve(null);
+  rec.lastUse = now();
+  if (rec.loaded !== false) return Promise.resolve(rec);
+  if (opening.has(id)) return opening.get(id);
+  const p = (async () => {
+    let row = null;
+    try {
+      row = await mediaDB.get(id);
+    } catch (e) {
+      console.warn('Could not read', rec.name, e);
+    }
+    if (library.get(id) !== rec) return library.get(id) || null; // replaced or removed meanwhile
+    if (!row || !row.blob) {
+      // the light record outlived its file: it is really missing now
+      library.delete(id);
+      mediaDB.deleteMeta(id);
+      soonEmit();
+      return null;
+    }
+    rec.blob = row.blob;
+    rec.url = URL.createObjectURL(row.blob);
+    const lightDuration = rec.duration;
+    const ok = await loadElement(rec);
+    if (!ok) {
+      // fallback: the eager path, which reads and analyses the file from scratch under the same id
+      URL.revokeObjectURL(rec.url);
+      rec.url = null;
+      rec.blob = null;
+      library.delete(id);
+      try {
+        return await addMedia(row.blob, row.name || rec.name, { kind: row.kind, source: row.source, attribution: row.attribution, path: row.path }, { persist: false, id, cached: row.analysis });
+      } catch (e) {
+        console.warn('Could not open', rec.name, e);
+        soonEmit();
+        return null;
+      }
+    }
+    if (rec.kind === 'audio' && lightDuration > 0) rec.duration = lightDuration; // the decoded length, not the element's guess
+    rec.loaded = true;
+    rec.lastUse = now();
+    soonEmit();
+    return rec;
+  })().finally(() => opening.delete(id));
+  opening.set(id, p);
+  return p;
+}
+
+/** Open several files, a few at a time. onProgress(done, total). Resolves the records that opened. */
+export async function ensureMany(ids, onProgress = null) {
+  const list = [...new Set(ids)].filter((id) => library.has(id));
+  const need = list.filter((id) => library.get(id).loaded === false);
+  let done = 0;
+  let next = 0;
+  if (onProgress && need.length) onProgress(0, need.length);
+  const worker = async () => {
+    while (next < need.length) {
+      await ensureLoaded(need[next++]);
+      if (onProgress) onProgress(++done, need.length);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, need.length) }, worker));
+  return list.map((id) => library.get(id)).filter(Boolean);
+}
+
+/** Every library id that some saved data (a project, a design, a song) points at. */
+export function idsIn(...roots) {
+  const out = new Set();
+  const seen = new Set();
+  const walk = (v) => {
+    if (typeof v === 'string') {
+      if (library.has(v)) out.add(v);
+    } else if (v && typeof v === 'object' && !seen.has(v)) {
+      seen.add(v);
+      for (const k of Array.isArray(v) ? v.keys() : Object.keys(v)) walk(v[k]);
+    }
+  };
+  roots.forEach(walk);
+  return out;
+}
+
+/** Open every file a project uses (before an export, or when a project is opened). */
+export const ensureProjectMedia = (p, onProgress = null) => ensureMany([...idsIn(p)], onProgress);
+
+/**
+ * Before an export: the video elements the edit's clips play from have their first frame (a file opened a moment
+ * ago is still loading, and the recording would start on empty frames). Waits at most `ms` per clip.
+ */
+export async function primeClipElements(p, ms = 6000) {
+  const clips = [...(p.clips || []), ...(p.layers || []).filter((l) => l.type === 'video').flatMap((l) => l.clips || [])].filter((c) => c && c.kind !== 'image' && c.mediaId);
+  await Promise.all(
+    clips.map((clip) => {
+      const e = clipElement(clip);
+      if (!e || e.el.readyState >= 2) return null;
+      return new Promise((resolve) => {
+        const done = () => (clearTimeout(t), e.el.removeEventListener('loadeddata', done), e.el.removeEventListener('error', done), resolve());
+        const t = setTimeout(done, ms);
+        e.el.addEventListener('loadeddata', done);
+        e.el.addEventListener('error', done);
+      });
+    }),
+  );
+}
+
+/** The file's data (a Blob) without keeping it open: for jobs that read a file once (search, transcription). */
+export async function blobOf(id) {
+  const rec = library.get(id);
+  if (!rec) return null;
+  if (rec.blob) return rec.blob;
+  try {
+    const row = await mediaDB.get(id);
+    return (row && row.blob) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** For the analysis helpers: a file that is not open yet is opened, and onReady runs once it is. True while waiting. */
+function waitForFile(rec, onReady) {
+  if (!rec || rec.loaded !== false) return false;
+  ensureLoaded(rec.id).then((r) => r && onReady && onReady());
+  return true;
+}
+
+/** Let go of an open photo, video or song: its element, object URL and blob. The light record stays. */
+export function releaseMedia(id) {
+  const rec = library.get(id);
+  if (!rec || rec.loaded === false || !isLazyKind(rec.kind) || !rec.blob) return false;
+  if (rec.el && rec.el.pause) {
+    rec.el.pause();
+    rec.el.removeAttribute('src');
+    rec.el.load();
+  }
+  for (const [cid, entry] of clipEls) {
+    if (entry.mediaId !== id) continue;
+    entry.el.pause();
+    entry.el.removeAttribute('src');
+    entry.el.load();
+    clipEls.delete(cid);
+  }
+  if (rec.url) URL.revokeObjectURL(rec.url);
+  rec.el = null;
+  rec.url = null;
+  rec.blob = null;
+  rec.loaded = false;
+  rec.vizCache = null; // features are rebuilt from the file when it is used again
+  rec.drumCache = null;
+  return true;
+}
+
+/**
+ * Release every open photo, video and song that the open project or screen does not use: not in `keep`
+ * and not used since `before` (performance.now() ms). Returns how many were released.
+ */
+export function releaseUnused(keep = new Set(), before = now()) {
+  const ids = pickRelease(library.values(), { keep, before });
+  ids.forEach(releaseMedia);
+  return ids.length;
+}
+
+/** Counts for the storage panel and the checks: { total, loaded } (loaded = photos, videos and songs open now). */
+export function loadedCount() {
+  let n = 0;
+  for (const r of library.values()) if (r.loaded !== false && isLazyKind(r.kind)) n++;
+  return { total: library.size, loaded: n };
+}
+
+/**
+ * Bring the saved files back. A photo, video or song with a light record (written since this version) comes back
+ * without reading its file: the file is opened when it is used. Everything else (tabs, MIDI, fonts, and files saved
+ * by an older version) is read and analysed as before, and older files get their light record written once, in the
+ * background, so the next visit is light too. When the light records can't be read at all, every file is read
+ * (the old path). `onProgress(done, total)` is called as files arrive.
  */
 export async function restoreMedia({ onProgress = null } = {}) {
-  const recs = await mediaDB.all();
+  let metas = null;
+  let keys = null;
+  try {
+    [metas, keys] = await Promise.all([mediaDB.metas(), mediaDB.keys()]);
+  } catch (e) {
+    console.warn('Light records unavailable, reading every file', e);
+    metas = null;
+  }
+  let heavy; // ids (or whole rows) read the old way
+  if (metas && keys) {
+    const byId = new Map(metas.map((m) => [m.id, m]));
+    const kept = new Set(keys);
+    heavy = [];
+    for (const id of keys) {
+      const m = byId.get(id);
+      if (lightUsable(m)) {
+        library.set(id, withOpen(recordFromLight(m)));
+        remember(nameIndex(), id, { name: m.name, path: m.path, kind: m.kind });
+      } else heavy.push(id);
+    }
+    for (const m of metas) if (!kept.has(m.id)) mediaDB.deleteMeta(m.id); // its file is gone
+  } else {
+    heavy = await mediaDB.all();
+  }
   // a few files at a time: decoding runs off the main thread, so four in flight cut the wait on a big library
   // shortcut: fixed pool of 4; the first visit after this change still decodes every older file once
   let next = 0;
-  let done = 0;
+  let done = library.size;
+  const total = library.size + heavy.length;
+  if (onProgress && done) onProgress(done, total);
   const backfill = [];
   namesHeld++;
   const worker = async () => {
-    while (next < recs.length) {
-      const r = recs[next++];
+    while (next < heavy.length) {
+      const item = heavy[next++];
+      let r = item;
       try {
+        if (typeof item === 'string') r = await mediaDB.get(item);
+        if (!r || !r.blob) throw new Error('no file');
         const rec = await addMedia(r.blob, r.name, { kind: r.kind, source: r.source, attribution: r.attribution, path: r.path }, { persist: false, id: r.id, cached: r.analysis });
-        if (!r.analysis && analysisOf(rec)) backfill.push(rec);
+        backfill.push({ rec, analysis: !r.analysis && !!analysisOf(rec) });
       } catch (e) {
-        console.warn('Could not restore', r.name, e);
+        console.warn('Could not restore', (r && r.name) || item, e);
       }
-      onProgress && onProgress(++done, recs.length);
+      if (onProgress) onProgress(++done, total);
     }
   };
   try {
-    await Promise.all(Array.from({ length: Math.min(4, recs.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(4, heavy.length) }, worker));
   } finally {
     namesHeld--;
     saveNames();
   }
+  if (library.size) emit();
   // one at a time and after everything else, so it never competes with the first screen
   (async () => {
-    for (const rec of backfill) {
+    for (const { rec, analysis } of backfill) {
       if (library.get(rec.id) !== rec) continue;
-      await new Promise((r) => setTimeout(r, 50));
-      await mediaDB.put(stored(rec)).catch(() => {}); // the file is already stored; only the shortcut is lost
+      await new Promise((res) => setTimeout(res, 50));
+      if (analysis) await mediaDB.put(stored(rec)).catch(() => {}); // the file is already stored; only the shortcut is lost
+      await mediaDB.putMeta(lightOf(rec, analysisOf(rec))).catch(() => {}); // the next visit starts without reading it
     }
   })();
 }
 
+/**
+ * Delete files from the library and from this browser (the Clean up panel). They leave the library at once; the
+ * stored files are deleted after `undoMs` (or when the page is closed), so undo() just puts the records back
+ * (no file is read again). Resolves undo(), which resolves how many came back (0 once the time is up).
+ */
+export async function removeFiles(ids, { undoMs = 15000 } = {}) {
+  const held = [];
+  for (const id of ids) {
+    const rec = library.get(id);
+    if (!rec) continue;
+    releaseMedia(id);
+    library.delete(id);
+    held.push(rec);
+  }
+  if (held.length) emit();
+  let settled = false;
+  const commit = () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    for (const r of held) mediaDB.delete(r.id);
+  };
+  const timer = setTimeout(commit, undoMs);
+  if (typeof addEventListener === 'function') addEventListener('pagehide', commit, { once: true });
+  return async () => {
+    if (settled) return 0;
+    settled = true;
+    clearTimeout(timer);
+    for (const r of held) if (!library.has(r.id)) library.set(r.id, r);
+    emit();
+    return held.length;
+  };
+}
+
 export function clearMedia() {
-  for (const rec of library.values()) URL.revokeObjectURL(rec.url);
+  for (const rec of library.values()) if (rec.url) URL.revokeObjectURL(rec.url);
   library.clear();
   mediaDB.clear();
   emit();
@@ -480,8 +791,8 @@ export function clearMedia() {
 /** Each clip gets its own <video> element so two clips can share one source file. */
 const clipEls = new Map(); // clipId -> {el, mediaId}
 export function clipElement(clip) {
-  const rec = library.get(clip.mediaId);
-  if (!rec || rec.kind !== 'video') return null;
+  const rec = media.get(clip.mediaId); // opens the file when it is not open yet
+  if (!rec || rec.kind !== 'video' || !rec.url) return null;
   let entry = clipEls.get(clip.id);
   if (!entry || entry.mediaId !== clip.mediaId || entry.url !== rec.url) {
     if (entry) entry.el.pause();

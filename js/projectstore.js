@@ -159,6 +159,32 @@ export const projectStore = {
     const l = await this.versions(kind, id);
     return l.length ? l[0].at : 0;
   },
+  /** Every version list: [{ key, list }] (the storage panel measures them and looks for the files they use). */
+  async allVersions() {
+    try {
+      if (!ok) throw new Error('memory');
+      return (await run('readonly', (s) => req(s.versions.getAll()))) || [];
+    } catch {
+      return [...mem.versions.entries()].map(([key, list]) => ({ key, list }));
+    }
+  },
+  /** Keep only the newest `keep` versions of every project and design. Resolves how many versions were dropped. */
+  async trimVersions(keep = 1) {
+    let dropped = 0;
+    const lists = await this.allVersions();
+    for (const v of lists) dropped += Math.max(0, (v.list || []).length - keep);
+    if (!dropped) return 0;
+    try {
+      if (!ok) throw new Error('memory');
+      await run('readwrite', (s) => {
+        for (const v of lists) if ((v.list || []).length > keep) s.versions.put({ key: v.key, list: v.list.slice(0, keep) });
+      });
+    } catch {
+      if (ok) return 0;
+      for (const v of lists) mem.versions.set(v.key, (v.list || []).slice(0, keep));
+    }
+    return dropped;
+  },
 };
 
 /** How much of the browser's storage this site uses: { usage, quota } in bytes (nulls when it can't tell). */
