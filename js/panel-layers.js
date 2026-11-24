@@ -7,6 +7,7 @@ import { MIDI_ACCEPT, noteCounts } from './midi.js';
 import { guessEngines, engineGroups, noteName } from './drummap.js';
 import { defaultMidiLayer, midiNotesFor, MIDI_STYLES, MIDI_PLACEMENT, MIDI_COLOR_MODES } from './midiviz.js';
 import { syncLayer, syncKind, SURE_TEXT } from './layersync.js';
+import { layerTabFile, layerSync, sameTabSync, syncPatch, describeTabSync, savedOn } from './songsync.js';
 import { defaultGameLayer, INSTRUMENTS, GAME_THEMES, GAME_THEME_LIST } from './rhythmgame.js';
 import { gameChart } from './gamechart.js';
 import { isBassTrack } from './tab.js';
@@ -374,8 +375,30 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         const n = parseInt(barNum.value, 10);
         const bar = tl.bars.find((x) => x.index === n - 1);
         if (!bar) return toast(`The file has ${new Set(tl.bars.map((x) => x.index)).size} bars.`, 'error');
-        store.update(S((x) => (x.offset = +(songNow() - bar.time / (x.tempoScale || 1)).toFixed(3))));
+        store.update(S((x) => ((x.offset = +(songNow() - bar.time / (x.tempoScale || 1)).toFixed(3)), (x.syncBar = n))));
         toast(`Bar ${n} now plays at the playhead`);
+      };
+      // one of the song's Guitar Pro files: its sync is kept on the song and saved by itself after each change here
+      const savedSyncRow = () => {
+        const cur = findLayer(store.get(), L.id) || L;
+        const own = ui.songSync && layerTabFile(cur, [cur.mediaId]) ? ui.songSync.tab(cur.mediaId) : null;
+        if (!own) return null;
+        const now = layerSync(cur);
+        const same = own.saved && sameTabSync(own.saved, now);
+        return h(
+          'div',
+          { class: 'sync-saved', 'data-k': 'tab-sync-saved' },
+          h('p', { class: 'small' }, own.saved
+            ? `Saved on “${own.song.title}”: ${describeTabSync(own.saved)}${own.saved.savedAt ? ` (${savedOn(own.saved.savedAt)})` : ''}.${same ? '' : ' This layer is set differently.'}`
+            : `This is one of “${own.song.title}”’s tab files. Sync it and the sync is saved on the song by itself, so new layers of it start in time.`),
+          own.conflict ? h('p', { class: 'warn-note small' }, 'The song already had a different sync, so it was kept.') : null,
+          own.saved && !same
+            ? h('div', { class: 'row wrap' },
+                button('Replace the song’s sync', () => ui.songSync.saveTab(cur.mediaId, now, { replace: true }), { variant: 'sm primary', title: 'Save this layer’s start and speed on the song, replacing what it had' }),
+                button('Use the saved sync', () => store.update(set((x) => Object.assign(x, syncPatch(own.saved)))), { variant: 'sm', title: 'Put this layer on the start and speed saved on the song' }),
+              )
+            : null,
+        );
       };
       const matchBpm = () => {
         const pp = store.get();
@@ -390,6 +413,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
       return section(
         'Sync with the song',
         autoSyncRow(L),
+        isStem ? null : savedSyncRow(),
         isStem
           ? h('p', { class: 'muted tiny' }, 'Stems normally start with the song, so 0 is right. Nudge if the stem was exported with a different start.')
           : h('p', { class: 'muted tiny' }, 'Move the playhead to where this part starts in the song, then put a bar there. Drag the layer’s block on the timeline to fine-tune.'),

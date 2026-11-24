@@ -6,6 +6,8 @@ import { driveButton } from '../gdrive.js';
 import { relinkNotice } from '../relink.js';
 import { media as mediaLib } from '../media.js';
 import { qualityBadges, weakToggle } from '../panel-quality.js';
+import { describeSyncPoint } from '../clipsync.js';
+import { savedVideoSync, setVideoSync, clearVideoSync, savedTabSync, clearTabSync, describeTabSync, savedOn } from '../songsync.js';
 import { STEM_TAB_ROLES, STEM_ROLES, newFiles, addStems, addFootage, addTabs, setVideo, fileCounts, stemName, groupStems, moveStem, VIDEO_STATUSES, videoDone } from './files.js';
 
 /** Which upload is running (not saved). */
@@ -72,6 +74,16 @@ export function filesTab(ctx, song, S) {
   };
 
   // ---- Guitar Pro tabs
+  /** Where this file lines up with the song, saved from the Video Studio (Auto-sync, Put bar at the playhead, nudges). */
+  const tabSyncRow = (t) => {
+    const ts = savedTabSync(song, t.mediaId);
+    return h(
+      'div',
+      { class: 'mgr-sync row wrap', 'data-k': `tab-sync-${t.mediaId}` },
+      h('span', { class: 'small', 'data-k': 'tab-sync-text' }, ts ? `Sync with the song: ${describeTabSync(ts)}${ts.savedAt ? ` (${savedOn(ts.savedAt)})` : ''}` : 'Not synced yet. Auto-sync it on the video and the sync is saved here by itself.'),
+      ts ? button('Clear', () => ctx.update(S((s) => clearTabSync(s, t.mediaId))), { iconName: 'trash', variant: 'sm ghost', title: 'Forget the saved sync (new layers then line up with Auto-sync again)' }) : null,
+    );
+  };
   const tabRows = (files.tabs || []).map((t) => {
     const m = info(t.mediaId);
     const drop = () => ctx.update(S((x) => (x.files.tabs = x.files.tabs.filter((y) => y.id !== t.id))));
@@ -82,6 +94,7 @@ export function filesTab(ctx, song, S) {
       { class: 'mgr-file tab' },
       h('div', { class: 'mgr-file-main' }, h('strong', { title: m.name }, m.title || m.name), m.title ? h('span', { class: 'muted tiny' }, m.name) : null),
       parts.length || t.draft ? h('div', { class: 'mgr-tracks' }, t.draft ? h('span', { class: 'mgr-chip st-hold', title: 'Made by the computer from a stem. Check it by ear and fix it in Tab Studio.' }, 'Draft from stem') : null, parts.map((p) => h('span', { class: 'mgr-chip' }, p))) : null,
+      tabSyncRow(t),
       h(
         'div',
         { class: 'row' },
@@ -173,6 +186,25 @@ export function filesTab(ctx, song, S) {
 
   // ---- music video
   const vm = files.video && info(files.video.mediaId);
+  /** Where the song starts in its music video: saved from the Video Studio's Sound sync, or typed here. */
+  const videoSyncRow = () => {
+    const vs = savedVideoSync(song);
+    const secs = h('input', { type: 'number', min: 0, step: 0.01, class: 'num', value: vs ? vs.offset : '', placeholder: '0.00', 'data-k': `mv-sync-sec-${song.id}`, 'aria-label': 'Seconds into the music video where the song’s 0:00 is' });
+    secs.addEventListener('change', () => {
+      const v = parseFloat(secs.value);
+      if (!Number.isFinite(v) || v < 0) return toast('Type the seconds into the video where the song starts, like 12.4.', 'error');
+      ctx.update(S((s) => setVideoSync(s, v)));
+    });
+    return h(
+      'div',
+      { class: 'mgr-sync', 'data-k': 'mv-sync' },
+      h('p', { class: 'small', 'data-k': 'mv-sync-text' }, vs ? `Sync with the song: ${describeSyncPoint(vs.offset)}${vs.savedAt ? ` (${savedOn(vs.savedAt)})` : ''}` : 'Not synced yet. Line it up in the Video Studio (select the clip, then Sound sync) and the sync is saved here by itself.'),
+      h('div', { class: 'row wrap' },
+        h('label', { class: 'mgr-inline' }, h('span', { class: 'muted tiny' }, 'Song starts at (s into the video)'), secs),
+        vs ? button('Clear', () => ctx.update(S((s) => clearVideoSync(s))), { iconName: 'trash', variant: 'sm ghost', title: 'Forget the saved sync (templates then start the video with the song)' }) : null,
+      ),
+    );
+  };
   const dropVideo = () => ctx.update(S((s) => setVideo(s, null)));
   const pickVideo = () => upload('video', VIDEO_ACCEPT, ['video'], false, (s, added) => setVideo(s, added[0]), 'video files');
   const videoState = videoStatusControl(ctx, song, S);
@@ -196,6 +228,7 @@ export function filesTab(ctx, song, S) {
             button(busy('video') ? 'Uploading…' : 'Replace', pickVideo, { iconName: 'upload', variant: 'sm ghost', disabled: busy('video') }),
             iconButton('trash', 'Remove the music video from this song', dropVideo, 'ghost'),
           ),
+          videoSyncRow(),
         )
       : h('p', { class: 'muted small' }, 'The finished video for this song. Cut teasers and shorts from it in the Video Studio.'),
     vm

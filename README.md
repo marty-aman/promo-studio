@@ -480,6 +480,23 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
   listening** compares the two sounds and sets it for you (1× speed only), and you can switch on the
   video's own sound to check by ear. For the song's music video, **Save as the music video sync** stores
   where the song starts in it, which templates and section exports use.
+- **Sync saved on the song.** The song's music video is recognised by its file, however it got into the
+  edit (from the song's Files tab or picked from the library). Lining it up (Sound sync drag, nudges,
+  **Line it up by listening**, or trimming the clip's start so its in-point changes) saves the sync point
+  on the song by itself about a second later, with the date. Moving the clip along the timeline doesn't
+  count. Song templates, **Export → Song sections**, **Add to the video track**, picture-in-picture and
+  Spotify Canvas all start the music video on it. The same goes for each of the song's Guitar Pro files:
+  **Auto-sync to the song**, **Put bar __ at the playhead**, nudges, the tempo slider, the start field
+  and dragging the layer on the timeline save the file's start, speed (and the bar you anchored on) on
+  the song, for tab, Guitar Pro drum chart and rhythm game layers. A new layer of that file (Add to the
+  video, the layer pickers, the Rhythm game template) starts on the saved sync and isn't auto-synced
+  again; press **Auto-sync** on it to re-listen. Tab Studio's play-along starts the file at its saved
+  start. Like lyric timing, an automatic save never replaces a different value the song already has
+  (saved in another session or typed on the Files tab): the panel says so and **Save** / **Replace the
+  song's sync** saves over it. The song's **Files** tab shows both next to the file, with **Clear**,
+  and a seconds field for the music video. Backups carry them; older backups load without them.
+  **Undo** changes the edit only: it does not undo what was saved on the song (save again, or Clear).
+  MIDI files aren't kept on a song, so MIDI notes and MIDI drum charts keep their sync in the edit only.
 
 **End card / call to action**
 - Cover art with blurred-cover, color or dimmed-video background, title, artist, CTA pill,

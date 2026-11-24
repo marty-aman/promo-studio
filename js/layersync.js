@@ -49,7 +49,7 @@ export function syncLayer(p, L) {
   if (!r) return { error: 'The song is too short to compare.' };
   const bpm = data.tempo ? Math.round(data.tempo * r.tempoScale * 10) / 10 : 0;
   return {
-    patch: { offset: r.offset, tempoScale: r.tempoScale, userSync: true },
+    patch: { offset: r.offset, tempoScale: r.tempoScale, syncBar: 0, userSync: true },
     sure: r.sure,
     text: `${L.name}: starts at ${formatTime(Math.max(0, r.offset))}${bpm ? ` at ${bpm} BPM` : r.tempoScale !== 1 ? ` at ${Math.round(r.tempoScale * 1000) / 10}% speed` : ''}`,
   };
