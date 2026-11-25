@@ -40,7 +40,7 @@ export const scrubToTime = (v, max, duration) => (max > 0 ? (Math.min(max, Math.
 
 /**
  * What to tell someone before an export on this device.
- * env: { ua, mp4, webm, touch, saveData, effectiveType, seconds }
+ * env: { ua, mp4, webm, touch, saveData, effectiveType, seconds, fast } (fast: the frame-by-frame export is chosen)
  */
 export function exportAdvice(env) {
   const ua = env.ua || '';
@@ -53,8 +53,9 @@ export function exportAdvice(env) {
   else lines.push(`This browser will save ${format}.`);
   const secs = Math.max(1, Math.ceil(env.seconds || 0));
   const lo = Math.ceil(secs * (phone ? 1.5 : 1));
-  lines.push(`It records in real time, so expect about ${lo >= 90 ? `${Math.ceil(lo / 60)} minutes` : `${lo} seconds`}.`);
-  if (phone) lines.push('Keep this screen on and this tab in front until it finishes. Locking the phone or switching apps stops the recording.');
+  // a fast export's time depends on the device (the Export tab says when this browser cannot do one)
+  if (!env.fast) lines.push(`It records in real time, so expect about ${lo >= 90 ? `${Math.ceil(lo / 60)} minutes` : `${lo} seconds`}.`);
+  if (phone) lines.push(env.fast ? 'Keep this screen on until it finishes. A phone may pause it while you switch apps or lock the screen, and closing the tab stops it.' : 'Keep this screen on and this tab in front until it finishes. Locking the phone or switching apps stops the recording.');
   if (ios) lines.push('On iPhone and iPad, Safari can only record short, smaller videos and may stop on its own. Try a shorter edit or the 30 fps setting if it fails.');
   return { format, lines, ios, phone };
 }

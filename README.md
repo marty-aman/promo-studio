@@ -1082,6 +1082,26 @@ and tunnel lyric displays can't be dragged (set their position in the Lyrics tab
 While a video exports, the panels, timeline and top bar are locked (greyed, not clickable) and these keys do
 nothing, so the file can't freeze or change; the bar at the bottom has **Cancel export**.
 
+**Export speed** (Export tab, kept as a setting):
+
+- **Fast** (the default) draws the edit one frame at a time at exact times and encodes it with the browser's own
+  video encoder (WebCodecs), so it does not play the video through. The sound is mixed in one go with the same
+  volumes, fades and limiter as the preview. It keeps going in a background tab, and the workspace switch stays
+  free: go to the Manager or Photo Studio while it works (it exports the edit as it was when you pressed Export).
+  The bar at the bottom and the tab's title show how far it is; when it finishes the bar offers **Download** and
+  **Open Video Studio**, and if you were elsewhere it plays a short chime and, if you allowed it, shows a
+  notification. Closing the tab stops it. How fast it is depends on the device: the result says how long it took
+  (seconds per second of video). Video clips are read once and decoded in order with WebCodecs (MP4 and MOV
+  with the vendored `vendor/mp4box`, BSD-3-Clause; WebM with `js/webmdemux.js`) instead of seeking the video to
+  every frame, which cost about 60 ms a frame. A clip with **Remove background** on, or a file the browser cannot
+  decode this way, is seeked as before. Files: MP4 needs an H.264 and AAC encoder in the browser (Chrome and Edge
+  on Windows and Mac); WebM uses VP8 (or VP9) with Opus (Chrome, Edge, Firefox). The muxers are vendored:
+  `vendor/mp4-muxer` and `vendor/webm-muxer` (MIT, loaded only for a fast export).
+- **Real-time** is the old way: it plays the edit through once while it records, so keep the tab in front.
+  It is used by itself when the browser cannot do the fast one for the chosen format, when a sped-up or slowed
+  clip has its sound on (the preview keeps its pitch), when a visualizer plays its stem over a song cut into
+  sections, or if a fast export fails part-way; the Export tab and a message say so.
+
 ### Keeping your work safe
 
 - **Projects** (top bar, and Start → Projects, project file and earlier projects) is the library of saved edits:
@@ -1336,7 +1356,13 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/panel-layers.js` | Layers panel |
 | `js/share.js` | Share sheet and YouTube upload |
 | `vendor/alphatab/` | alphaTab 1.9.0 parser (MPL-2.0), loaded only when a tab is used |
-| `js/engine.js` | Playback clock, media sync, Web Audio mix, export |
+| `js/engine.js` | Playback clock, media sync, Web Audio mix, export (fast or real-time) |
+| `js/fastexport.js` | Fast export: exact frames, WebCodecs video and sound encoders, offline sound mix, muxing |
+| `js/exportplan.js` | Fast export maths: frame times and stamps, the sound mix plan and fades, codec choice, which decoded frame to show (unit tested) |
+| `js/framesource.js` | Fast export: reads a clip's file once and decodes its frames in order with WebCodecs |
+| `js/webmdemux.js` | A small WebM reader: the video track and its frames (unit tested) |
+| `vendor/mp4box/` | mp4box 2.6.0 (BSD-3-Clause), reads MP4/MOV clips for a fast export |
+| `vendor/mp4-muxer/`, `vendor/webm-muxer/` | mp4-muxer 5.2.2 and webm-muxer 5.1.4 (MIT), loaded only for a fast export |
 | `js/timeline.js` | Multi-track timeline UI |
 | `js/tempo.js` | Tempo maths: BPM limits, tap tempo, ×2 / ÷2, beat times from BPM and first beat, which grid an effect follows (unit tested) |
 | `js/panel-tempo.js` | The tempo control (BPM box, Tap tempo, ×2, ÷2, song BPM, first beat) for the project and for effects with their own |

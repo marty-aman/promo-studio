@@ -843,26 +843,79 @@ playBtn.addEventListener('click', () => engine.toggle());
 timeReadout.update();
 
 // ------------------------------------------------------------ export lock and level meter
-let locked = false;
+let locked = null; // the controls locked by the running export
+let plainTitle = document.title;
 function syncExportLock() {
   const on = !!engine.exporting;
-  if (on === locked) return;
-  locked = on;
-  for (const el of [tabRail, leftPanel, inspector, timelineRoot, transport, header]) el.inert = on;
-  document.body.classList.toggle('exporting', on);
-  exportBar.hidden = !on;
+  if (on === !!locked) return;
   if (on) {
+    // a fast export leaves the workspace switch free: it draws its own copy of the edit, so you can work elsewhere
+    locked = engine.exportFast ? [tabRail, leftPanel, inspector, timelineRoot, transport, nowOn, ...header.querySelectorAll('.studio-only')] : [tabRail, leftPanel, inspector, timelineRoot, transport, header];
+    for (const el of locked) el.inert = true;
+    plainTitle = document.title;
+    exportBar.replaceChildren(exportLabel, h('div', { class: 'export-progress' }, exportFill), h('span', { class: 'muted small' }, engine.exportFast ? 'Editing this video is locked until it finishes. You can switch workspace or tab; closing this tab stops it.' : 'Editing is locked until it finishes. Keep this tab in front.'), button('Cancel export', () => exportVideo.cancel && exportVideo.cancel(), { variant: 'sm' }));
     exportLabel.textContent = 'Exporting…';
     exportFill.style.width = '0%';
+  } else {
+    for (const el of locked) el.inert = false;
+    locked = null;
+    document.title = plainTitle;
   }
+  document.body.classList.toggle('exporting', on);
+  exportBar.hidden = !on;
 }
 const exportLabel = h('strong', {});
 const exportFill = h('div', {});
-exportBar.append(exportLabel, h('div', { class: 'export-progress' }, exportFill), h('span', { class: 'muted small' }, 'Editing is locked until it finishes. Keep this tab in front.'), button('Cancel export', () => exportVideo.cancel && exportVideo.cancel(), { variant: 'sm' }));
 ui.exportProgress = (f) => {
   const pct = Math.round(f * 100);
   exportLabel.textContent = `Exporting… ${pct}%`;
   exportFill.style.width = `${pct}%`;
+  // the tab's title shows how far it is, for when you are in another tab
+  document.title = `${pct}% exporting · ${plainTitle}`;
+};
+/** A short two-note chime (made here, no sound file) for an export that finished while you were elsewhere. */
+function chime() {
+  try {
+    const ac = engine.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const t = ac.currentTime + 0.05;
+    [880, 1320].forEach((f, i) => {
+      const o = ac.createOscillator();
+      const g = ac.createGain();
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0, t + i * 0.18);
+      g.gain.linearRampToValueAtTime(0.18, t + i * 0.18 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.18 + 0.5);
+      o.connect(g).connect(ac.destination);
+      o.start(t + i * 0.18);
+      o.stop(t + i * 0.18 + 0.55);
+    });
+  } catch {
+    /* no sound: the bar and the notification still say it */
+  }
+}
+/** After a fast export: the bar turns into Download / Open Video Studio / Close, wherever you are in the app. */
+ui.exportDone = (res) => {
+  if (!res.fast) return;
+  const away = document.hidden || mode !== 'studio';
+  const close = () => (exportBar.hidden = true);
+  const parts = [
+    h('strong', {}, 'Your video is ready'),
+    h('a', { class: 'btn sm primary', href: res.url, download: res.name, 'data-testid': 'bar-download' }, icon('download', 16), h('span', {}, `Download (${(res.blob.size / 1e6).toFixed(1)} MB)`)),
+    mode !== 'studio' ? button('Open Video Studio', () => (setMode('studio'), ui.openTab('export'), close()), { variant: 'sm ghost' }) : null,
+    button('Close', close, { variant: 'sm ghost' }),
+  ];
+  exportBar.replaceChildren(...parts.filter(Boolean));
+  exportBar.hidden = false;
+  if (!away) return;
+  chime();
+  if (window.Notification && Notification.permission === 'granted') {
+    try {
+      const n = new Notification('Your video is ready', { body: `${res.name} finished exporting in Band Manager.`, tag: 'promo-studio-export' });
+      n.onclick = () => (window.focus(), n.close());
+    } catch {
+      /* some phones only allow notifications from a service worker */
+    }
+  }
 };
 /** Before the recording starts: "Opening files 2 of 5…" ('' for the usual label). */
 ui.exportLabel = (text) => (exportLabel.textContent = text || 'Exporting…');
