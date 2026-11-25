@@ -11,6 +11,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { SCHEME, HOST, ORIGIN, MEDIA_PREFIX, BASE_HEADERS, appFile, fileResponse, mediaType } = require('./serve.cjs');
 const { createLinks } = require('./links.cjs');
+const { createNative } = require('./native.cjs');
 const { BRIDGE_VERSION, CAPABILITIES, NATIVE_TOOLS, externalAllowed, fromApp } = require('./policy.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -21,6 +22,7 @@ if (DEV && process.env.PVM_USER_DATA) app.setPath('userData', path.resolve(proce
 protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true, codeCache: true } }]);
 
 let links = null;
+let native = null;
 let api = null; // server-api.js (ES module, loaded once)
 let win = null;
 
@@ -163,9 +165,10 @@ function registerBridge() {
     chrome: process.versions.chrome,
     platform: process.platform,
     arch: process.arch,
-    capabilities: CAPABILITIES,
+    capabilities: [...CAPABILITIES, ...(await Promise.all(NATIVE_TOOLS.map(async (t) => ((await native.toolPath(t)) ? `native.run:${t}` : null)))).filter(Boolean)],
     disk: await diskSpace(),
     linked: await links.totals(),
+    nativeModelsBytes: await native.modelsBytes(),
   }));
 
   // linked files: the page names ids; paths come from the dialog (a token) or the preload's getPathForFile
@@ -256,9 +259,24 @@ function registerBridge() {
   handle('files:saveStream', () => {
     throw new Error('Saving straight to a file comes in a later version of the Mac app');
   });
-  handle('native:run', (_e, name) => {
+  // Native tools (electron/native.cjs): whisper.cpp for faster lyric sync and captions. The binary is put in
+  // <userData>/bin by the person; models are downloaded after they agree. Progress goes back as 'native:event'.
+  handle('native:run', async (event, name, args, opts = {}) => {
     if (!NATIVE_TOOLS.includes(name)) throw new Error(`No bundled tool called ${String(name).slice(0, 40)}`);
-    throw new Error('Bundled tools come in a later version of the Mac app');
+    const id = opts && typeof opts.id === 'string' ? opts.id.slice(0, 64) : '';
+    const input = opts && opts.input instanceof Uint8Array ? opts.input : null;
+    return native.run(name, args, { input, onProgress: (progress) => !event.sender.isDestroyed() && event.sender.send('native:event', { type: 'run', tool: name, id, progress }) });
+  });
+  handle('native:status', () => native.status());
+  handle('native:download', (event, model, opts = {}) =>
+    native.downloadModel(String(model), { consent: !!(opts && opts.consent === true), onProgress: (p) => !event.sender.isDestroyed() && event.sender.send('native:event', { type: 'download', model: String(model), ...p }) }),
+  );
+  handle('native:cancelDownload', (_e, model) => native.cancelDownload(String(model)));
+  handle('native:removeModel', (_e, model) => native.removeModel(String(model)));
+  handle('native:reveal', async (_e, what) => {
+    const dir = what === 'models' ? native.modelsDir : native.binDir;
+    await fsp.mkdir(dir, { recursive: true });
+    return (await shell.openPath(dir)) === '';
   });
 }
 
@@ -292,6 +310,7 @@ app.on('web-contents-created', (_e, contents) => lockNavigation(contents));
 app.whenReady().then(async () => {
   api = await import(pathToFileURL(path.join(ROOT, 'server-api.js')).href);
   links = createLinks({ configDir: app.getPath('userData') });
+  native = createNative({ dir: app.getPath('userData') });
   const ses = session.defaultSession;
   ses.setPermissionRequestHandler((_wc, permission, cb, details) => cb(PERMISSIONS.has(permission) && fromApp(details.requestingUrl || '')));
   ses.setPermissionCheckHandler((_wc, permission, origin) => PERMISSIONS.has(permission) && fromApp(origin || ''));
@@ -306,6 +325,8 @@ app.whenReady().then(async () => {
     if (!BrowserWindow.getAllWindows().length) win = await createWindow();
   });
 });
+
+app.on('before-quit', () => native && native.killAll());
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin' || (DEV && process.env.PVM_E2E)) app.quit();

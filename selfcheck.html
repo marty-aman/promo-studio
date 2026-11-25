@@ -16,6 +16,17 @@
         <thead><tr><th scope="col">Check</th><th scope="col">Result</th></tr></thead>
         <tbody></tbody>
       </table>
+      <h2>Speech model timing</h2>
+      <p class="muted">Times lyric sync and caption timing on an 11 second test clip that comes with the app. If the speech model is not on this Mac yet it downloads once (about 77 MB from huggingface.co), after asking. Run each setting you want to compare, then use “Copy the results” above. Changing between processor settings reloads this page; results are kept.</p>
+      <p>
+        <label>Setting <select id="ai-config"></select></label>
+        <button type="button" id="ai-run">Time the speech model</button>
+      </p>
+      <p id="ai-status" role="status" class="muted"></p>
+      <table id="ai-out" hidden>
+        <thead><tr><th scope="col">Setting</th><th scope="col">Model load</th><th scope="col">Lyric sync (first / second run)</th><th scope="col">Caption timing</th><th scope="col">Speed</th></tr></thead>
+        <tbody></tbody>
+      </table>
     </main>
     <script type="module" src="js/selfcheck.js"></script>
   </body>

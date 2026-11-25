@@ -1,8 +1,11 @@
 // The Mac self-check (selfcheck.html, App menu > Mac self-check…): one run answers what can only be learned on
 // the Mac itself: which encoders WebCodecs has (and whether they run on the hardware encoder), WebGPU, cross-origin
-// isolation (multithreaded AI), the AI device, and how long a 10 second 1080x1920 encode takes. "Copy the
+// isolation (multithreaded AI), the AI device, how long a 10 second 1080x1920 encode takes, and (a separate button)
+// how long lyric sync and caption timing take on a test clip, per setting. "Copy the
 // results" puts it all on the clipboard as JSON to paste back. Works in a browser too (no desktop info there).
-import { pickDevice } from './ai/runtime.js';
+import { pickDevice, modelInfo, setRuntimeOverride, threadCount } from './ai/runtime.js';
+import { nativeStatus } from './ai/nativewhisper.js';
+import { timeSpeech } from './ai/aitiming.js';
 
 const W = 1080;
 const H = 1920;
@@ -155,6 +158,104 @@ async function run() {
   btn.disabled = false;
   window.__selfcheck = results;
 }
+
+// ---------------------------------------------------------------- speech model timing (lyric sync, caption timing)
+// The WASM thread count is read once, when the first model loads in a page, so each browser setting is timed in a
+// fresh page: choosing another one puts it in the address (#ai=wasm:1) and reloads. Results are kept in sessionStorage.
+const AI_KEY = 'pvm.selfcheck.speech';
+const aiSel = document.getElementById('ai-config');
+const aiStatus = document.getElementById('ai-status');
+const aiBody = document.querySelector('#ai-out tbody');
+const hashCfg = (location.hash.match(/ai=([\w.:]+)/) || [])[1] || 'auto';
+let loadedHere = false; // a browser model was loaded in this page (so its thread count is fixed)
+
+function parseCfg(c) {
+  if (c === 'whisper.cpp') return { engine: 'whisper.cpp' };
+  if (c === 'webgpu') return { engine: 'browser', device: 'webgpu' };
+  if (c.startsWith('wasm:')) return { engine: 'browser', device: 'wasm', threads: Number(c.slice(5)) || 1 };
+  return { engine: 'browser' };
+}
+{
+  const c = parseCfg(hashCfg);
+  if (c.engine === 'browser') setRuntimeOverride({ device: c.device || null, threads: c.threads || null });
+}
+
+async function fillAiOptions() {
+  const opts = [['auto', `As the app runs it (${threadCount() > 1 ? `${threadCount()} threads` : '1 thread'}, graphics chip if there is one)`], ['wasm:1', 'Processor, 1 thread (what a browser tab does)']];
+  if (threadCount() > 1) opts.push([`wasm:${threadCount()}`, `Processor, ${threadCount()} threads`]);
+  if ((await pickDevice().catch(() => 'wasm')) === 'webgpu' || (navigator.gpu && (await navigator.gpu.requestAdapter().catch(() => null)))) opts.push(['webgpu', 'Graphics chip (WebGPU)']);
+  const st = await nativeStatus();
+  if (st) {
+    const ok = st.tools.whisper && st.tools.whisper.installed && st.models.some((m) => m.installed);
+    opts.push(['whisper.cpp', ok ? 'whisper.cpp (installed in the Mac app)' : 'whisper.cpp (not set up: see Storage > Faster speech)', !ok]);
+  }
+  aiSel.replaceChildren(...opts.map(([v, label, off]) => Object.assign(document.createElement('option'), { value: v, textContent: label, disabled: !!off, selected: v === hashCfg })));
+}
+
+const aiResults = () => {
+  try {
+    return JSON.parse(sessionStorage.getItem(AI_KEY) || '[]');
+  } catch {
+    return [];
+  }
+};
+function paintAi() {
+  const list = aiResults();
+  results.speech = list;
+  aiBody.replaceChildren(
+    ...list.map((r) => {
+      const tr = document.createElement('tr');
+      const cell = (t) => tr.append(Object.assign(document.createElement('td'), { textContent: t }));
+      cell(`${r.engine === 'whisper.cpp' ? 'whisper.cpp' : `Browser model, ${r.device === 'webgpu' ? 'graphics chip' : `processor, ${r.threads} thread${r.threads === 1 ? '' : 's'}`}`}`);
+      if (r.error) {
+        const td = Object.assign(document.createElement('td'), { textContent: `Failed: ${r.error}`, colSpan: 4 });
+        tr.append(td);
+      } else {
+        cell(r.engine === 'whisper.cpp' ? 'in each run' : `${r.loadSeconds} s${r.downloaded ? ' (with download)' : ''}`);
+        cell(`${r.lyricSync.seconds} s / ${r.lyricSync.secondsWarm} s`);
+        cell(`${r.captions.seconds} s`);
+        cell(`${r.realtimeFactor}× real time`);
+      }
+      return tr;
+    }),
+  );
+  document.getElementById('ai-out').hidden = !list.length;
+}
+
+async function timeIt(cfg = aiSel.value) {
+  const c = parseCfg(cfg);
+  if (c.engine === 'browser' && loadedHere && cfg !== hashCfg) {
+    // another browser setting needs a fresh page; ask about the download first, once
+    if (!(await modelInfo()).cached && !confirm('The speech model is not on this Mac yet. Download it once (about 77 MB from huggingface.co)? Nothing from your files is sent.')) return;
+    sessionStorage.setItem('pvm.selfcheck.autorun', '1');
+    location.hash = `ai=${cfg}`;
+    location.reload();
+    return;
+  }
+  if (c.engine === 'browser' && !(await modelInfo()).cached && !confirm('The speech model is not on this Mac yet. Download it once (about 77 MB from huggingface.co)? Nothing from your files is sent.')) return;
+  const btn = document.getElementById('ai-run');
+  btn.disabled = true;
+  try {
+    if (c.engine === 'browser') loadedHere = true;
+    const r = await timeSpeech({ ...c, onStatus: (t) => (aiStatus.textContent = t) });
+    sessionStorage.setItem(AI_KEY, JSON.stringify([...aiResults(), r]));
+    aiStatus.textContent = r.error ? `Stopped: ${r.error}` : 'Done. Pick another setting to compare, or copy the results.';
+    paintAi();
+    document.getElementById('copy').disabled = false;
+  } finally {
+    btn.disabled = false;
+  }
+}
+document.getElementById('ai-run').addEventListener('click', () => timeIt());
+window.__selfcheckTime = timeIt;
+fillAiOptions().then(() => {
+  paintAi();
+  if (aiResults().length) document.getElementById('copy').disabled = false;
+  if (sessionStorage.getItem('pvm.selfcheck.autorun') === '1') {
+    sessionStorage.removeItem('pvm.selfcheck.autorun');
+    timeIt(hashCfg);
+  }
+});
 
 document.getElementById('run').addEventListener('click', run);
 document.getElementById('copy').addEventListener('click', async () => {
