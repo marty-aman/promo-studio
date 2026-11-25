@@ -62,6 +62,8 @@ import { placeIn, placeOnPoint, pointToDirection, directionToPoint } from './cli
 import { media, addMedia, removeMedia, tabTimeline } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
+import { fastSupport } from './fastexport.js';
+import { speedRatio } from './exportplan.js';
 import { exportRangePanel } from './panel-exportrange.js';
 import { resolveRange, shiftCues } from './exportrange.js';
 import { exportAdvice, exportEnv, keepAwake } from './mobilelogic.js';
@@ -138,6 +140,7 @@ const LYRIC_PRESETS = {
 export function createPanels({ store, engine, ui }) {
   const settings = loadSettings();
   engine.limiterOn = settings.limiter !== false;
+  engine.exportMode = settings.exportMode === 'realtime' ? 'realtime' : 'fast';
   const kf = createKeyframeUI({ store, engine });
   const sync = { active: false, cursor: 0 };
   const wordUI = { lineId: '', word: 0, target: 'word' }; // the word timing editor's line and word, kept between rebuilds
@@ -2786,7 +2789,7 @@ export function createPanels({ store, engine, ui }) {
   });
   // what this browser will produce and what to do before exporting (phones: keep the screen on)
   function exportNote(p) {
-    const a = exportAdvice(exportEnv(resolveRange(p).length || p.duration, pickMimeType));
+    const a = exportAdvice({ ...exportEnv(resolveRange(p).length || p.duration, pickMimeType), fast: engine.exportMode !== 'realtime' });
     const wl = !!navigator.wakeLock;
     return h('ul', { class: `warn-list export-advice${a.phone || !a.format ? '' : ' calm'}`, role: 'note' }, a.lines.map((l) => h('li', {}, l)), a.phone ? h('li', {}, wl ? 'This browser can keep the screen awake for you while it exports.' : 'This browser cannot keep the screen awake by itself: turn off auto-lock for now.') : null);
   }
@@ -2802,6 +2805,26 @@ export function createPanels({ store, engine, ui }) {
     const fmt = h('select', {}, mp4 && mp4.startsWith('video/mp4') ? h('option', { value: 'mp4' }, 'MP4 (best for Instagram & TikTok)') : null, h('option', { value: 'webm' }, 'WebM'));
     const quality = h('select', {}, h('option', { value: 6e6 }, 'Good · 6 Mbps'), h('option', { value: 10e6, selected: true }, 'High · 10 Mbps'), h('option', { value: 16e6 }, 'Max · 16 Mbps'));
     const fps = h('select', {}, h('option', { value: 30, selected: true }, '30 fps'), h('option', { value: 60 }, '60 fps'), h('option', { value: 24 }, '24 fps (film look)'));
+    const fastMode = engine.exportMode !== 'realtime';
+    const speed = h('select', { 'data-testid': 'export-speed' }, h('option', { value: 'fast', selected: fastMode }, 'Fast: frame by frame, can run in the background'), h('option', { value: 'realtime', selected: !fastMode }, 'Real-time: plays through once while it records'));
+    speed.addEventListener('change', () => {
+      settings.exportMode = speed.value;
+      saveSettings(settings);
+      engine.exportMode = speed.value;
+      ui.refreshPanels(true);
+    });
+    // whether this browser can do the fast one for the chosen format (else it records in real time)
+    const fastNote = h('p', { class: 'muted small', 'data-testid': 'fast-note', role: 'status' });
+    const checkFast = () => {
+      if (!fastMode) return (fastNote.textContent = 'Plays the edit through once while it records, so it takes as long as the video. Keep this tab in front.');
+      const { w: fw, h: fh } = ASPECTS[store.get().aspect];
+      fastSupport(fmt.value, { w: fw, h: fh, fps: Number(fps.value), bitrate: Number(quality.value), audio: !isCanvas(store.get()) }).then((r) => {
+        fastNote.classList.toggle('warn-list', !r.ok);
+        fastNote.textContent = r.ok
+          ? 'Draws each frame in turn, so it does not play through and often finishes sooner than the video lasts. You can switch to another workspace or browser tab while it works; closing this tab stops it.'
+          : `Fast export is not available here: ${r.reason}. This export records in real time instead, so keep this tab in front.`;
+      });
+    };
     const monitor = h('input', { type: 'checkbox', checked: settings.monitorExport ?? true });
     monitor.addEventListener('change', () => ((settings.monitorExport = monitor.checked), saveSettings(settings)));
     const limiterToggle = h('label', { class: 'toggle', title: 'Keeps a loud song, clip sound and sound effects from distorting. The meter under the preview shows the level.' }, (() => {
@@ -2814,6 +2837,8 @@ export function createPanels({ store, engine, ui }) {
       return cb;
     })(), h('span', {}, 'Protect the sound from clipping (limiter)'));
     const { w, hgt } = { w: ASPECTS[p.aspect].w, hgt: ASPECTS[p.aspect].h };
+    for (const sel of [fmt, quality, fps]) sel.addEventListener('change', checkFast);
+    checkFast();
 
     const cv = isCanvas(p);
     const issues = [];
@@ -2831,6 +2856,8 @@ export function createPanels({ store, engine, ui }) {
         toast(rg.error, 'error');
         return ui.refreshPanels(true);
       }
+      // a fast export can finish while you are elsewhere: ask once whether it may tell you
+      if (engine.exportMode !== 'realtime' && window.Notification && Notification.permission === 'default' && (!navigator.userActivation || navigator.userActivation.isActive)) Promise.resolve(Notification.requestPermission()).catch(() => {});
       const awake = await keepAwake(); // phones: keep the screen on while it records (released below)
       exportState.running = true;
       exportState.progress = 0;
@@ -2856,6 +2883,8 @@ export function createPanels({ store, engine, ui }) {
           audio: !cv, // a Canvas is silent: Spotify plays the track under it
           start: rg.start,
           end: rg.end,
+          onFallback: (why) => toast(`Recording in real time: ${why}. Keep this tab in front.`, 'error', 7000),
+          onPhase: (ph) => ui.exportLabel && ui.exportLabel(ph === 'sound' ? 'Mixing the sound…' : ''),
           onProgress: (f) => {
             exportState.progress = f;
             ui.exportProgress && ui.exportProgress(f);
@@ -2866,8 +2895,9 @@ export function createPanels({ store, engine, ui }) {
           },
         });
         const ext = res.mime.includes('mp4') ? 'mp4' : 'webm';
-        exportState.result = { ...res, name: `${slug(p.name)}-${cv ? 'spotify-canvas' : p.aspect.replace(':', 'x')}.${ext}`, url: URL.createObjectURL(res.blob), stamp: stampOf(store.get()), range: rg };
+        exportState.result = { ...res, name: `${slug(p.name)}-${cv ? 'spotify-canvas' : p.aspect.replace(':', 'x')}.${ext}`, url: URL.createObjectURL(res.blob), stamp: stampOf(store.get()), range: rg, ratio: speedRatio(res.seconds, rg.length || p.duration) };
         toast('Export finished');
+        ui.exportDone && ui.exportDone(exportState.result);
       } catch (e) {
         if (e.message !== 'cancelled') exportState.error = e.message || 'Export failed';
       }
@@ -2888,13 +2918,15 @@ export function createPanels({ store, engine, ui }) {
       exportRangePanel({ store, engine, ui, settings, saveSettings }),
       section(
         'Export video',
-        h('p', { class: 'small' }, `${w}×${hgt} · ${formatTime(range.length)} long${range.whole ? '' : ` (of ${formatTime(p.duration)})`}. The video plays through once while it records, so exporting takes about ${Math.ceil(range.length)} seconds. Keep this tab in front.`),
+        h('p', { class: 'small' }, `${w}×${hgt} · ${formatTime(range.length)} long${range.whole ? '' : ` (of ${formatTime(p.duration)})`}.`),
         issues.length ? h('ul', { class: 'warn-list' }, issues.map((i) => h('li', {}, i))) : null,
         exportNote(p),
         cv ? canvasExportNote(p) : null,
+        field('Export speed', speed),
+        fastNote,
         field('Format', fmt),
         h('div', { class: 'grid2' }, field('Quality', quality), field('Frame rate', fps)),
-        h('label', { class: 'toggle' }, monitor, h('span', {}, 'Play sound while exporting')),
+        fastMode ? null : h('label', { class: 'toggle' }, monitor, h('span', {}, 'Play sound while exporting')),
         limiterToggle,
         exportState.running
           ? h('div', {}, h('div', { class: 'export-progress' }, h('div', { style: { width: `${Math.round(exportState.progress * 100)}%` } })), h('div', { class: 'row' }, h('span', { class: 'export-pct' }, `${Math.round(exportState.progress * 100)}%`), button('Cancel', () => exportVideo.cancel && exportVideo.cancel(), { variant: 'ghost sm' })))
@@ -2906,6 +2938,7 @@ export function createPanels({ store, engine, ui }) {
               { class: `result${freshResult() ? '' : ' stale'}` },
               freshResult() ? null : h('p', { class: 'warn-list stale-note', role: 'status' }, 'Out of date. You changed the edit after exporting this video, so it does not match any more. Export again to get the new version.'),
               h('video', { src: exportState.result.url, controls: true, playsInline: true }),
+              exportState.result.seconds ? h('p', { class: 'muted tiny', 'data-testid': 'export-took' }, `${exportState.result.fast ? 'Fast export' : 'Recorded in real time'}: took ${Math.max(1, Math.round(exportState.result.seconds))} s, ${exportState.result.ratio} s per second of video.`) : null,
               h('a', { class: `btn wide${freshResult() ? ' primary' : ' ghost'}`, href: exportState.result.url, download: exportState.result.name }, icon('download', 16), h('span', {}, `${freshResult() ? 'Download' : 'Download the old version of'} ${exportState.result.name} (${(exportState.result.blob.size / 1e6).toFixed(1)} MB)`)),
               !cv && rangeCues(exportState.result).length
                 ? h('div', { class: 'row' }, h('span', { class: 'muted tiny' }, 'Closed captions for it:'), button('.srt', () => download(new Blob([toSRT(rangeCues(exportState.result))], { type: 'application/x-subrip' }), exportState.result.name.replace(/\.\w+$/, '.srt')), { iconName: 'download', variant: 'sm ghost', title: 'The lyrics and captions in this video, to upload with it (YouTube, Facebook, LinkedIn)' }), button('.vtt', () => download(new Blob([toVTT(rangeCues(exportState.result))], { type: 'text/vtt' }), exportState.result.name.replace(/\.\w+$/, '.vtt')), { variant: 'sm ghost' }))

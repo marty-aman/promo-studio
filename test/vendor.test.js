@@ -70,3 +70,41 @@ test('vendored Basic Pitch matches its recorded SHA-256, has its licence, and lo
   assert.match(readFileSync(new URL('../vendor/basic-pitch/LICENSE', import.meta.url), 'utf8'), /Apache License\s+Version 2\.0/);
   assert.ok(!/tonejs/.test(readFileSync(new URL('../vendor/basic-pitch/toMidi.js', import.meta.url), 'utf8')));
 });
+
+// ---- mp4-muxer 5.2.2 and webm-muxer 5.1.4 (MIT, unmodified ESM builds), used by js/fastexport.js
+const MUX = {
+  'mp4-muxer/mp4-muxer.mjs': 'd2c4c782f180c86ed30b1f5d9487a34a0d370bf9b4535285734ea187d38f9bb5',
+  'mp4-muxer/LICENSE': '75c54aae7ef6ad652f684f9dd3b71e4dcef86ccebd88cf441ceed7f5eec037c5',
+  'webm-muxer/webm-muxer.mjs': '53710543cecc4db7b6cd23fb0d9b308aa3374697f43a6149a8497f0a8547f0cb',
+  'webm-muxer/LICENSE': '1619f937fa43f768d38d2bfb35d228258e0dffe1f71c4202b338df20e68ff680',
+};
+
+test('vendored muxers match their recorded SHA-256, are MIT and never reach the network', () => {
+  for (const [file, sha] of Object.entries(MUX)) {
+    const buf = readFileSync(new URL(`../vendor/${file}`, import.meta.url));
+    assert.equal(createHash('sha256').update(buf).digest('hex'), sha, file);
+    if (file.endsWith('LICENSE')) assert.match(buf.toString(), /^MIT License/);
+    else assert.ok(!/fetch\(|XMLHttpRequest|sendBeacon|import\(/.test(buf.toString()), `${file} makes no requests`);
+  }
+  const fx = readFileSync(new URL('../js/fastexport.js', import.meta.url), 'utf8');
+  assert.match(fx, /import\('\.\.\/vendor\/mp4-muxer\/mp4-muxer\.mjs'\)/);
+  assert.match(fx, /import\('\.\.\/vendor\/webm-muxer\/webm-muxer\.mjs'\)/);
+});
+
+// ---- mp4box 2.6.0 (BSD-3-Clause), used by js/framesource.js to read MP4/MOV clips; only the two
+// "//# sourceMappingURL=" lines were removed (no maps are shipped)
+const MP4BOX = {
+  'mp4box.all.mjs': '5afbeac9e044c12cde51b865b590057a20e90f14d9fac63b4e282f2597fab809',
+  'styp-BbiO7KT1.mjs': '18b227f5c17eb5e189883216dc05046412df9a8652e79bf0bee3617a8ea648c4',
+  'rolldown-runtime-CNh9ExCG.mjs': 'be065d52a250755063b5b89dfa6786ad988b57ba020cb91c415afd1b15fdf635',
+  LICENSE: 'ebad0332150a08f37389158289d93ab2f70b0ee8717d1db9b3d002febc6c5047',
+};
+
+test('vendored mp4box matches its recorded SHA-256 and makes no requests', () => {
+  for (const [file, sha] of Object.entries(MP4BOX)) {
+    const buf = readFileSync(new URL(`../vendor/mp4box/${file}`, import.meta.url));
+    assert.equal(createHash('sha256').update(buf).digest('hex'), sha, file);
+    if (file === 'LICENSE') assert.match(buf.toString(), /Redistribution and use in source and binary forms/);
+    else assert.ok(!/fetch\(|XMLHttpRequest|sendBeacon|sourceMappingURL/.test(buf.toString()), file);
+  }
+});

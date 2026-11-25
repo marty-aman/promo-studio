@@ -8,6 +8,8 @@ import { renderFrame } from './renderer.js';
 import { gridOf } from './tempo.js';
 import { peakOf } from './studioedit.js';
 import { matteFor, preparePerson, onMatteChange } from './bgremove.js';
+import { fastSupport, fastExport } from './fastexport.js';
+import { audioPlan } from './exportplan.js';
 
 export class Engine {
   constructor(store, canvas) {
@@ -42,7 +44,7 @@ export class Engine {
   }
 
   get project() {
-    return this.store.get();
+    return this.frozen || this.store.get(); // a fast export draws the edit as it was when it started
   }
 
   dims() {
@@ -288,13 +290,14 @@ export class Engine {
   _sync(playing, force = false) {
     const p = this.project;
     const t = this.t;
-    const tol = playing ? 0.2 : 0.03;
+    const tol = playing ? 0.2 : this.frameExact ? 0.001 : 0.03; // a fast export seeks to every frame exactly
     const live = new Set();
     const laid = layoutClips(p.clips);
     laid.forEach((l, i) => {
       const clip = l.clip;
       live.add(clip.id);
       if (clip.kind !== 'video') return;
+      if (this.decodedClips && this.decodedClips.has(clip.id)) return; // a fast export decodes this one itself
       const e = clipElement(clip);
       if (!e) return;
       const el = e.el;
@@ -357,6 +360,7 @@ export class Engine {
       for (const clip of l.clips) {
         live.add(clip.id);
         if (clip.kind !== 'video') continue;
+        if (this.decodedClips && this.decodedClips.has(clip.id)) continue;
         const e = clipElement(clip);
         if (!e) continue;
         const el = e.el;
@@ -531,6 +535,11 @@ export class Engine {
 
   render() {
     this.resize();
+    if (this.offlineCanvas) {
+      // a fast export is drawing: the preview shows its latest frame
+      this.ctx.drawImage(this.offlineCanvas, 0, 0, this.canvas.width, this.canvas.height);
+      return;
+    }
     const p = this.project;
     if (this.exportCanvas) {
       const ec = this.exportCanvas;
@@ -568,11 +577,74 @@ function silentMime(mime) {
 }
 
 /**
- * Real-time export: plays the project from 0 onto a full-resolution canvas while
+ * Export the edit (or `start`..`end` seconds of it). `mode` 'fast' (the default, or engine.exportMode) draws it
+ * frame by frame with WebCodecs and can run in a background tab; 'realtime', or a browser that cannot do the
+ * fast one, plays it through once while MediaRecorder records. `onFallback(reason)` hears why fast was not used.
+ * Resolves { blob, mime, fast, seconds }.
+ */
+export async function exportVideo(engine, opts = {}) {
+  const mode = opts.mode || engine.exportMode || 'fast';
+  if (mode === 'fast') {
+    const { format = 'mp4', fps = 30, bitrate = 10_000_000, audio = true } = opts;
+    const { w, h } = engine.dims();
+    const support = await fastSupport(format, { w, h, fps, bitrate, audio });
+    // some sounds can only be matched by playing them (e.g. a sped-up clip keeps its pitch in the preview)
+    const mixNote = audio ? audioPlan(engine.project, 0, engine.project.duration).realtime : '';
+    let reason = support.ok ? mixNote : support.reason;
+    if (support.ok && !mixNote) {
+      try {
+        return await runFast(engine, opts, support);
+      } catch (e) {
+        if (e && e.message === 'cancelled') throw e;
+        reason = `the fast export stopped (${(e && e.message) || e})`;
+        console.warn('Fast export failed, recording in real time instead', e);
+      }
+    }
+    opts.onFallback && opts.onFallback(reason);
+  }
+  const t0 = performance.now();
+  const res = await recordVideo(engine, opts);
+  return { ...res, fast: false, seconds: (performance.now() - t0) / 1000 };
+}
+
+async function runFast(engine, { format = 'mp4', fps = 30, bitrate = 10_000_000, onProgress, onPhase, start = 0, end = null, audio = true }, support) {
+  engine.pause();
+  const dur = engine.project.duration;
+  const from = Math.max(0, +start || 0);
+  const to = end != null && end > from ? Math.min(end, dur) : dur;
+  const back = engine.t;
+  let cancelled = false;
+  exportVideo.cancel = () => (cancelled = true);
+  // the edit as it is now: switching workspace or loading another song while it works changes nothing in it
+  engine.frozen = structuredClone(engine.store.get());
+  engine.exporting = true;
+  engine.exportFast = true;
+  engine._emit(); // the app locks the editing controls (the workspace switch stays free)
+  // a tab holding a lock is not frozen or thrown away by the browser while it sits in the background
+  let unlock;
+  const held = new Promise((r) => (unlock = r));
+  if (navigator.locks) navigator.locks.request('promo-studio-export', () => held).catch(() => {});
+  try {
+    const res = await fastExport(engine, { format, fps, bitrate, audio, from, to, support, onProgress, onPhase, isCancelled: () => cancelled });
+    return { ...res, fast: true };
+  } finally {
+    unlock();
+    engine.frozen = null;
+    engine.exporting = false;
+    engine.exportFast = false;
+    engine.t = back;
+    engine._sync(false);
+    engine._emit();
+    engine.render();
+  }
+}
+
+/**
+ * Real-time export: plays the project from `start` onto a full-resolution canvas while
  * MediaRecorder captures the canvas and the mixed audio.
  */
 /** `start`/`end` (seconds on the timeline) record just that part, e.g. one section of the song. */
-export function exportVideo(engine, { format = 'mp4', fps = 30, bitrate = 10_000_000, monitor = false, onProgress, start = 0, end = null, audio = true } = {}) {
+function recordVideo(engine, { format = 'mp4', fps = 30, bitrate = 10_000_000, monitor = false, onProgress, start = 0, end = null, audio = true } = {}) {
   return new Promise((resolve, reject) => {
     const mime = pickMimeType(format);
     if (!mime) return reject(new Error('This browser cannot record video. Use a recent Chrome, Edge or Firefox.'));

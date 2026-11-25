@@ -60,6 +60,11 @@ test('exportAdvice is honest about format and the phone', () => {
   assert.equal(none.format, null);
   assert.match(none.lines[0], /cannot export/);
   assert.match(exportAdvice({ ua: '', mp4: true, webm: false, touch: true, seconds: 120 }).lines[1], /minutes/);
+  // the fast export: no real-time estimate; a phone is told it may pause in the background
+  const fast = exportAdvice({ ua: 'Android Chrome', mp4: true, webm: true, touch: true, seconds: 20, fast: true });
+  assert.ok(!fast.lines.some((l) => /real time/.test(l)));
+  assert.ok(fast.lines.some((l) => /may pause it/.test(l) && /closing the tab stops it/.test(l)));
+  assert.ok(!exportAdvice({ ua: 'X11', mp4: true, webm: true, touch: false, seconds: 20, fast: true }).lines.some((l) => /seconds|front/.test(l)));
 });
 
 test('downloadWarning speaks up on slow links, Data Saver and phones', () => {
