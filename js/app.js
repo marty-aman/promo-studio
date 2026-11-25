@@ -902,7 +902,10 @@ ui.exportDone = (res) => {
   const close = () => (exportBar.hidden = true);
   const parts = [
     h('strong', {}, 'Your video is ready'),
-    h('a', { class: 'btn sm primary', href: res.url, download: res.name, 'data-testid': 'bar-download' }, icon('download', 16), h('span', {}, `Download (${(res.blob.size / 1e6).toFixed(1)} MB)`)),
+    res.saved
+      ? h('span', { class: 'small', 'data-testid': 'bar-saved' }, `Saved ${res.saved.name} (${(res.saved.bytes / 1e6).toFixed(1)} MB)`)
+      : h('a', { class: 'btn sm primary', href: res.url, download: res.name, 'data-testid': 'bar-download' }, icon('download', 16), h('span', {}, `Download (${(res.blob.size / 1e6).toFixed(1)} MB)`)),
+    res.saved && res.saved.reveal ? button('Show in Finder', () => res.saved.reveal(), { variant: 'sm ghost' }) : null,
     mode !== 'studio' ? button('Open Video Studio', () => (setMode('studio'), ui.openTab('export'), close()), { variant: 'sm ghost' }) : null,
     button('Close', close, { variant: 'sm ghost' }),
   ];

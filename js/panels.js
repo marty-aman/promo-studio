@@ -31,7 +31,7 @@ import { MIDI_ACCEPT } from './midi.js';
 import { MAX_LENGTH } from './tlzoom.js';
 import { drumConvertState } from './page-drumconvert.js';
 import { driveButton } from './gdrive.js';
-import { isDesktop, GOOGLE_SIGNIN_NOTE } from './desktop.js';
+import { isDesktop, desktop, GOOGLE_SIGNIN_NOTE } from './desktop.js';
 import { lyricIdeas, applyLyricIdea } from './lyricideas.js';
 import { tipSettings, saveTipSettings } from './panel-tips.js';
 import { createKeyframeUI } from './panel-kf.js';
@@ -64,7 +64,7 @@ import { media, addMedia, removeMedia, tabTimeline } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
 import { fastSupport } from './fastexport.js';
-import { speedRatio } from './exportplan.js';
+import { speedRatio, codecLabel } from './exportplan.js';
 import { exportRangePanel } from './panel-exportrange.js';
 import { resolveRange, shiftCues } from './exportrange.js';
 import { exportAdvice, exportEnv, keepAwake } from './mobilelogic.js';
@@ -2816,7 +2816,22 @@ export function createPanels({ store, engine, ui }) {
     });
     // whether this browser can do the fast one for the chosen format (else it records in real time)
     const fastNote = h('p', { class: 'muted small', 'data-testid': 'fast-note', role: 'status' });
+    // Mac app only: where the file goes and which codec. HEVC is offered once the encoder probe passes for this size.
+    const streamOk = isDesktop && fastMode && !!(desktop.files && desktop.files.saveStream);
+    const codecSel = h('select', { 'data-testid': 'export-codec', 'aria-label': 'Video codec' }, h('option', { value: 'h264' }, 'H.264 (plays everywhere)'), h('option', { value: 'hevc', selected: settings.exportCodec === 'hevc' }, 'HEVC (H.265): smaller file'));
+    codecSel.addEventListener('change', () => ((settings.exportCodec = codecSel.value), saveSettings(settings)));
+    const codecRow = h('div', { class: 'field-wrap' });
+    codecRow.hidden = true;
+    const checkCodec = () => {
+      if (!streamOk) return;
+      const { w: cw, h: ch } = ASPECTS[store.get().aspect];
+      fastSupport('mp4', { w: cw, h: ch, fps: Number(fps.value), bitrate: Number(quality.value), audio: !isCanvas(store.get()), codec: 'hevc' }).then((r) => {
+        codecRow.hidden = !(r.ok && fmt.value === 'mp4');
+        codecRow.replaceChildren(r.ok ? field('Video codec', codecSel) : '');
+      });
+    };
     const checkFast = () => {
+      checkCodec();
       if (!fastMode) return (fastNote.textContent = 'Plays the edit through once while it records, so it takes as long as the video. Keep this tab in front.');
       const { w: fw, h: fh } = ASPECTS[store.get().aspect];
       fastSupport(fmt.value, { w: fw, h: fh, fps: Number(fps.value), bitrate: Number(quality.value), audio: !isCanvas(store.get()) }).then((r) => {
@@ -2862,7 +2877,7 @@ export function createPanels({ store, engine, ui }) {
       const awake = await keepAwake(); // phones: keep the screen on while it records (released below)
       exportState.running = true;
       exportState.progress = 0;
-      if (exportState.result) URL.revokeObjectURL(exportState.result.url); // the older file's address is not needed any more
+      if (exportState.result && exportState.result.url) URL.revokeObjectURL(exportState.result.url); // the older file's address is not needed any more
       exportState.result = null;
       exportState.error = '';
       ui.refreshPanels(true);
@@ -2882,6 +2897,8 @@ export function createPanels({ store, engine, ui }) {
           fps: Number(fps.value),
           monitor: monitor.checked,
           audio: !cv, // a Canvas is silent: Spotify plays the track under it
+          // Mac app, fast MP4: straight to a file the person picks, in H.264 or HEVC
+          ...(streamOk && fmt.value === 'mp4' && engine.exportMode !== 'realtime' ? { saveAs: `${slug(p.name)}-${cv ? 'spotify-canvas' : p.aspect.replace(':', 'x')}.mp4`, codec: codecSel.value } : {}),
           start: rg.start,
           end: rg.end,
           onFallback: (why) => toast(`Recording in real time: ${why}. Keep this tab in front.`, 'error', 7000),
@@ -2896,7 +2913,7 @@ export function createPanels({ store, engine, ui }) {
           },
         });
         const ext = res.mime.includes('mp4') ? 'mp4' : 'webm';
-        exportState.result = { ...res, name: `${slug(p.name)}-${cv ? 'spotify-canvas' : p.aspect.replace(':', 'x')}.${ext}`, url: URL.createObjectURL(res.blob), stamp: stampOf(store.get()), range: rg, ratio: speedRatio(res.seconds, rg.length || p.duration) };
+        exportState.result = { ...res, name: res.saved ? res.saved.name : `${slug(p.name)}-${cv ? 'spotify-canvas' : p.aspect.replace(':', 'x')}.${ext}`, url: res.blob ? URL.createObjectURL(res.blob) : null, stamp: stampOf(store.get()), range: rg, ratio: speedRatio(res.seconds, rg.length || p.duration) };
         toast('Export finished');
         ui.exportDone && ui.exportDone(exportState.result);
       } catch (e) {
@@ -2926,6 +2943,7 @@ export function createPanels({ store, engine, ui }) {
         field('Export speed', speed),
         fastNote,
         field('Format', fmt),
+        isDesktop ? codecRow : null,
         h('div', { class: 'grid2' }, field('Quality', quality), field('Frame rate', fps)),
         fastMode ? null : h('label', { class: 'toggle' }, monitor, h('span', {}, 'Play sound while exporting')),
         limiterToggle,
@@ -2938,9 +2956,11 @@ export function createPanels({ store, engine, ui }) {
               'div',
               { class: `result${freshResult() ? '' : ' stale'}` },
               freshResult() ? null : h('p', { class: 'warn-list stale-note', role: 'status' }, 'Out of date. You changed the edit after exporting this video, so it does not match any more. Export again to get the new version.'),
-              h('video', { src: exportState.result.url, controls: true, playsInline: true }),
+              exportState.result.saved ? null : h('video', { src: exportState.result.url, controls: true, playsInline: true }),
               exportState.result.seconds ? h('p', { class: 'muted tiny', 'data-testid': 'export-took' }, `${exportState.result.fast ? 'Fast export' : 'Recorded in real time'}: took ${Math.max(1, Math.round(exportState.result.seconds))} s, ${exportState.result.ratio} s per second of video.`) : null,
-              h('a', { class: `btn wide${freshResult() ? ' primary' : ' ghost'}`, href: exportState.result.url, download: exportState.result.name }, icon('download', 16), h('span', {}, `${freshResult() ? 'Download' : 'Download the old version of'} ${exportState.result.name} (${(exportState.result.blob.size / 1e6).toFixed(1)} MB)`)),
+              exportState.result.saved
+                ? h('div', {}, h('p', { class: 'small', 'data-testid': 'export-saved' }, `Saved to ${exportState.result.saved.path} (${(exportState.result.saved.bytes / 1e6).toFixed(1)} MB), written as it was made.`), h('p', { class: 'muted tiny', 'data-testid': 'export-codec-used' }, `Video codec used: ${codecLabel(exportState.result.codec)}.`), exportState.result.saved.reveal ? button('Show in Finder', () => exportState.result.saved.reveal(), { variant: 'sm' }) : null)
+                : h('a', { class: `btn wide${freshResult() ? ' primary' : ' ghost'}`, href: exportState.result.url, download: exportState.result.name }, icon('download', 16), h('span', {}, `${freshResult() ? 'Download' : 'Download the old version of'} ${exportState.result.name} (${(exportState.result.blob.size / 1e6).toFixed(1)} MB)`)),
               !cv && rangeCues(exportState.result).length
                 ? h('div', { class: 'row' }, h('span', { class: 'muted tiny' }, 'Closed captions for it:'), button('.srt', () => download(new Blob([toSRT(rangeCues(exportState.result))], { type: 'application/x-subrip' }), exportState.result.name.replace(/\.\w+$/, '.srt')), { iconName: 'download', variant: 'sm ghost', title: 'The lyrics and captions in this video, to upload with it (YouTube, Facebook, LinkedIn)' }), button('.vtt', () => download(new Blob([toVTT(rangeCues(exportState.result))], { type: 'text/vtt' }), exportState.result.name.replace(/\.\w+$/, '.vtt')), { variant: 'sm ghost' }))
                 : null,
@@ -2971,7 +2991,7 @@ export function createPanels({ store, engine, ui }) {
   function buildShare(p, getCaption) {
     const caption = getCaption();
     const res = freshResult();
-    const file = res ? new File([res.blob], res.name, { type: res.blob.type }) : null;
+    const file = res && res.blob ? new File([res.blob], res.name, { type: res.blob.type }) : null;
     const shareOk = file && canShareFiles(file);
 
     // --- system share sheet

@@ -3,7 +3,7 @@
 //
 // window.desktop (electron/preload.cjs) is the only way to the Mac: linked files (media.link / urlFor / read /
 // stat / reveal / pick), shell.openExternal, print.toPDF, exports.begin/end, and stubs for later steps
-// (files.saveStream, native.run). info().capabilities says which of them this build can do.
+// (native.run). info().capabilities says which of them this build can do.
 
 /** The bridge, or null in a browser. */
 export const desktop = typeof window !== 'undefined' && window.desktop && window.desktop.bridge >= 1 ? window.desktop : null;

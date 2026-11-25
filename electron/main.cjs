@@ -12,6 +12,7 @@ const { pathToFileURL } = require('node:url');
 const { SCHEME, HOST, ORIGIN, MEDIA_PREFIX, BASE_HEADERS, appFile, fileResponse, mediaType } = require('./serve.cjs');
 const { createLinks } = require('./links.cjs');
 const { createNative } = require('./native.cjs');
+const { createExportStreams } = require('./export-stream.cjs');
 const { BRIDGE_VERSION, CAPABILITIES, NATIVE_TOOLS, externalAllowed, fromApp } = require('./policy.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -23,6 +24,7 @@ protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: 
 
 let links = null;
 let native = null;
+let streams = null; // export-stream.cjs: exports written straight to a file the person picks
 let api = null; // server-api.js (ES module, loaded once)
 let win = null;
 
@@ -145,6 +147,7 @@ function handle(channel, fn) {
 }
 
 const picks = new Map(); // token -> path, from the open dialog, kept for 10 minutes
+const watched = new WeakSet(); // webContents whose export files are cleaned up when they go
 const holds = new Map(); // export token -> { blocker, contents, realtime }
 
 async function diskSpace() {
@@ -255,9 +258,24 @@ function registerBridge() {
     return true;
   });
 
-  // Later steps fill these in; the names and arguments are fixed now so the page code does not change.
-  handle('files:saveStream', () => {
-    throw new Error('Saving straight to a file comes in a later version of the Mac app');
+  // Export straight to a file (export-stream.cjs): the dialog gives the only path; the page sends pieces by id.
+  // The owner is the window's webContents id, so a window can only touch its own files.
+  handle('files:saveStream', async (event, opts) => {
+    const r = await streams.begin(event.sender.id, opts && typeof opts === 'object' ? { name: opts.name, ext: opts.ext } : {});
+    if (r && !watched.has(event.sender)) {
+      watched.add(event.sender);
+      const owner = event.sender.id;
+      event.sender.once('destroyed', () => streams.abortOwner(owner));
+    }
+    return r;
+  });
+  handle('files:write', (event, id, position, bytes) => streams.write(event.sender.id, id, position, bytes));
+  handle('files:finish', (event, id) => streams.finish(event.sender.id, id));
+  handle('files:abort', (event, id) => streams.abort(event.sender.id, id));
+  handle('files:reveal', (_e, p) => {
+    if (!streams.isSaved(p)) return false;
+    shell.showItemInFolder(String(p));
+    return true;
   });
   // Native tools (electron/native.cjs): whisper.cpp for faster lyric sync and captions. The binary is put in
   // <userData>/bin by the person; models are downloaded after they agree. Progress goes back as 'native:event'.
@@ -311,6 +329,23 @@ app.whenReady().then(async () => {
   api = await import(pathToFileURL(path.join(ROOT, 'server-api.js')).href);
   links = createLinks({ configDir: app.getPath('userData') });
   native = createNative({ dir: app.getPath('userData') });
+  streams = createExportStreams({
+    freeBytes: async (dir) => {
+      try {
+        const st = await fsp.statfs(dir);
+        return st.bavail * st.bsize;
+      } catch {
+        return null;
+      }
+    },
+    pickPath: async ({ owner, defaultName, ext }) => {
+      // dev-only test hook (never in a packaged app): the save location without a dialog
+      if (DEV && process.env.PVM_SAVE_DIR) return path.join(path.resolve(process.env.PVM_SAVE_DIR), defaultName);
+      const w = BrowserWindow.getAllWindows().find((x) => x.webContents.id === owner) || undefined;
+      const r = await dialog.showSaveDialog(w, { defaultPath: path.join(app.getPath('movies'), defaultName), filters: [{ name: 'MP4 video', extensions: [ext] }] });
+      return r.canceled || !r.filePath ? null : r.filePath;
+    },
+  });
   const ses = session.defaultSession;
   ses.setPermissionRequestHandler((_wc, permission, cb, details) => cb(PERMISSIONS.has(permission) && fromApp(details.requestingUrl || '')));
   ses.setPermissionCheckHandler((_wc, permission, origin) => PERMISSIONS.has(permission) && fromApp(origin || ''));
@@ -326,7 +361,10 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('before-quit', () => native && native.killAll());
+app.on('before-quit', () => {
+  if (native) native.killAll();
+  if (streams) streams.abortOwner(null); // best effort: the partial files go
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin' || (DEV && process.env.PVM_E2E)) app.quit();

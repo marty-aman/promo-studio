@@ -15,7 +15,8 @@ const SECONDS = 10;
 const VIDEO = [
   ['H.264 High (avc1.640028)', 'avc1.640028'],
   ['H.264 Main (avc1.4d0028)', 'avc1.4d0028'],
-  ['HEVC Main (hvc1.1.6.L120.90)', 'hvc1.1.6.L120.90'],
+  ['HEVC Main, what the export tries first (hvc1.1.6.L120.B0)', 'hvc1.1.6.L120.B0'],
+  ['HEVC Main, second try (hev1.1.6.L120.B0)', 'hev1.1.6.L120.B0'],
   ['VP9 (vp09.00.40.08)', 'vp09.00.40.08'],
   ['AV1 (av01.0.08M.08)', 'av01.0.08M.08'],
 ];
@@ -47,6 +48,7 @@ async function videoSupport(codec, hardwareAcceleration) {
   try {
     const cfg = { codec, width: W, height: H, bitrate: 10_000_000, framerate: FPS, hardwareAcceleration };
     if (codec.startsWith('avc1')) cfg.avc = { format: 'avc' };
+    if (/^(hvc1|hev1)/.test(codec)) cfg.hevc = { format: 'hevc' };
     return !!(await VideoEncoder.isConfigSupported(cfg)).supported;
   } catch {
     return false;
@@ -119,6 +121,11 @@ async function run() {
       results.video[codec] = { hardware: hw, any };
       row(`Video encoder: ${label}`, hw ? 'Hardware' : any ? 'Software only' : 'Not available', hw || (any ? null : false));
     }
+    // step 2: which codec the export would use, and whether it can write straight to disk
+    const hevcOk = ['hvc1.1.6.L120.B0', 'hev1.1.6.L120.B0'].some((c) => results.video[c] && results.video[c].any);
+    results.exportStream = { bridge: !!(info && info.capabilities && info.capabilities.includes('files.saveStream')), hevc: hevcOk };
+    row('Export straight to a file on disk', results.exportStream.bridge ? 'Yes' : info ? 'No (this build lacks it)' : 'Mac app only', info ? results.exportStream.bridge : null);
+    row('Export codec offered', hevcOk ? 'H.264 or HEVC (H.265)' : 'H.264 only (HEVC is not available here)');
     results.audio = {};
     for (const [label, codec] of AUDIO) {
       const ok = await audioSupport(codec);
