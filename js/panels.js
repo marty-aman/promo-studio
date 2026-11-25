@@ -31,6 +31,7 @@ import { MIDI_ACCEPT } from './midi.js';
 import { MAX_LENGTH } from './tlzoom.js';
 import { drumConvertState } from './page-drumconvert.js';
 import { driveButton } from './gdrive.js';
+import { isDesktop, GOOGLE_SIGNIN_NOTE } from './desktop.js';
 import { lyricIdeas, applyLyricIdea } from './lyricideas.js';
 import { tipSettings, saveTipSettings } from './panel-tips.js';
 import { createKeyframeUI } from './panel-kf.js';
@@ -3090,7 +3091,9 @@ export function createPanels({ store, engine, ui }) {
       h('p', { class: 'muted small' }, 'Posting straight to Instagram or TikTok needs a server and an app approved by Meta or TikTok, so it is not built in yet. For now, use Share to an app on your phone, or download and upload in the app.'),
     );
 
-    return section('Share', sheet, yt, others);
+    // Mac app: Google blocks its sign-in inside apps like this one, so the upload stays in the web version
+    const ytShown = isDesktop ? h('div', { class: 'share-box' }, h('div', { class: 'share-head' }, icon('youtube', 18), h('strong', {}, 'YouTube Shorts')), h('p', { class: 'muted small', 'data-desktop-off': 'youtube' }, GOOGLE_SIGNIN_NOTE)) : yt;
+    return section('Share', sheet, ytShown, others);
   }
 
   // ---------------------------------------------------------------- INSPECTOR

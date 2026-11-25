@@ -8,6 +8,7 @@
 import { h, icon, button, toast } from './dom.js';
 import { loadSettings, saveSettings } from './state.js';
 import { guardDialog } from './closeable.js';
+import { isDesktop, GOOGLE_SIGNIN_NOTE } from './desktop.js';
 
 // drive.file: the app can open only the files you pick in Google's picker, nothing else in your Drive.
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
@@ -197,6 +198,8 @@ export function openDriveSetup() {
  * A "From Google Drive" button. `onFiles(files)` gets the downloaded files, like a file input's.
  */
 export function driveButton(accept, multiple, onFiles, { variant = 'sm ghost', label = 'From Google Drive' } = {}) {
+  // Mac app: Google blocks its sign-in inside apps like this one
+  if (isDesktop) return h('span', { class: 'muted tiny', 'data-desktop-off': 'gdrive', title: GOOGLE_SIGNIN_NOTE }, 'Google Drive: use the web version');
   const b = button(label, async () => {
     if (b.disabled) return;
     const span = b.querySelector('span');

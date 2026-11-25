@@ -323,4 +323,4 @@ export function mixMatches(text, pool, scoreOf, opts = {}) {
 /** The photos still to look at: those with a file, not done and not failed, in the order given. */
 export const photosToIndex = (recs, isDone) => recs.filter((r) => hasFile(r) && !isDone(r));
 /** A library record whose file can be read: open (it has its blob) or stored but not opened yet (loaded === false). */
-export const hasFile = (r) => !!r && (!!r.blob || r.loaded === false);
+export const hasFile = (r) => !!r && (!!r.blob || !!r.linked || r.loaded === false);

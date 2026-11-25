@@ -1,14 +1,74 @@
 {
   "name": "promo-video-maker",
+  "productName": "Promo Studio",
   "version": "1.0.0",
   "private": true,
   "description": "Browser-based promo video maker for song releases: synced lyrics, video editing, audio and a cover-art end card.",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/"
+    "test": "node --test test/",
+    "desktop:dev": "electron .",
+    "desktop:build:mac": "electron-builder --mac zip --arm64",
+    "desktop:build:linux": "electron-builder --linux dir"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "electron": "^45.5.0",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.martyaman.promostudio",
+    "productName": "Promo Studio",
+    "copyright": "Marty Aman",
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "files": [
+      "package.json",
+      "index.html",
+      "selfcheck.html",
+      "server-api.js",
+      "electron/**",
+      "css/**",
+      "js/**",
+      "fonts/**",
+      "sounds/**",
+      "vendor/**",
+      "!**/*.md"
+    ],
+    "asar": true,
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableCookieEncryption": true,
+      "onlyLoadAppFromAsar": true
+    },
+    "publish": null,
+    "mac": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.video",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "notarize": false
+    },
+    "linux": {
+      "target": [
+        "dir"
+      ],
+      "category": "AudioVideo"
+    }
   }
 }

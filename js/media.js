@@ -8,6 +8,7 @@ import { ensureMattes } from './bgremove.js';
 import { MIDI_EXTENSIONS, parseMidi } from './midi.js';
 import { remember, trim, mergeIndex } from './mediamatch.js';
 import { isLazyKind, lightOf, lightUsable, recordFromLight, pickRelease, thumbSize } from './medialight.js';
+import { desktop, wantsLink, linkChoice, linkedReader, LINK_BLOB_MAX } from './desktop.js';
 
 const library = new Map(); // id -> record
 const listeners = new Set();
@@ -68,6 +69,19 @@ export const media = {
   all: () => [...library.values()],
   /** The file's data (Blob), read from storage when it is not open; resolves null when there is no file. */
   blob: (id) => blobOf(id),
+  /**
+   * The file in pieces, for jobs that must not hold a huge file in memory: { size, read(start, end) -> Uint8Array }
+   * (end exclusive), or null. A linked file (Mac app) is read from disk; any other from its Blob.
+   */
+  reader: async (id) => {
+    const rec = library.get(id);
+    if (!rec) return null;
+    if (rec.linked && desktop) return linkedReader(id, rec.size);
+    const b = await blobOf(id);
+    return b ? { size: b.size, read: async (start, end) => new Uint8Array(await b.slice(start, end).arrayBuffer()) } : null;
+  },
+  /** True for a file linked in place (Mac app): it streams from disk and has no Blob in memory. */
+  isLinked: (id) => !!(library.get(id) || {}).linked,
   /** True when the file's data is in memory (always true for tabs, MIDI files and fonts). */
   isLoaded: (id) => {
     const rec = library.get(id);
@@ -349,7 +363,9 @@ function makeThumb(rec) {
 /** Decode audio for waveform peaks and the beat/hook analysis. */
 async function analyseAudio(rec) {
   try {
-    const buf = await rec.blob.arrayBuffer();
+    const blob = rec.blob || (rec.linked ? await blobOf(rec.id) : null);
+    if (!blob) return;
+    const buf = await blob.arrayBuffer();
     const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     const ctx = new Ctx(1, 2, 44100);
     const audio = await ctx.decodeAudioData(buf);
@@ -377,6 +393,7 @@ async function analyseAudio(rec) {
 export async function addMedia(blob, name, meta = {}, { persist = true, id = null, cached = null } = {}) {
   const kind = meta.kind || kindOf(blob.type || '', name);
   if (!kind) throw new Error(`Unsupported file type: ${name}`);
+  if (persist && wantsLink(blob, kind, linkChoice())) return addLinked(blob, name, kind, meta, id);
   const rec = {
     id: id || uid('m'),
     name,
@@ -433,7 +450,7 @@ export function analysisOf(rec) {
   return null;
 }
 /** The record as it is kept in IndexedDB. */
-const stored = (rec) => ({ id: rec.id, name: rec.name, kind: rec.kind, blob: rec.blob, source: rec.source, attribution: rec.attribution, path: rec.path, analysis: analysisOf(rec) });
+const stored = (rec) => ({ id: rec.id, name: rec.name, kind: rec.kind, blob: rec.linked ? null : rec.blob, linked: rec.linked || undefined, source: rec.source, attribution: rec.attribution, path: rec.path, analysis: analysisOf(rec) });
 /** Fill rec from a kept analysis. Returns it when it was usable (right version, right kind), else null. */
 export function useAnalysis(rec, a) {
   if (!a || a.v !== ANALYSIS_V) return null;
@@ -486,7 +503,61 @@ export function removeMedia(id) {
   if (rec.url) URL.revokeObjectURL(rec.url);
   library.delete(id);
   mediaDB.delete(id);
+  if (rec.linked && desktop) desktop.media.unlink(id).catch(() => {}); // forgets the link; the file stays where it is
   emit();
+}
+
+/**
+ * Mac app: add a file the person picked or dropped by linking it where it is. Nothing is copied: the record's
+ * url streams from disk (app://promo-studio/__media/<id>), IndexedDB keeps only the record, the main process keeps
+ * the path. A file that later moves or sits on an unplugged drive shows as missing (Replace missing files).
+ */
+async function addLinked(file, name, kind, meta, id) {
+  const rid = id || uid('m');
+  const info = await desktop.media.link(rid, file);
+  const rec = {
+    id: rid,
+    name,
+    kind,
+    blob: null,
+    url: desktop.media.urlFor(rid),
+    linked: true,
+    source: meta.source || 'upload',
+    attribution: meta.attribution || null,
+    size: info.size || file.size || 0,
+    type: file.type || '',
+    addedAt: meta.addedAt || Date.now(),
+    duration: 0,
+    ready: false,
+    loaded: true,
+    lastUse: now(),
+  };
+  if (!(await loadElement(rec))) {
+    desktop.media.unlink(rid).catch(() => {});
+    throw new Error(`Could not open ${name}. The Mac app may not support this format.`);
+  }
+  rec.thumb = await makeThumb(rec);
+  rec.ready = true;
+  rec.path = meta.path || '';
+  withOpen(rec);
+  library.set(rec.id, rec);
+  remember(nameIndex(), rec.id, { name, path: rec.path, kind });
+  saveNames();
+  mediaDB.put(stored(rec), lightOf(rec, analysisOf(rec))).catch((e) => reportSaveFail(`the file “${name}”`, { media: true, name, bytes: 0, error: e && e.name }));
+  emit();
+  return rec;
+}
+
+/** Mac app: open a linked record (restored as a light record or read the old way). Resolves rec, or null when the file is gone. */
+async function openLinked(rec) {
+  if (!desktop) return null;
+  const st = await desktop.media.stat(rec.id).catch(() => null);
+  if (!st || !st.exists) return null;
+  rec.url = desktop.media.urlFor(rec.id);
+  rec.blob = null;
+  rec.linked = true;
+  if (st.size) rec.size = st.size;
+  return (await loadElement(rec)) ? rec : null;
 }
 
 // ------------------------------------------------------------------ opening files when they are used
@@ -520,6 +591,19 @@ export function ensureLoaded(id) {
       console.warn('Could not read', rec.name, e);
     }
     if (library.get(id) !== rec) return library.get(id) || null; // replaced or removed meanwhile
+    if (row && row.linked) {
+      const lightDuration = rec.duration;
+      if (!(await openLinked(rec))) {
+        library.delete(id); // moved, renamed or on a drive that is not plugged in: missing (the link is kept)
+        soonEmit();
+        return null;
+      }
+      if (rec.kind === 'audio' && lightDuration > 0) rec.duration = lightDuration;
+      rec.loaded = true;
+      rec.lastUse = now();
+      soonEmit();
+      return rec;
+    }
     if (!row || !row.blob) {
       // the light record outlived its file: it is really missing now
       library.delete(id);
@@ -616,6 +700,16 @@ export async function blobOf(id) {
   const rec = library.get(id);
   if (!rec) return null;
   if (rec.blob) return rec.blob;
+  if (rec.linked) {
+    // a linked file is read from disk; a huge one is not read whole (jobs use media.reader)
+    if (!desktop || !(rec.size <= LINK_BLOB_MAX)) return null;
+    try {
+      const r = await fetch(desktop.media.urlFor(id));
+      return r.ok ? await r.blob() : null;
+    } catch {
+      return null;
+    }
+  }
   try {
     const row = await mediaDB.get(id);
     return (row && row.blob) || null;
@@ -634,7 +728,7 @@ function waitForFile(rec, onReady) {
 /** Let go of an open photo, video or song: its element, object URL and blob. The light record stays. */
 export function releaseMedia(id) {
   const rec = library.get(id);
-  if (!rec || rec.loaded === false || !isLazyKind(rec.kind) || !rec.blob) return false;
+  if (!rec || rec.loaded === false || !isLazyKind(rec.kind) || (!rec.blob && !rec.linked)) return false;
   if (rec.el && rec.el.pause) {
     rec.el.pause();
     rec.el.removeAttribute('src');
@@ -720,6 +814,19 @@ export async function restoreMedia({ onProgress = null } = {}) {
       let r = item;
       try {
         if (typeof item === 'string') r = await mediaDB.get(item);
+        if (r && r.linked) {
+          // read the old way (no usable light record): open it from disk and write its light record
+          const rec = withOpen({ id: r.id, name: r.name, kind: r.kind, blob: null, source: r.source || 'upload', attribution: r.attribution || null, path: r.path || '', size: 0, type: '', addedAt: 0, duration: 0, ready: false, loaded: true, lastUse: now() });
+          if (!(await openLinked(rec))) throw new Error('linked file missing');
+          useAnalysis(rec, r.analysis);
+          rec.thumb = r.analysis && r.analysis.thumb !== undefined ? r.analysis.thumb : await makeThumb(rec);
+          rec.ready = true;
+          library.set(rec.id, rec);
+          remember(nameIndex(), rec.id, { name: rec.name, path: rec.path, kind: rec.kind });
+          backfill.push({ rec, analysis: false });
+          if (onProgress) onProgress(++done, total);
+          continue;
+        }
         if (!r || !r.blob) throw new Error('no file');
         const rec = await addMedia(r.blob, r.name, { kind: r.kind, source: r.source, attribution: r.attribution, path: r.path }, { persist: false, id: r.id, cached: r.analysis });
         backfill.push({ rec, analysis: !r.analysis && !!analysisOf(rec) });
@@ -767,7 +874,10 @@ export async function removeFiles(ids, { undoMs = 15000 } = {}) {
     if (settled) return;
     settled = true;
     clearTimeout(timer);
-    for (const r of held) mediaDB.delete(r.id);
+    for (const r of held) {
+      mediaDB.delete(r.id);
+      if (r.linked && desktop) desktop.media.unlink(r.id).catch(() => {}); // only the link: the file stays where it is
+    }
   };
   const timer = setTimeout(commit, undoMs);
   if (typeof addEventListener === 'function') addEventListener('pagehide', commit, { once: true });
@@ -782,7 +892,10 @@ export async function removeFiles(ids, { undoMs = 15000 } = {}) {
 }
 
 export function clearMedia() {
-  for (const rec of library.values()) if (rec.url) URL.revokeObjectURL(rec.url);
+  for (const rec of library.values()) {
+    if (rec.url) URL.revokeObjectURL(rec.url);
+    if (rec.linked && desktop) desktop.media.unlink(rec.id).catch(() => {});
+  }
   library.clear();
   mediaDB.clear();
   emit();

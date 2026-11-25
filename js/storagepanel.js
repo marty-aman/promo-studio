@@ -8,9 +8,11 @@
 //   removeFiles(ids) -> Promise<undo() | null>   (undo puts the files back, when it still can)
 //   versions() -> Promise<[{ key, list }]>, trimVersions(keep) -> Promise<number dropped>
 //   projects() -> saved project entries, clearModels() -> Promise, backUp() -> download a backup
+//   desktopInfo() -> Promise<{ disk: { free, total }, linked: { count, bytes } }> (Mac app only, else null)
 import { h, icon, button, toast } from './dom.js';
 import { storageBreakdown, biggestFiles, unusedMedia, fmtBytes, GROUP_LABEL } from './medialight.js';
 import { storageLevel } from './projectlib.js';
+import { LINK_CHOICES, linkChoice, setLinkChoice } from './desktop.js';
 
 const KIND_LABEL = { video: 'Video', audio: 'Audio', image: 'Photo', tab: 'Tab', midi: 'MIDI', font: 'Font' };
 const GROUPS = ['video', 'audio', 'photos', 'models', 'projects', 'other'];
@@ -57,8 +59,10 @@ export async function measureStorage(deps) {
   } catch {
     persisted = null;
   }
-  const recs = deps.recs();
-  const [used, versions, models] = await Promise.all([deps.used(), deps.versions().catch(() => []), cacheBytes(est)]);
+  const all = deps.recs();
+  const recs = all.filter((r) => !r.linked); // linked files (Mac app) stay where they are and take no room here
+  const linked = all.filter((r) => r.linked);
+  const [used, versions, models, desk] = await Promise.all([deps.used(), deps.versions().catch(() => []), cacheBytes(est), deps.desktopInfo ? deps.desktopInfo().catch(() => null) : null]);
   const projects = jsonBytes(deps.projects()) + versions.reduce((n, v) => n + jsonBytes(v.list), 0);
   const versionCount = versions.reduce((n, v) => n + Math.max(0, (v.list || []).length - 1), 0);
   const usage = est && Number.isFinite(est.usage) ? est.usage : null;
@@ -70,10 +74,24 @@ export async function measureStorage(deps) {
     persisted,
     groups: storageBreakdown(recs, { models, projects, usage }),
     biggest: biggestFiles(recs, 5).map((f) => ({ ...f, used: used.has(f.id) })),
-    unused: unusedMedia(recs, used),
+    unused: unusedMedia(all, used).map((f) => ({ ...f, linked: linked.some((r) => r.id === f.id) })),
+    desktop: desk ? { free: desk.disk && desk.disk.free, total: desk.disk && desk.disk.total, linked: linked.length, linkedBytes: linked.reduce((n, r) => n + (r.size || 0), 0) } : null,
     oldVersions: versionCount,
     models,
   };
+}
+
+/** Mac app: the disk's free space, the linked files and the big-video choice. */
+function desktopBlock(d) {
+  const sel = h('select', { 'aria-label': 'Big videos', 'data-desktop-link': '' }, Object.entries(LINK_CHOICES).map(([v, label]) => h('option', { value: v, selected: v === linkChoice() }, label)));
+  sel.addEventListener('change', () => setLinkChoice(sel.value));
+  return h(
+    'div',
+    { class: 'storage-desktop small', 'data-storage-desktop': '' },
+    h('p', {}, d.free != null ? `Mac disk: ${fmtBytes(d.free)} free of ${fmtBytes(d.total)}.` : 'The Mac did not say how much disk is free.'),
+    h('p', { class: 'muted' }, d.linked ? `${d.linked} file${d.linked === 1 ? '' : 's'} linked where ${d.linked === 1 ? 'it is' : 'they are'} (${fmtBytes(d.linkedBytes)}, not copied and not counted above).` : 'No files are linked in place.'),
+    h('label', { class: 'row' }, h('span', {}, 'Big videos: '), sel),
+  );
 }
 
 /** The Storage section for the Manager home. `open`: start unfolded (after a save failed). */
@@ -141,6 +159,7 @@ export function storagePanel(deps, { open = false } = {}) {
     const allOn = unused.length > 0 && sel.length === unused.length;
     const parts = [
       bar(level.pct, level.warn),
+      data.desktop ? desktopBlock(data.desktop) : null,
       level.warn ? h('p', { class: 'storage-warn small', role: 'alert' }, `This browser is ${level.pct != null ? `${Math.round(level.pct * 100)} %` : 'almost'} full. When it is full, new files and edits are not saved. Back up, then clean up below.`) : null,
       h(
         'p',
@@ -178,7 +197,7 @@ export function storagePanel(deps, { open = false } = {}) {
                 h(
                   'li',
                   {},
-                  h('label', {}, h('input', { type: 'checkbox', 'data-id': f.id, checked: picked.has(f.id), onchange: (e) => (e.target.checked ? picked.add(f.id) : picked.delete(f.id), paint()) }), f.thumb && f.thumb.startsWith('data:') ? h('img', { src: f.thumb, alt: '', loading: 'lazy' }) : h('span', { class: 'storage-noimg' }), h('span', { class: 'storage-f-name', title: f.name }, f.name), h('span', { class: 'muted tiny' }, `${KIND_LABEL[f.kind] || f.kind} · ${fmtBytes(f.size)}`)),
+                  h('label', {}, h('input', { type: 'checkbox', 'data-id': f.id, checked: picked.has(f.id), onchange: (e) => (e.target.checked ? picked.add(f.id) : picked.delete(f.id), paint()) }), f.thumb && f.thumb.startsWith('data:') ? h('img', { src: f.thumb, alt: '', loading: 'lazy' }) : h('span', { class: 'storage-noimg' }), h('span', { class: 'storage-f-name', title: f.name }, f.name), h('span', { class: 'muted tiny' }, `${KIND_LABEL[f.kind] || f.kind} · ${fmtBytes(f.size)}${f.linked ? ' · linked (only the link is removed)' : ''}`)),
                 ),
               ),
             ),

@@ -1,7 +1,9 @@
 // "Export PDF" for every document page (press release, press kit, call sheet, show sheet, show
 // plan, stage plot, tour sheet, money, calendar). Browsers have no built-in "make a PDF" call, so
 // the document is printed from a hidden frame and you pick "Save as PDF" as the printer. No pop-up
-// is opened, so pop-up blockers don't get in the way.
+// is opened, so pop-up blockers don't get in the way. In the Mac app the main process makes the PDF instead.
+import { desktop } from '../desktop.js';
+import { toast } from '../dom.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 export const escBr = (s) => esc(s).replace(/\n/g, '<br>');
@@ -32,6 +34,14 @@ export const lastDoc = { title: '', html: '' };
 export function exportPDF(html, title = 'document') {
   lastDoc.title = title;
   lastDoc.html = html;
+  // Mac app: printing from a frame opens no dialog there, so the main process makes the PDF and asks where to save it
+  if (desktop) {
+    desktop.print
+      .toPDF(html, title)
+      .then((r) => r && r.saved && toast(`Saved ${r.name}.`))
+      .catch((e) => toast(`Could not make the PDF: ${(e && e.message) || e}`, 'error'));
+    return null;
+  }
   document.querySelectorAll('iframe.pdf-frame').forEach((f) => f.remove());
   const frame = document.createElement('iframe');
   frame.className = 'pdf-frame';

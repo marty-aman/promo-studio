@@ -29,3 +29,11 @@
   .storage-big li { flex-direction: column; gap: 0; }
   .storage-actions .btn { width: 100%; }
 }
+
+/* Mac app (js/desktop.js): disk space and linked files in Storage, and the in-app viewer for full-size pictures */
+.storage-desktop { margin: 8px 0; display: grid; gap: 4px; }
+.storage-desktop p { margin: 0; }
+.storage-desktop select { max-width: 100%; }
+.desktop-viewer { max-width: 92vw; max-height: 92vh; padding: 12px; border: 1px solid #333; border-radius: 10px; background: #111; color: #eee; display: grid; gap: 10px; justify-items: end; }
+.desktop-viewer::backdrop { background: rgba(0, 0, 0, 0.75); }
+.desktop-viewer img { max-width: calc(92vw - 24px); max-height: calc(92vh - 70px); object-fit: contain; justify-self: center; }

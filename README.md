@@ -20,9 +20,87 @@ The server also passes the Tours page's setlist.fm searches on (setlist.fm doesn
 pages). It answers only this app on this computer, forwards only the read-only searches, and uses the
 API key your browser sends; it stores and logs nothing. On a static host that search falls back to links.
 
-No `npm install` is needed: there are no dependencies. Use a recent Chrome or Edge for MP4 export
-(Firefox exports WebM). Since the app is plain static files, it can also be hosted on Netlify or
-any other static host.
+No `npm install` is needed for the web version: it has no runtime dependencies (`npm install` only fetches
+the Mac app's build tools, below). Use a recent Chrome or Edge for MP4 export (Firefox exports WebM). Since
+the app is plain static files, it can also be hosted on Netlify or any other static host.
+
+## Mac app
+
+The same app, as a desktop app built with Electron (`electron/`). It has its own window and menu, keeps
+working on an export when the window is hidden, and can **link big videos where they are** instead of copying
+them into its storage.
+
+### Build it (on the Mac)
+
+Needs Node 22 or newer (Electron's installer asks for it).
+
+```bash
+npm install
+npm run desktop:dev        # run it from the source folder
+npm run desktop:build:mac  # dist-desktop/Promo Studio-1.0.0-arm64-mac.zip (Apple Silicon)
+```
+
+The build is for Apple Silicon (arm64) only, as a zip, **ad-hoc signed** (no Apple Developer ID, not notarized,
+no automatic updates). If the build could not sign it (for example a zip built on Linux), sign it on the Mac
+before the first launch, or macOS says it is "damaged":
+
+```bash
+codesign --force --deep -s - "/Applications/Promo Studio.app"
+```
+
+### First launch (macOS 15)
+
+1. Unzip, and drag **Promo Studio.app** to Applications.
+2. Open it. macOS says it cannot check the app. Click **Done**.
+3. Open **System Settings > Privacy & Security**, scroll down to "Promo Studio was blocked", click
+   **Open Anyway**, and confirm with your password or Touch ID.
+
+Or, in Terminal, once: `xattr -dr com.apple.quarantine "/Applications/Promo Studio.app"`.
+
+### Updating
+
+Quit the app, replace **Promo Studio.app** in Applications with the new one, and do the first-launch steps
+again. Your songs, edits and files stay: they are kept in `~/Library/Application Support/Promo Studio`, by the
+app's name and its `app://promo-studio` address, which never change. Linked videos stay where they are.
+
+### Linking big videos
+
+When you add a video of 200 MB or more, the app links it where it is (it reads it from that folder) instead
+of copying it. It plays, seeks and exports straight from the file, and the app's storage stays small. Change
+this on the Manager home under **Storage > Big videos**: link them (the default), ask each time, or always copy.
+
+If a linked file is moved, renamed or on a drive that is not plugged in, it shows as missing: plug the drive in,
+or use **Replace missing files** and pick it where it is now. Clean up removes only the link; the file is never
+deleted. Storage shows the Mac's free disk space and how much is linked.
+
+### What is different from the web version
+
+- YouTube upload and Google Drive import are off: Google does not allow its sign-in inside apps like this one.
+  Use the web version in Chrome for those.
+- Export PDF makes the PDF itself and asks where to save it (no print dialog).
+- Full-size pictures open in the app instead of a browser tab. Web, mail and phone links open in your default
+  apps.
+
+### Mac self-check
+
+**Promo Studio > Mac self-check…** checks the video and sound encoders (and whether they run on the Mac's
+hardware encoder), WebGPU, the AI setup and a 10 second 1080 × 1920 export test. Run it once and use **Copy the
+results** to send them on.
+
+### How it fits together
+
+- `electron/main.cjs` serves the app from `app://promo-studio/` (no network port; Range requests for video, the
+  same path checks as `server.js`, a Content-Security-Policy, and cross-origin isolation), opens the window,
+  keeps navigation in the app, allows only the permissions the app uses, and answers the bridge. The setlist.fm
+  and OpenAI pass-throughs are `server-api.js`, shared with `server.js`.
+- `electron/preload.cjs` is the bridge, `window.desktop`. The page names media ids, never paths: `info()`,
+  `media.link / urlFor / read / stat / unlink / reveal / pick / canLink`, `shell.openExternal` (web, mail and
+  phone links only), `print.toPDF`, `exports.begin / end` (keeps the Mac awake during an export; a real-time
+  export also keeps running when hidden), and two calls a later version fills in: `files.saveStream` and
+  `native.run`. `info().capabilities` lists what this build can do.
+- `electron/links.cjs` keeps linked files' paths (in `links.json`, main process only) and checks every one.
+- `js/desktop.js` is what the page does differently when `window.desktop` exists; without it (the web
+  version) nothing changes.
 
 ## Manager
 
@@ -1276,7 +1354,7 @@ edit (120 clips, 40 overlay clips, 300 timed lyric lines, 60 texts, 3 visualizer
 ## Tests
 
 ```bash
-npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut plans
+npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut plans, the Mac app's serving and links
 ```
 
 ## Code layout
