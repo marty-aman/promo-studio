@@ -1,0 +1,73 @@
+/* Hideable side panes, focus mode and the shared close buttons (js/panes-ui.js, js/closeable.js).
+   A hidden pane keeps its grid cell at 0 width (so nothing else moves cell) and is taken out of view and out of the
+   Tab order with visibility. Desktop only: on phones and tablets (body.m-sheets) the panes are sheets. */
+
+/* ---- the Panes menu in the top bar */
+.panes-wrap { position: relative; display: flex; align-items: center; }
+.panes-wrap[hidden] { display: none; }
+.panes-btn.on { color: var(--accent); }
+.panes-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 70; min-width: 250px; padding: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); display: grid; gap: 2px; }
+.panes-menu[hidden] { display: none; }
+.panes-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 2px 4px 8px; }
+.panes-item { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: center; width: 100%; padding: 7px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.panes-item:hover:not([disabled]), .panes-item:focus-visible { background: var(--panel-2); outline: none; }
+.panes-item[disabled] { opacity: 0.5; cursor: default; }
+.panes-item kbd { font-size: 11px; opacity: 0.8; }
+.panes-check { display: inline-grid; place-items: center; width: 18px; height: 18px; border: 1px solid var(--border); border-radius: 4px; color: var(--accent); }
+.panes-item[role='menuitem'] .panes-check { border: 0; }
+.panes-sep { height: 1px; margin: 4px 2px; background: var(--border); }
+body.m-sheets .panes-wrap { display: none; }
+
+/* ---- the hide (x) button at the top of each side pane */
+.pane-x { position: sticky; top: 0; float: right; z-index: 3; margin: -4px -6px 0 4px; width: 28px; height: 28px; opacity: 0.7; }
+.pane-x:hover, .pane-x:focus-visible { opacity: 1; }
+.ph-left > .pane-x, .ph-right > .pane-x { align-self: flex-end; margin: 4px 4px -6px 0; flex: none; }
+.ph-right > .pane-x { margin: -4px -6px -8px 0; }
+.mgr-side { position: relative; }
+.mgr-side > .pane-x { position: absolute; top: 4px; right: 2px; margin: 0; float: none; }
+body:not(.m-sheets) .mgr-side { padding-top: 34px; }
+body.m-sheets .pane-x { display: none; }
+@media (max-width: 1100px) { .ph-left > .pane-x, .ph-right > .pane-x { display: none; } }
+
+/* ---- Video Studio: tool panel, settings panel; focus mode also folds the tool rail */
+body:not(.m-sheets).pane-off-tools .workspace { --ws-left: 0px; }
+body:not(.m-sheets).pane-off-inspector .workspace { --ws-right: 0px; }
+body:not(.m-sheets).focus-mode .workspace { --ws-rail: 0px; --ws-left: 0px; --ws-right: 0px; }
+body:not(.m-sheets).pane-off-tools .workspace > .panel.left,
+body:not(.m-sheets).pane-off-inspector .workspace > .panel.right,
+body:not(.m-sheets).focus-mode .workspace > .rail,
+body:not(.m-sheets).focus-mode .workspace > .panel {
+  visibility: hidden; padding: 0; border: 0; overflow: hidden; min-width: 0;
+}
+body:not(.m-sheets).focus-mode .page-overlay { left: 0; }
+
+/* ---- Photo Studio: add panel, layer panel */
+@media (min-width: 1101px) {
+  body:not(.m-sheets).pane-off-left .photo { --ph-left-w: 0px; }
+  body:not(.m-sheets).pane-off-right .photo { --ph-right-w: 0px; }
+  body:not(.m-sheets).focus-mode .photo { --ph-left-w: 0px; --ph-right-w: 0px; }
+  body:not(.m-sheets).pane-off-left .photo > .ph-left,
+  body:not(.m-sheets).pane-off-right .photo > .ph-right,
+  body:not(.m-sheets).focus-mode .photo > .ph-left,
+  body:not(.m-sheets).focus-mode .photo > .ph-right {
+    visibility: hidden; padding: 0; border: 0; overflow: hidden; min-width: 0;
+  }
+}
+
+/* ---- Manager: the page list */
+body:not(.m-sheets).pane-off-nav .manager { --mgr-nav: 0px; }
+body:not(.m-sheets).pane-off-nav .manager > .mgr-side { visibility: hidden; padding: 0; border: 0; overflow: hidden; min-width: 0; }
+
+/* ---- focus mode's way out, over the preview */
+.focus-exit { position: absolute; top: 10px; right: 10px; z-index: 6; }
+.focus-exit[hidden] { display: none; }
+body.m-sheets .focus-exit { display: none; }
+
+/* ---- modal dialogs: the close (x) added where a dialog had none, and banners */
+.dlg-x-float { position: absolute; top: 8px; right: 8px; z-index: 2; }
+.banner-x { flex: none; margin-left: auto; }
+.pc-head .pc-x { margin-left: auto; align-self: flex-start; }
+
+/* tip cards: an x in the corner as well as Got it */
+.tip-card { position: relative; padding-right: 34px; }
+.tip-card .tip-x { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; }

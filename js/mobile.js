@@ -3,10 +3,11 @@
 // does anything: every rule it switches on is scoped to a body class that is only set below 1100 px (or on touch).
 import { h, icon, iconButton, button } from './dom.js';
 import { layoutMode, compactBar, scrubToTime, isTouchDevice } from './mobilelogic.js';
+import { escLayer, swipeDownToClose } from './closeable.js';
 
 const SETTINGS_TITLE = { clip: 'Clip settings', text: 'Text settings', lyric: 'Lyric settings', audio: 'Audio settings', layer: 'Layer settings', song: 'Song settings', endcard: 'End card settings' };
 
-export function initMobile({ header, modeSwitch, nowOn, keep, tabRail, pageEl, transport, tlToolbar, engine, store, ui, panels, getMode }) {
+export function initMobile({ header, modeSwitch, nowOn, keep, tabRail, pageEl, transport, tlToolbar, engine, store, ui, panels, getMode, stage }) {
   const body = document.body;
   if (isTouchDevice()) body.classList.add('touch');
 
@@ -34,17 +35,21 @@ export function initMobile({ header, modeSwitch, nowOn, keep, tabRail, pageEl, t
   // ---------------------------------------------------------- the top bar
   const exportBtn = keep.find((el) => el.textContent.trim() === 'Export');
   const moreBody = h('div', { class: 'm-more-body' });
-  const moreMenu = h('div', { class: 'm-more', role: 'dialog', 'aria-label': 'Project', hidden: true }, h('div', { class: 'm-more-head' }, h('strong', {}, 'Project'), iconButton('x', 'Close', () => setMore(false))), moreBody);
+  const moreMenu = h('div', { class: 'm-more', role: 'dialog', 'aria-label': 'Project', hidden: true }, h('div', { class: 'm-more-head' }, h('strong', {}, 'Project'), iconButton('x', 'Close', () => moreLayer.close())), moreBody);
   const moreBtn = h('button', { type: 'button', class: 'icon-btn m-more-btn', 'aria-label': 'Project menu: name, artist, format, saving', 'aria-expanded': 'false', onclick: () => setMore(moreMenu.hidden) }, icon('settings', 20));
   exportBtn.before(moreBtn);
   const modeMenu = h('div', { class: 'm-modemenu', role: 'menu', hidden: true });
   document.body.append(moreMenu, modeMenu);
+  const moreLayer = escLayer(() => !moreMenu.hidden, () => setMore(false));
+  const modeLayer = escLayer(() => !modeMenu.hidden, () => setModeMenu(false));
   function setMore(on) {
+    if (on && moreMenu.hidden) moreLayer.opened();
     moreMenu.hidden = !on;
     moreBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
     if (on) setModeMenu(false);
   }
   function setModeMenu(on) {
+    if (on && modeMenu.hidden) modeLayer.opened();
     modeMenu.hidden = !on;
     if (on) {
       setMore(false);
@@ -137,6 +142,7 @@ export function initMobile({ header, modeSwitch, nowOn, keep, tabRail, pageEl, t
   }
   function openSheet(kind) {
     if (!body.classList.contains('m-sheets')) return;
+    if (!sheet) sheetLayer.opened();
     sheet = kind;
     body.classList.add('m-sheet');
     body.classList.toggle('m-sheet-left', kind === 'left');
@@ -150,7 +156,11 @@ export function initMobile({ header, modeSwitch, nowOn, keep, tabRail, pageEl, t
     body.classList.remove('m-sheet', 'm-sheet-left', 'm-sheet-insp', 'm-sheet-tall', 'm-sheet-page');
     sheetBar.hidden = true;
   }
-  window.addEventListener('keydown', (e) => e.key === 'Escape' && sheet && !e.defaultPrevented && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && closeSheet());
+  // Esc closes the sheet (the top-most thing, see closeable.js), so does a swipe down on its title bar, and a tap
+  // on the preview closes the tool panel sheet (the settings sheet stays: a tap there picks what to edit)
+  const sheetLayer = escLayer(() => !!sheet, () => closeSheet());
+  swipeDownToClose(sheetBar, () => sheet && closeSheet());
+  if (stage) stage.addEventListener('pointerdown', () => sheet === 'left' && getMode() === 'studio' && closeSheet());
 
   // tapping a tool opens its panel; tapping the lit tool again closes it
   let railTap = null;

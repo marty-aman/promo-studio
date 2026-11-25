@@ -45,6 +45,7 @@ import { makeLayer, makeOverlayClip, setSongTabs } from './panel-layers.js';
 import { studioSongFiles, studioSongContext, addStems, addTabs } from './manager/files.js';
 import { applyTheme, themeById } from './themes.js';
 import { loadSettings } from './state.js';
+import { initPanes, panes, paneX } from './panes-ui.js';
 import { createTimeReadout } from './timereadout.js';
 import { findSong, titleFromFile, fetchLyrics } from './lyricsfetch.js';
 import { findCover } from './manager/covers.js';
@@ -127,6 +128,8 @@ artistSel.addEventListener('change', () => applyArtist(artistSel.value));
 // what you're working on: the band and the song, in both workspaces
 const nowOn = h('button', { type: 'button', class: 'now-on', title: 'The band and song you are working on' });
 const exportBtn = button('Export', () => ui.openTab('export'), { iconName: 'download', variant: 'primary' });
+// the Panes menu (all workspaces): hide or show the side panes, focus mode (F), the default layout
+const panesBtn = initPanes({ mode: () => mode, focusHosts: [stage] });
 const header = h(
   'header',
   { class: 'topbar' },
@@ -135,6 +138,7 @@ const header = h(
   nowOn,
   studioOnly(nameInput, artistSel, aspectSel, undoBtn, redoBtn, saveState, relinkButton('studio')),
   h('div', { class: 'spacer' }),
+  panesBtn,
   studioOnly(
     postSlot,
     button('Projects', () => ui.openProjects(), { iconName: 'file', variant: 'ghost', title: 'Your saved projects: open, rename, copy, recover an earlier version or use one as a template' }),
@@ -314,6 +318,8 @@ const ui = {
   },
   openTab(req) {
     if (req === 'tabstudio') return setMode('tabstudio'); // Tab Studio is its own workspace now
+    // opening a tool shows the tool panel again when it was hidden (or focus mode was on)
+    if (!panes.shown('studio', 'tools')) panes.set('studio', 'tools', true);
     // old ids (media, stock, sounds, layers, templates…) open the fold that now holds them
     const [id, foldId] = PAGES[req] ? [req] : panels.resolveTab(req);
     if (foldId) setFold(foldId, true);
@@ -646,7 +652,7 @@ function revealFold(id) {
 function rebuildLeft() {
   leftBinder = new Binder(store);
   const tab = panels.tabs.find((t) => t.id === ui.tab) || panels.tabs[0];
-  keepScroll(leftPanel, () => leftPanel.replaceChildren(h('h2', { class: 'panel-title' }, tab.label), tab.build(leftBinder)));
+  keepScroll(leftPanel, () => leftPanel.replaceChildren(paneX('studio', 'tools'), h('h2', { class: 'panel-title' }, tab.label), tab.build(leftBinder)));
   leftSig = leftSignature();
 }
 /** Above the selection's settings: turn it (or the whole multi-selection) off or on, and what off means for it. */
@@ -675,7 +681,7 @@ function offBar() {
 }
 function rebuildInspector() {
   inspBinder = new Binder(store);
-  keepScroll(inspector, () => inspector.replaceChildren(...[offBar(), panels.buildInspector(inspBinder)].filter(Boolean)));
+  keepScroll(inspector, () => inspector.replaceChildren(...[paneX('studio', 'inspector'), offBar(), panels.buildInspector(inspBinder)].filter(Boolean)));
   inspSig = inspSignature();
 }
 
@@ -745,6 +751,7 @@ function showSaveBanner(problem) {
     icon('x', 16),
     h('div', { class: 'save-banner-text' }, h('strong', {}, 'Storage is full. '), lines.join(' '), biggest.length ? h('span', { class: 'muted' }, ` Biggest files: ${biggest.join(', ')}.`) : null),
     h('div', { class: 'row' }, button('Download project file', () => ui.saveProjectFile(), { iconName: 'download', variant: 'sm primary' }), button('Clean up storage', () => openStorage(), { variant: 'sm' }), button('Open the media library', () => (setMode('studio'), ui.openTab('video')), { variant: 'sm' }), button('Dismiss', () => ((mediaFailures = []), (saveBanner.hidden = true)), { variant: 'sm ghost' })),
+    iconButton('x', 'Close this warning', () => ((mediaFailures = []), (saveBanner.hidden = true)), 'ghost banner-x'),
   );
   saveBanner.hidden = false;
 }
@@ -2185,6 +2192,7 @@ function setMode(m) {
     engine.render();
   }
   syncNowOn();
+  panes.refresh();
   if (mobile) mobile.refresh();
   soonReleaseMedia();
 }
@@ -2233,7 +2241,7 @@ async function boot() {
   document.body.classList.add('ready');
   performance.mark('pvm-ready');
 }
-mobile = initMobile({ header, modeSwitch, nowOn, keep: [undoBtn, redoBtn, exportBtn], tabRail, pageEl, transport, tlToolbar, engine, store, ui, panels, getMode: () => mode });
+mobile = initMobile({ header, modeSwitch, nowOn, keep: [undoBtn, redoBtn, exportBtn], tabRail, pageEl, transport, tlToolbar, engine, store, ui, panels, getMode: () => mode, stage });
 boot();
 
 // exposed for the automated browser checks in test/
