@@ -50,6 +50,12 @@ export function planBatch({ mode = 'song', song = null, mv = null, len = 15, cou
   return loudestSections(song.envelope, song.envRate || 100, len, count, { gap: 1, total: song.duration }).map((t, i) => ({ label: `clip-${String(i + 1).padStart(2, '0')}-${fmt(t)}`, songOffset: t, mvIn: null }));
 }
 
+/** The music video as one main-track clip from `inT` seconds into it; its own sound off while the song plays. */
+export const mvClip = (mvId, inT, duration, volume = 0) => ({
+  id: `batch-mv`, mediaId: mvId, kind: 'video', in: inT, duration: +duration.toFixed(2), speed: 1, fit: 'cover', zoom: 1, panX: 0, panY: 0, rotate: 0, flip: false,
+  volume, filter: { preset: 'none', adjust: {} }, transition: { type: 'none', duration: 0.3 }, kenBurns: null, effects: {},
+});
+
 /** Apply one batch item to a project draft. */
 export function applyBatchItem(d, item, { len, mvId = null, mvDuration = 0 }) {
   if (d.song) {
@@ -58,13 +64,8 @@ export function applyBatchItem(d, item, { len, mvId = null, mvDuration = 0 }) {
     delete d.song.join;
   }
   d.duration = +(len + (d.endCard.enabled ? d.endCard.duration : 0)).toFixed(2);
-  if (mvId) {
-    // the music video plays in sync with the song section; its own sound stays muted (the song plays)
-    d.clips = [{
-      id: `batch-mv`, mediaId: mvId, kind: 'video', in: item.mvIn, duration: +Math.min(len, Math.max(0.5, mvDuration - item.mvIn)).toFixed(2), speed: 1, fit: 'cover', zoom: 1, panX: 0, panY: 0, rotate: 0, flip: false,
-      volume: d.song ? 0 : 1, filter: { preset: 'none', adjust: {} }, transition: { type: 'none', duration: 0.3 }, kenBurns: null, effects: {},
-    }];
-  }
+  // the music video plays in sync with the song section; its own sound stays muted (the song plays)
+  if (mvId) d.clips = [mvClip(mvId, item.mvIn, Math.min(len, Math.max(0.5, mvDuration - item.mvIn)), d.song ? 0 : 1)];
 }
 
 // ------------------------------------------------------------ zip (stored, no compression)
