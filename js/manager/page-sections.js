@@ -1,10 +1,11 @@
 // A song's Sections tab: the intro, verses, choruses… with their timestamps, typed one by one or
 // pasted as a list ("0:00 Intro", "0:42 Chorus"). The Video Studio exports any of them in one go.
 import { h, button, iconButton, toast } from '../dom.js';
-import { SECTION_NAMES, newSection, parseTime, fmtTime, parseSections, sectionSpans, numberRepeats, normalizeSections } from './releases.js';
+import { SECTION_NAMES, newSection, fmtTime, parseSections, sectionSpans, numberRepeats, normalizeSections } from './releases.js';
 import { lyricsFromTiming } from './lyrictiming.js';
 import { setVideoSync } from '../songsync.js';
 import { decodeMono, detectSections, proposalAgainst } from '../sectiondetect.js';
+import { timeField, timeFormatSwitch, showTime } from '../timefield.js';
 
 export const sectionsUI = { paste: '' };
 
@@ -103,9 +104,9 @@ function detectBox(ctx, song, S, dur) {
                 'tr',
                 { class: x.clash ? 'muted' : '' },
                 h('td', {}, x.label),
-                h('td', { class: 'n' }, fmtTime(x.start)),
-                h('td', { class: 'n' }, fmtTime(x.end)),
-                h('td', {}, x.clash ? h('span', { class: 'tiny muted', title: 'You already have a section here; yours is kept' }, `You have “${x.clash}”`) : button('Accept', () => take([x]), { variant: 'sm ghost', title: `Add ${x.label} (${fmtTime(x.start)}–${fmtTime(x.end)}) to your sections` })),
+                h('td', { class: 'n' }, showTime(x.start)),
+                h('td', { class: 'n' }, showTime(x.end)),
+                h('td', {}, x.clash ? h('span', { class: 'tiny muted', title: 'You already have a section here; yours is kept' }, `You have “${x.clash}”`) : button('Accept', () => take([x]), { variant: 'sm ghost', title: `Add ${x.label} (${showTime(x.start)}–${showTime(x.end)}) to your sections` })),
               ),
             ),
           ),
@@ -127,15 +128,15 @@ export function sectionsTab(ctx, song, S) {
     if (x) fn(x, v);
     s.sections = normalizeSections(s.sections);
   });
-  const timeIn = (sec, k) => {
-    const el = h('input', { type: 'text', value: sec[k] == null ? '' : fmtTime(sec[k]), placeholder: k === 'end' ? 'next one' : '0:00', 'data-k': `sec-${k}-${sec.id}`, 'aria-label': `${sec.label} ${k === 'start' ? 'starts' : 'ends'}`, class: 'mgr-time' });
-    el.addEventListener('change', () => {
-      const t = parseTime(el.value);
-      if (el.value.trim() && t == null) return toast('Type a time like 1:05 or 65.', 'error');
-      ctx.update(Sec(sec.id, (x) => (x[k] = el.value.trim() ? t : k === 'end' ? null : 0)));
+  const timeIn = (sec, k) =>
+    timeField({
+      value: sec[k] == null ? null : sec[k],
+      label: `${sec.label} ${k === 'start' ? 'starts' : 'ends'}`,
+      dataK: `sec-${k}-${sec.id}`,
+      placeholder: k === 'end' ? 'next one' : undefined,
+      empty: k === 'end' ? null : 0,
+      onCommit: (t, key) => ctx.update(Sec(sec.id, (x) => (x[k] = t)), key),
     });
-    return el;
-  };
   const names = h('datalist', { id: 'mgr-section-names' }, SECTION_NAMES.map((n) => h('option', { value: n })));
   const rows = spans.map((sec) =>
     h(
@@ -167,13 +168,7 @@ export function sectionsTab(ctx, song, S) {
   const vInfo = v ? st.mediaInfo(v.mediaId) : null;
   const offIn = v
     ? (() => {
-        const el = h('input', { type: 'text', value: fmtTime(v.offset || 0), class: 'mgr-time', 'data-k': `sec-voff-${song.id}`, 'aria-label': 'Where the song starts in the music video' });
-        el.addEventListener('change', () => {
-          const t = parseTime(el.value);
-          if (t == null) return toast('Type a time like 0:08.', 'error');
-          ctx.update(S((s) => setVideoSync(s, t)));
-        });
-        return el;
+        return timeField({ value: v.offset || 0, label: 'Where the song starts in the music video', dataK: `sec-voff-${song.id}`, onCommit: (t, key) => ctx.update(S((s) => setVideoSync(s, t)), key) });
       })()
     : null;
   return h(
@@ -183,7 +178,7 @@ export function sectionsTab(ctx, song, S) {
       'section',
       { class: 'mgr-sect' },
       names,
-      h('h2', {}, `Sections · ${spans.length}`),
+      h('div', { class: 'mgr-sect-head' }, h('h2', {}, `Sections · ${spans.length}`), timeFormatSwitch(() => ctx.refresh())),
       h('p', { class: 'muted small' }, `Times are in the song${dur ? ` (${fmtTime(dur)} long)` : ''}. Leave an end blank and it runs to the next section.`),
       spans.length ? h('table', { class: 'mgr-table mgr-sections' }, h('thead', {}, h('tr', {}, ['Section', 'Starts', 'Ends', 'Length', ''].map((x) => h('th', {}, x)))), h('tbody', {}, rows)) : h('p', { class: 'muted small' }, 'No sections yet. Add them one by one, detect them from the audio, or paste a list.'),
       h('div', { class: 'row' }, button('Add a section', add, { iconName: 'plus', variant: 'sm' }), spans.length ? button('Export sections in the Video Studio', () => ctx.studio.openSections(song), { iconName: 'film', variant: 'sm primary', title: 'Opens this song in the editor and its Export tab, where you pick which sections to export' }) : null),

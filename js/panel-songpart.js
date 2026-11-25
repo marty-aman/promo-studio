@@ -5,6 +5,7 @@
 import { h, button, iconButton, toast } from './dom.js';
 import { timelineToSong, hasSongParts } from './core.js';
 import { fmtTime } from './manager/releases.js';
+import { timeField, timeFormatSwitch, showTime } from './timefield.js';
 import { PART_KINDS, DEFAULT_FADE, partSections, describePart, linesInParts, applySongPart, defaultPicture, usableChoice, defaultTemplatePart } from './songpart.js';
 
 const KEY = 'pvm.songpart.v1';
@@ -128,7 +129,7 @@ export function openSongPart(env) {
   }
 
   const arrow = (txt, title, fn, off) => h('button', { type: 'button', class: 'icon-btn ghost', title, 'aria-label': title, onclick: fn, disabled: off }, txt);
-  const secLine = (s) => `${fmtTime(s.start)}–${fmtTime(s.end)} · ${fmtTime(s.end - s.start)}`;
+  const secLine = (s) => `${showTime(s.start)}–${showTime(s.end)} · ${fmtTime(s.end - s.start)}`;
 
   function oneList() {
     if (!sections.length) return noSections();
@@ -215,15 +216,13 @@ export function openSongPart(env) {
   }
 
   function rangeBox() {
-    const num = (k, label) => {
-      const el = h('input', { type: 'number', min: 0, max: dur || undefined, step: 0.1, value: (+st[k]).toFixed(2), 'aria-label': label, 'data-k': `songpart-${k}` });
-      el.addEventListener('change', () => ((st[k] = Math.max(0, Math.min(dur || Infinity, +el.value || 0))), render()));
-      return el;
-    };
+    const num = (k, label) =>
+      timeField({ value: +st[k], label, dataK: `songpart-${k}`, onCommit: (t) => ((st[k] = Math.max(0, Math.min(dur || Infinity, t))), render()) });
     return h(
       'div',
       { class: 'songpart-range' },
-      h('div', { class: 'grid2' }, h('label', { class: 'small' }, 'Start (s) ', num('from', 'Start (s)')), h('label', { class: 'small' }, 'End (s) ', num('to', 'End (s)'))),
+      timeFormatSwitch(render),
+      h('div', { class: 'grid2' }, h('label', { class: 'small' }, h('span', {}, 'Start '), num('from', 'Start')), h('label', { class: 'small' }, h('span', {}, 'End '), num('to', 'End'))),
       h('div', { class: 'row' }, button('Start at the playhead', () => ((st.from = playheadSong()), render()), { variant: 'sm ghost', title: 'The moment of the song under the playhead' }), button('End at the playhead', () => ((st.to = playheadSong()), render()), { variant: 'sm ghost' })),
       h('p', { class: 'muted tiny' }, `The song is ${fmtTime(dur)} long. Play the preview to the spot you want, then press a playhead button.`),
     );
@@ -271,7 +270,7 @@ export function openSongPart(env) {
       h(
         'ol',
         { class: 'songpart-parts' },
-        r.parts.map((q, i) => h('li', {}, h('strong', {}, q.label), h('span', { class: 'muted tiny' }, ` ${fmtTime(q.from)}–${fmtTime(q.to)} in the song · at ${fmtTime(q.at)} in the video${i && r.fade ? ` (${r.fade} s crossfade)` : i ? ' (hard cut)' : ''}`))),
+        r.parts.map((q, i) => h('li', {}, h('strong', {}, q.label), h('span', { class: 'muted tiny' }, ` ${showTime(q.from)}–${showTime(q.to)} in the song · at ${fmtTime(q.at)} in the video${i && r.fade ? ` (${r.fade} s crossfade)` : i ? ' (hard cut)' : ''}`))),
       ),
       h('ul', { class: 'songpart-notes muted tiny' }, notes.map((n) => h('li', {}, n))),
     );
@@ -373,7 +372,7 @@ export function templatePartPicker(env) {
   const opts = [
     ['own', 'Each template’s own pick'],
     ['all', `Entire song (${fmtTime(dur)})`],
-    ...sections.map((s) => [`one:${s.id}`, `${s.label} · ${fmtTime(s.start)}–${fmtTime(s.end)}`]),
+    ...sections.map((s) => [`one:${s.id}`, `${s.label} · ${showTime(s.start)}–${showTime(s.end)}`]),
     ...(value === 'picked' && r && r.ok ? [['picked', `${r.parts.map((q) => q.label).join(', ')} (${fmtTime(r.length)})`]] : []),
     ['more', 'Several sections or a custom range…'],
   ];
