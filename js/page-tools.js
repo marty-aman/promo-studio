@@ -3,12 +3,13 @@
 import { h, button, toast, download, field } from './dom.js';
 import { media, ensureLayerAnalyses } from './media.js';
 import { exportVideo, pickMimeType } from './engine.js';
+import { realtimeNote } from './exportplan.js';
 import { planBatch, applyBatchItem, zipStore, postingSchedule, toICS } from './batch.js';
 import { captionPicker } from './panel-captions.js';
 import { HOOK_OPENERS, HOOK_KINDS, HOOK_SOURCES, applyHookOpener } from './hooks.js';
 import { TRENDS, CALENDAR } from './inspiration.js';
 
-const batchState = { running: false, done: 0, total: 0, current: '', result: null, error: '', cancel: false };
+const batchState = { running: false, done: 0, total: 0, current: '', result: null, error: '', cancel: false, notes: [] }; // notes: [{ label, text }] clips recorded in real time and why
 
 const slug = (s) => String(s || 'promo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'promo';
 
@@ -41,7 +42,7 @@ export function batchTool({ store, engine, render, mode = 'song' }) {
     const plan = planBatch({ mode, song, mv, len: L, count: total() });
     if (!plan.length) return toast('Could not read the song. Wait for its waveform to load and try again.', 'error');
     const snap = JSON.stringify(store.get());
-    Object.assign(batchState, { running: true, done: 0, total: plan.length, result: null, error: '', cancel: false });
+    Object.assign(batchState, { running: true, done: 0, total: plan.length, result: null, error: '', cancel: false, notes: [] });
     render();
     const files = [];
     try {
@@ -50,7 +51,7 @@ export function batchTool({ store, engine, render, mode = 'song' }) {
         batchState.current = item.label;
         store.update((d) => applyBatchItem(d, item, { len: L, mvId: mv ? mv.id : null, mvDuration: mv ? mv.duration : 0 }), 'batch');
         await ensureLayerAnalyses(store.get());
-        const res = await exportVideo(engine, { format: fmt, fps: 30, bitrate: 8e6, monitor: false });
+        const res = await exportVideo(engine, { format: fmt, fps: 30, bitrate: 8e6, monitor: false, onFallback: (why) => (batchState.notes.push({ label: item.label, text: realtimeNote(why) }), render()) });
         const ext = res.mime.includes('mp4') ? 'mp4' : 'webm';
         files.push({ name: `${slug(p.endCard.title || p.name)}-${item.label}.${ext}`, bytes: new Uint8Array(await res.blob.arrayBuffer()) });
         batchState.done++;
@@ -90,6 +91,11 @@ export function batchTool({ store, engine, render, mode = 'song' }) {
           h('div', { class: 'row' }, h('span', { class: 'small batch-status' }, `Clip ${Math.min(batchState.done + 1, batchState.total)} of ${batchState.total} · ${batchState.current}`),
             button('Stop after this clip', () => ((batchState.cancel = true), toast('Stopping after the current clip')), { variant: 'ghost sm' })))
       : button(isMv ? 'Export the clips' : 'Export the batch', run, { iconName: 'download', variant: 'primary', disabled: isMv ? !videos.length : !song }),
+    batchState.notes.length
+      ? h('div', { class: 'warn-list small', role: 'status', 'data-testid': 'batch-realtime' },
+          h('p', {}, batchState.running ? `${batchState.notes[batchState.notes.length - 1].label}: ${batchState.notes[batchState.notes.length - 1].text} Keep this tab in front.` : `${batchState.notes.length === 1 ? '1 clip was' : `${batchState.notes.length} clips were`} recorded in real time:`),
+          batchState.running ? null : h('ul', {}, batchState.notes.map((n) => h('li', {}, h('strong', {}, `${n.label}: `), n.text))))
+      : null,
     batchState.error ? h('p', { class: 'error-text' }, batchState.error) : null,
     batchState.result ? h('a', { class: 'btn primary', href: batchState.result.url, download: batchState.result.name }, `Download ${batchState.result.count} clips (${(batchState.result.size / 1e6).toFixed(1)} MB .zip)`) : null,
   );

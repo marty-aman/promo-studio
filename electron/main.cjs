@@ -260,8 +260,10 @@ function registerBridge() {
 
   // Export straight to a file (export-stream.cjs): the dialog gives the only path; the page sends pieces by id.
   // The owner is the window's webContents id, so a window can only touch its own files.
+  handle('files:pickFolder', (event) => streams.pickFolder(event.sender.id));
   handle('files:saveStream', async (event, opts) => {
-    const r = await streams.begin(event.sender.id, opts && typeof opts === 'object' ? { name: opts.name, ext: opts.ext } : {});
+    const o = opts && typeof opts === 'object' ? { name: opts.name, ext: opts.ext, ...(typeof opts.folder === 'string' ? { folder: opts.folder } : {}) } : {};
+    const r = await streams.begin(event.sender.id, o);
     if (r && !watched.has(event.sender)) {
       watched.add(event.sender);
       const owner = event.sender.id;
@@ -344,6 +346,13 @@ app.whenReady().then(async () => {
       const w = BrowserWindow.getAllWindows().find((x) => x.webContents.id === owner) || undefined;
       const r = await dialog.showSaveDialog(w, { defaultPath: path.join(app.getPath('movies'), defaultName), filters: [{ name: 'MP4 video', extensions: [ext] }] });
       return r.canceled || !r.filePath ? null : r.filePath;
+    },
+    pickFolder: async ({ owner }) => {
+      // dev-only test hook (never in a packaged app): the folder without a dialog
+      if (DEV && process.env.PVM_SAVE_DIR) return path.resolve(process.env.PVM_SAVE_DIR);
+      const w = BrowserWindow.getAllWindows().find((x) => x.webContents.id === owner) || undefined;
+      const r = await dialog.showOpenDialog(w, { title: 'Choose a folder for the videos', buttonLabel: 'Save here', defaultPath: app.getPath('movies'), properties: ['openDirectory', 'createDirectory'] });
+      return r.canceled || !r.filePaths || !r.filePaths[0] ? null : r.filePaths[0];
     },
   });
   const ses = session.defaultSession;

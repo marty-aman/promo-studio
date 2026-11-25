@@ -47,3 +47,14 @@ export function createSinkWriter(sink, { maxPending = 32 * 1024 * 1024 } = {}) {
   };
   return w;
 }
+
+/** A finished video (a Blob, e.g. one recorded in real time) written through a sink in 8 MB pieces; resolves what finish() does. Aborts on error. */
+export async function writeBlob(sink, blob, piece = 8 * 1024 * 1024) {
+  try {
+    for (let pos = 0; pos < blob.size; pos += piece) await sink.write(pos, new Uint8Array(await blob.slice(pos, pos + piece).arrayBuffer()));
+    return await sink.finish();
+  } catch (e) {
+    await Promise.resolve(sink.abort()).catch(() => {});
+    throw e;
+  }
+}

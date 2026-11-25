@@ -602,7 +602,8 @@ async function exportWith(engine, opts, beforeRealtime) {
     const { format = 'mp4', fps = 30, bitrate = 10_000_000, audio = true } = opts;
     const { w, h } = engine.dims();
     // Mac app only: `saveAs` (a file name) streams a fast MP4 export straight to a file the person picks, and
-    // `codec: 'hevc'` asks for HEVC. Without them (the web version, section and batch exports) nothing changes.
+    // `codec: 'hevc'` asks for HEVC. `folder` (what desktop.files.pickFolder() resolved) writes into that folder
+    // with no dialog (section exports). Without them (the web version, batch exports) nothing changes.
     const stream = !!(opts.saveAs && desktop && desktop.files && format === 'mp4');
     const wantHevc = stream && opts.codec === 'hevc';
     let support = await fastSupport(format, { w, h, fps, bitrate, audio, codec: wantHevc ? 'hevc' : 'h264' });
@@ -613,7 +614,7 @@ async function exportWith(engine, opts, beforeRealtime) {
     if (support.ok && !mixNote) {
       let sink = null;
       if (stream) {
-        sink = await desktop.files.saveStream({ name: opts.saveAs, ext: 'mp4' }); // the native save dialog
+        sink = await (opts.folder || desktop.files).saveStream({ name: opts.saveAs, ext: 'mp4' }); // the native save dialog, or the picked folder
         if (!sink) throw new Error('cancelled');
       }
       try {
