@@ -7,6 +7,7 @@
 // your Drive, and the access token stays in memory for this tab (it is never saved).
 import { h, icon, button, toast } from './dom.js';
 import { loadSettings, saveSettings } from './state.js';
+import { guardDialog } from './closeable.js';
 
 // drive.file: the app can open only the files you pick in Google's picker, nothing else in your Drive.
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
@@ -185,8 +186,8 @@ export function openDriveSetup() {
   document.querySelectorAll('dialog.gdrive-dialog').forEach((d) => d.remove());
   const dlg = h('dialog', { class: 'gdrive-dialog', 'aria-label': 'Set up Google Drive' });
   const close = () => (dlg.close(), dlg.remove());
-  dlg.append(h('div', { class: 'gdrive-dialog-head' }, h('h2', {}, icon('cloud', 18), ' Connect Google Drive'), button('', close, { iconName: 'x', variant: 'ghost', title: 'Close' })), driveSetupPanel(close));
-  dlg.addEventListener('cancel', close);
+  dlg.append(h('div', { class: 'gdrive-dialog-head' }, h('h2', {}, icon('cloud', 18), ' Connect Google Drive'), button('', () => requestClose(), { iconName: 'x', variant: 'ghost', title: 'Close' })), driveSetupPanel(close));
+  const requestClose = guardDialog(dlg, close);
   document.body.append(dlg);
   dlg.showModal();
   return dlg;

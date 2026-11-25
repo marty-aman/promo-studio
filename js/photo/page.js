@@ -14,6 +14,8 @@ import { TEMPLATES, templateById, countdownSet, carouselSlides } from './templat
 import { dist, mid, pinchScale, scrollDelta, keyboardInset, dropAfter, previewSize, isDoubleTap, cropShift } from './gesture.js';
 import { PAGE_SIZES, loadPageSize, savePageSize, paginate, folderPath, folderTree } from '../manager/photos.js';
 import { createPhotoProjects } from '../projects-photo.js';
+import { paneX, focusExitInto } from '../panes-ui.js';
+import { escLayer, swipeDownToClose } from '../closeable.js';
 
 // [where, label, icon] for the align buttons (left, centre and right; top, middle and bottom)
 const ALIGNS = [['left', 'left', 'alignLeft'], ['center', 'centre', 'alignCenter'], ['right', 'right', 'alignRight'], ['top', 'top', 'alignTop'], ['middle', 'middle', 'alignMiddle'], ['bottom', 'bottom', 'alignBottom']];
@@ -182,6 +184,7 @@ export function createPhotoStudio({ root, studio }) {
   const exportSheet = h('section', { class: 'ph-export', 'aria-label': 'Save or download' });
   const quick = h('div', { class: 'ph-quick', role: 'toolbar', 'aria-label': 'Selected layer' });
   center.append(quick);
+  focusExitInto(stage);
   root.replaceChildren(left, center, right, sheetHead, exportSheet, toolbar);
   const SHEETS = [['add', 'Add', 'plus', 'left'], ['layers', 'Layers', 'layers', 'right'], ['style', 'Style', 'palette', 'right'], ['templates', 'Templates', 'layout', 'left'], ['export', 'Export', 'download', 'export']];
   const narrow = window.matchMedia('(max-width: 1100px)');
@@ -189,8 +192,13 @@ export function createPhotoStudio({ root, studio }) {
   const syncTouch = () => root.classList.toggle('ph-touch', ui.touched || narrow.matches || coarse.matches);
   narrow.addEventListener && narrow.addEventListener('change', () => (syncTouch(), draw()));
   syncTouch();
+  // Esc closes the open sheet, and so does a swipe down on its title bar
+  const sheetLayer = escLayer(() => !!ui.sheet && !root.hidden, () => setSheet(null));
+  swipeDownToClose(sheetHead, () => ui.sheet && setSheet(null));
   function setSheet(name, { scrollTo = null } = {}) {
+    const was = ui.sheet;
     ui.sheet = name && ui.sheet === name && !scrollTo ? null : name;
+    if (ui.sheet && !was) sheetLayer.opened();
     if (ui.sheet === 'templates') ui.tab = 'templates';
     if (ui.sheet === 'add' && ui.tab === 'templates') ui.tab = 'photos';
     root.classList.remove('sheet-left', 'sheet-right', 'sheet-export', 'sheet-big');
@@ -600,7 +608,7 @@ export function createPhotoStudio({ root, studio }) {
     const onTab = !!(document.activeElement && left.contains(document.activeElement) && document.activeElement.getAttribute('role') === 'tab');
     const tabs = h('div', { class: 'ph-tabs', role: 'tablist', 'aria-label': 'Add to the design' }, TABS.map(([k, l, ic]) => h('button', { type: 'button', role: 'tab', id: `ph-tab-${k}`, 'aria-selected': ui.tab === k ? 'true' : 'false', 'aria-controls': 'ph-tabpanel', class: `ph-tab${ui.tab === k ? ' on' : ''}`, onclick: () => ((ui.tab = k), renderLeft()) }, icon(ic, 16), h('span', {}, l))));
     const body = { templates: templatesPanel, photos: photosPanel, stock: stockPanel, text: textPanel, shapes: shapesPanel, designs: designsPanel }[ui.tab]();
-    left.replaceChildren(tabs, h('div', { class: 'ph-left-body', role: 'tabpanel', id: 'ph-tabpanel', 'aria-labelledby': `ph-tab-${ui.tab}` }, body));
+    left.replaceChildren(paneX('photo', 'left'), tabs, h('div', { class: 'ph-left-body', role: 'tabpanel', id: 'ph-tabpanel', 'aria-labelledby': `ph-tab-${ui.tab}` }, body));
     tablistKeys(tabs);
     if (onTab) tabs.querySelector('[aria-selected="true"]').focus({ preventScroll: true });
   }
@@ -1373,7 +1381,7 @@ export function createPhotoStudio({ root, studio }) {
     const k = a && right.contains(a) && a.dataset ? a.dataset.k : null;
     const selr = k && 'selectionStart' in a && a.type !== 'range' && a.type !== 'color' && a.type !== 'number' ? [a.selectionStart, a.selectionEnd] : null;
     const scroll = right.scrollTop;
-    right.replaceChildren(h('div', { class: 'ph-props' }, ...(L ? layerProps(L) : docProps())), layersList());
+    right.replaceChildren(paneX('photo', 'right'), h('div', { class: 'ph-props' }, ...(L ? layerProps(L) : docProps())), layersList());
     right.scrollTop = scroll;
     if (k) {
       const el = right.querySelector(`[data-k="${CSS.escape(k)}"]`);

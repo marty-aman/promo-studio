@@ -106,7 +106,7 @@ input[type='checkbox'] { accent-color: var(--accent); width: 15px; height: 15px;
 kbd { background: var(--raised); border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 11px; font-family: inherit; }
 
 /* ---------------------------------------------------------------- workspace */
-.workspace { display: grid; grid-template-columns: 76px 340px minmax(0, 1fr) 300px; min-height: 0; }
+.workspace { --ws-rail: 76px; --ws-left: 340px; --ws-right: 300px; display: grid; grid-template-columns: var(--ws-rail) var(--ws-left) minmax(0, 1fr) var(--ws-right); min-height: 0; }
 .rail { background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 6px 0; gap: 2px; overflow-y: auto; }
 .rail-btn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 2px; border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: 11px; border-left: 3px solid transparent; }
 .rail-btn:hover { color: var(--text); background: var(--panel-2); }
@@ -278,7 +278,7 @@ body.dropping::after { content: 'Drop to add to your library'; position: fixed; 
 .toast-x:hover, .toast-x:focus-visible { opacity: 1; }
 
 @media (max-width: 1280px) {
-  .workspace { grid-template-columns: 70px 300px minmax(0, 1fr) 260px; }
+  .workspace { --ws-rail: 70px; --ws-left: 300px; --ws-right: 260px; }
   .aspect { width: 170px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -651,7 +651,7 @@ h4.sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; col
 body.mode-manager .studio-only { display: none; }
 body.mode-manager #app { grid-template-rows: 52px minmax(0, 1fr); }
 body.mode-manager .workspace, body.mode-manager .timeline { display: none; }
-.manager { display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 0; background: var(--bg); }
+.manager { --mgr-nav: 200px; display: grid; grid-template-columns: var(--mgr-nav) minmax(0, 1fr); min-height: 0; background: var(--bg); }
 .manager[hidden] { display: none; }
 
 .mode-switch { display: inline-flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); }
@@ -1123,7 +1123,7 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 @media (max-width: 1100px) { .mgr-cards.tr-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 /* ================================================================ Photo Studio */
-.photo { display: grid; grid-template-columns: 290px minmax(0, 1fr) 320px; min-height: 0; background: var(--bg); }
+.photo { --ph-left-w: 290px; --ph-right-w: 320px; display: grid; grid-template-columns: var(--ph-left-w) minmax(0, 1fr) var(--ph-right-w); min-height: 0; background: var(--bg); }
 .photo[hidden] { display: none; }
 .ph-left, .ph-right { background: var(--panel); min-height: 0; overflow-y: auto; }
 .ph-left { border-right: 1px solid var(--border); display: flex; flex-direction: column; }
@@ -1200,7 +1200,7 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .ph-layer.off .ph-layer-name { opacity: 0.45; }
 .ph-layer-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 5px 4px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; cursor: pointer; text-align: left; }
 .ph-layer-name span:first-of-type { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 1250px) { .photo { grid-template-columns: 240px minmax(0, 1fr) 280px; } }
+@media (max-width: 1250px) { .photo { --ph-left-w: 240px; --ph-right-w: 280px; } }
 
 /* ---- streaming stats */
 .st-scroll { overflow-x: auto; }

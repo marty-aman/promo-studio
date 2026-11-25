@@ -5,6 +5,7 @@
 import { h, icon, button, iconButton, toast } from './dom.js';
 import { findProjects, SORTS, storageLevel } from './projectlib.js';
 import { storageEstimate } from './projectstore.js';
+import { guardDialog } from './closeable.js';
 
 const when = (t) => {
   const d = new Date(typeof t === 'number' ? t : Date.parse(t || ''));
@@ -31,11 +32,11 @@ export function openProjects(adapter) {
     dlg.close();
     dlg.remove();
   };
-  dlg.addEventListener('cancel', (e) => (e.preventDefault(), close()));
-  dlg.addEventListener('click', (e) => e.target === dlg && close()); // a tap on the backdrop closes it
   const body = h('div', { class: 'projects-body' });
   const meter = h('p', { class: 'projects-storage muted tiny', role: 'status' });
-  dlg.append(h('div', { class: 'projects-head' }, h('h2', {}, icon('file', 18), ` ${adapter.title}`), button('', close, { iconName: 'x', variant: 'ghost', title: 'Close' })), body);
+  dlg.append(h('div', { class: 'projects-head' }, h('h2', {}, icon('file', 18), ` ${adapter.title}`), button('', () => requestClose(), { iconName: 'x', variant: 'ghost', title: 'Close' })), body);
+  // Esc, the x and a backdrop tap close it (asking first while a rename is typed but not saved)
+  const requestClose = guardDialog(dlg, close);
   document.body.append(dlg);
   dlg.showModal();
 
@@ -197,14 +198,13 @@ export function chooseSwaps(title, slots, choices) {
       dlg.remove();
       resolve(v);
     };
-    dlg.addEventListener('cancel', (e) => (e.preventDefault(), done(null)));
     const sels = slots.map((s) => {
       const opts = choices(s.kind).filter((c) => c.id !== s.id);
       const sel = h('select', { 'aria-label': `File for ${s.where}`, 'data-slot': s.id }, h('option', { value: '' }, s.present ? `Keep ${s.name || 'this file'}` : `Keep (missing: ${s.name || 'unknown file'})`), opts.map((c) => h('option', { value: c.id }, c.name)));
       return [s, sel];
     });
     dlg.append(
-      h('div', { class: 'projects-head' }, h('h2', {}, icon('layout', 18), ` ${title}`), button('', () => done(null), { iconName: 'x', variant: 'ghost', title: 'Cancel' })),
+      h('div', { class: 'projects-head' }, h('h2', {}, icon('layout', 18), ` ${title}`), button('', () => requestClose(), { iconName: 'x', variant: 'ghost', title: 'Close' })),
       h(
         'div',
         { class: 'projects-body' },
@@ -212,9 +212,10 @@ export function chooseSwaps(title, slots, choices) {
         slots.length
           ? h('ul', { class: 'swap-list' }, sels.map(([s, sel]) => h('li', {}, h('span', { class: 'swap-where' }, h('strong', {}, s.where), h('span', { class: `muted tiny${s.present ? '' : ' warn'}` }, ` ${s.name || ''}${s.present ? '' : ' (missing)'}`)), sel)))
           : h('p', { class: 'muted small' }, 'It uses no media files.'),
-        h('div', { class: 'row' }, button('Make the new project', () => done(Object.fromEntries(sels.filter(([, sel]) => sel.value).map(([s, sel]) => [s.id, sel.value]))), { iconName: 'check', variant: 'primary' }), button('Cancel', () => done(null), { variant: 'ghost' })),
+        h('div', { class: 'row' }, button('Make the new project', () => done(Object.fromEntries(sels.filter(([, sel]) => sel.value).map(([s, sel]) => [s.id, sel.value]))), { iconName: 'check', variant: 'primary' }), button('Cancel', () => requestClose(), { variant: 'ghost' })),
       ),
     );
+    const requestClose = guardDialog(dlg, () => done(null));
     document.body.append(dlg);
     dlg.showModal();
   });

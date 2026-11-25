@@ -7,6 +7,7 @@ import { timelineToSong, hasSongParts } from './core.js';
 import { fmtTime } from './manager/releases.js';
 import { timeField, timeFormatSwitch, showTime } from './timefield.js';
 import { PART_KINDS, DEFAULT_FADE, partSections, describePart, linesInParts, applySongPart, defaultPicture, usableChoice, defaultTemplatePart } from './songpart.js';
+import { guardDialog } from './closeable.js';
 
 const KEY = 'pvm.songpart.v1';
 export function rememberedPart(songId) {
@@ -100,10 +101,10 @@ export function openSongPart(env) {
     dlg.close();
     dlg.remove();
   };
-  dlg.addEventListener('cancel', (e) => (e.preventDefault(), close()));
-  dlg.addEventListener('click', (e) => e.target === dlg && close());
   const body = h('div', { class: 'songpart-body' });
-  dlg.append(h('div', { class: 'songpart-head' }, h('h2', {}, `Which part of “${song.title}”?`), iconButton('x', 'Close', close, 'ghost')), body);
+  dlg.append(h('div', { class: 'songpart-head' }, h('h2', {}, `Which part of “${song.title}”?`), iconButton('x', 'Close', () => requestClose(), 'ghost')), body);
+  // Esc, the x and a backdrop tap close it; a typed start or end time that isn't applied yet asks first
+  const requestClose = guardDialog(dlg, close);
   document.body.append(dlg);
   dlg.showModal();
 

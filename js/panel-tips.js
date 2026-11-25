@@ -1,7 +1,7 @@
 // Pop-up editing tips: small cards at the bottom right of the preview, shown as you add layers,
 // clips, the song or lyrics. Each has a one-click fix (undo works), "Got it", and "Don't show this
 // again". Tips can be turned off in the Look tab.
-import { h, icon, button, setFold } from './dom.js';
+import { h, icon, button, iconButton, setFold } from './dom.js';
 import { media } from './media.js';
 import { tipsFor, clearLyricY } from './tips.js';
 import { applyLayout } from './templates.js';
@@ -69,6 +69,7 @@ export function createTips({ store, ui, host, postcheck }) {
     card.addEventListener('pointerleave', arm);
     card.addEventListener('focusin', () => clearTimeout(timer));
     card.append(
+      iconButton('x', 'Close this tip', close, 'ghost tip-x'),
       h('div', { class: 'tip-text' }, icon('sparkle', 16), h('span', {}, tip.text)),
       h(
         'div',

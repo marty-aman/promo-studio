@@ -131,7 +131,7 @@ export function iconButton(iconName, title, onClick, variant = '') {
 
 /**
  * Messages stack in #toast (up to 3, newest last). A second message no longer replaces the first. An error is
- * announced as an alert, has a close button and stays until closed (or 30 s, so a forgotten one doesn't linger).
+ * announced as an alert and stays until closed (or 30 s, so a forgotten one doesn't linger). Every message has a close button.
  * #toast itself carries `show` and the newest message's kind while anything is on screen.
  */
 export const MAX_TOASTS = 3;
@@ -152,7 +152,7 @@ export function toast(msg, kind = 'info', ms = 3200) {
   const item = h('div', { class: `toast-item ${kind}`, dataset: { kind }, role: isErr ? 'alert' : null });
   item.append(h('span', { class: 'toast-msg' }, String(msg)));
   const close = () => (clearTimeout(item._t), item.remove(), sync());
-  if (isErr) item.append(h('button', { type: 'button', class: 'toast-x', 'aria-label': 'Close this message', title: 'Close', onclick: close }));
+  item.append(h('button', { type: 'button', class: 'toast-x', 'aria-label': 'Close this message', title: 'Close', onclick: close }));
   item._t = setTimeout(close, isErr ? Math.max(ms, ERROR_MS) : ms);
   el.append(item);
   while (el.children.length > MAX_TOASTS) el.firstElementChild.remove();

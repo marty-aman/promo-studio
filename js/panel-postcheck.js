@@ -2,7 +2,8 @@
 // what will help or hurt, each with a one-click fix (undo works) or a jump to where you fix it.
 import { findHook } from './core.js';
 import { media } from './media.js';
-import { h, icon, button, toast, setFold } from './dom.js';
+import { h, icon, button, iconButton, toast, setFold } from './dom.js';
+import { escLayer } from './closeable.js';
 import { postCheck } from './postcheck.js';
 import { applyPlaybook, PLAYBOOK_ACTIONS } from './inspiration.js';
 import { applyLayout } from './templates.js';
@@ -44,7 +45,9 @@ export function createPostCheck({ store, engine, ui }) {
     }
   };
 
+  const layer = escLayer(() => open, () => setOpen(false));
   function setOpen(v) {
+    if (v && !open) layer.opened();
     open = v;
     pop.hidden = !v;
     pill.setAttribute('aria-expanded', v ? 'true' : 'false');
@@ -52,7 +55,7 @@ export function createPostCheck({ store, engine, ui }) {
   }
   pill.addEventListener('click', () => setOpen(!open));
   document.addEventListener('pointerdown', (e) => open && !el.contains(e.target) && setOpen(false));
-  document.addEventListener('keydown', (e) => open && e.key === 'Escape' && setOpen(false));
+  // Esc closes it (closeable.js) and focus goes back to the pill
 
   function render(force = false) {
     const r = postCheck(store.get());
@@ -72,7 +75,7 @@ export function createPostCheck({ store, engine, ui }) {
       ),
     );
     pop.replaceChildren(
-      h('div', { class: 'pc-head' }, h('div', { class: `pc-big ${r.verdict}` }, String(r.score)), h('div', {}, h('strong', {}, r.label), h('p', { class: 'muted tiny' }, 'Checked against the posting playbook (Start → Inspiration). A guide, not a promise: the song and the footage matter most.'))),
+      h('div', { class: 'pc-head' }, h('div', { class: `pc-big ${r.verdict}` }, String(r.score)), h('div', {}, h('strong', {}, r.label), h('p', { class: 'muted tiny' }, 'Checked against the posting playbook (Start → Inspiration). A guide, not a promise: the song and the footage matter most.')), iconButton('x', 'Close the post check', () => (layer.close(false), pill.focus()), 'ghost pc-x')),
       h('ul', { class: 'pc-list' }, items),
     );
     return r;

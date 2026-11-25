@@ -1,6 +1,6 @@
 // The Manager workspace: its own left nav and pages, on its own store (with undo), saved in this
 // browser and backed up to a file. The video studio stays as it was; "Make a promo" hands a song over.
-import { h, icon, button, toast, download, pickFiles, onDateCommit } from '../dom.js';
+import { h, icon, button, iconButton, toast, download, pickFiles, onDateCommit } from '../dom.js';
 import { createStore } from '../state.js';
 import { openDriveSetup } from '../gdrive.js';
 import { todayISO } from './model.js';
@@ -20,6 +20,7 @@ import { buildTours } from './page-tours.js';
 import { buildStats } from './page-stats.js';
 import { buildReleases } from './page-releases.js';
 import { buildFans } from './page-fans.js';
+import { paneX } from '../panes-ui.js';
 
 const VIEW_KEY = 'pvm.manager.view.v1';
 // when the last backup file was made and when you first changed anything: { lastBackupAt, firstEditAt } (ms)
@@ -156,13 +157,13 @@ export function createManager({ root, studio }) {
   };
   const fansNote = h('span', { class: 'muted tiny mgr-saved mgr-fans-note', hidden: true });
   // a save that fails (storage full, or blocked) stays on screen until a save works again
-  const saveError = h('div', { class: 'mgr-save-err', role: 'alert', hidden: true }, h('strong', {}, 'Your last change could not be saved in this browser.'), h('span', {}, 'The storage may be full. Download a backup now so nothing is lost, then free some space (Photos and Files hold the most).'), button('Back up now', () => backUp(), { iconName: 'download', variant: 'sm primary' }));
+  const saveError = h('div', { class: 'mgr-save-err', role: 'alert', hidden: true }, h('strong', {}, 'Your last change could not be saved in this browser.'), h('span', {}, 'The storage may be full. Download a backup now so nothing is lost, then free some space (Photos and Files hold the most).'), button('Back up now', () => backUp(), { iconName: 'download', variant: 'sm primary' }), iconButton('x', 'Close this warning', () => (saveError.hidden = true), 'ghost banner-x'));
   // a bar with one button that puts something back (a restore, a deleted artist), for 15 seconds
   const undoBar = h('div', { class: 'mgr-undo', role: 'status', hidden: true });
   let undoTimer = null;
   const offerUndo = (msg, label, fn) => {
     clearTimeout(undoTimer);
-    undoBar.replaceChildren(h('span', {}, msg), button(label, () => ((undoBar.hidden = true), fn()), { variant: 'sm primary' }), button('Dismiss', () => (undoBar.hidden = true), { variant: 'sm ghost' }));
+    undoBar.replaceChildren(h('span', {}, msg), button(label, () => ((undoBar.hidden = true), fn()), { variant: 'sm primary' }), button('Dismiss', () => (undoBar.hidden = true), { variant: 'sm ghost' }), iconButton('x', 'Close', () => (undoBar.hidden = true), 'ghost banner-x'));
     undoBar.hidden = false;
     undoTimer = setTimeout(() => (undoBar.hidden = true), 15000);
   };
@@ -241,7 +242,7 @@ export function createManager({ root, studio }) {
     const ph = a.photoId && studio.mediaInfo ? studio.mediaInfo(a.photoId) : null;
     return ph ? h('span', { class: `mgr-artist-dot photo ${cls}`, 'aria-hidden': 'true' }, h('img', { src: ph.url, alt: '', style: photoStyle(a.photoPos) })) : h('span', { class: `mgr-artist-dot ${cls}`, 'aria-hidden': 'true' }, (a.name[0] || '?').toUpperCase());
   };
-  root.replaceChildren(h('div', { class: 'mgr-side' }, h('div', {}, switcher, nav), tools), main, saveError, undoBar);
+  root.replaceChildren(h('div', { class: 'mgr-side' }, paneX('manager', 'nav'), h('div', {}, switcher, nav), tools), main, saveError, undoBar);
   renderBackupNote();
 
   // ---- artists

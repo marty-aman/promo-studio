@@ -9,6 +9,7 @@
 // use relinkNotice() and relinkButton().
 import { h, icon, button, toast } from './dom.js';
 import { referencedIds, missingItems, pickMatches, namesWithCounts, REASONS } from './mediamatch.js';
+import { guardDialog } from './closeable.js';
 
 const env = { ready: false, has: () => true, names: () => ({}), restore: async () => {}, kindOfFile: () => null, sources: {}, after: () => {} };
 
@@ -158,8 +159,8 @@ export function openRelink(scope, roots = null) {
     refreshRelink();
     env.after();
   };
-  dlg.addEventListener('cancel', (e) => (e.preventDefault(), close()));
-  dlg.append(h('div', { class: 'relink-head' }, h('h2', {}, icon('upload', 18), ' Replace missing files'), button('', close, { iconName: 'x', variant: 'ghost', title: 'Close' })), body);
+  dlg.append(h('div', { class: 'relink-head' }, h('h2', {}, icon('upload', 18), ' Replace missing files'), button('', () => requestClose(), { iconName: 'x', variant: 'ghost', title: 'Close' })), body);
+  const requestClose = guardDialog(dlg, close);
   document.body.append(dlg);
   dlg.showModal();
 
