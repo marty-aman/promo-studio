@@ -9,6 +9,7 @@ import { gridOf } from './tempo.js';
 import { peakOf } from './studioedit.js';
 import { matteFor, preparePerson, onMatteChange } from './bgremove.js';
 import { fastSupport, fastExport } from './fastexport.js';
+import { holdForExport } from './desktop.js';
 import { audioPlan } from './exportplan.js';
 
 export class Engine {
@@ -583,6 +584,19 @@ function silentMime(mime) {
  * Resolves { blob, mime, fast, seconds }.
  */
 export async function exportVideo(engine, opts = {}) {
+  // Mac app: no App Nap while it works; a real-time export also keeps its timers running when hidden
+  let release = await holdForExport(false);
+  try {
+    return await exportWith(engine, opts, async () => {
+      release();
+      release = await holdForExport(true);
+    });
+  } finally {
+    release();
+  }
+}
+
+async function exportWith(engine, opts, beforeRealtime) {
   const mode = opts.mode || engine.exportMode || 'fast';
   if (mode === 'fast') {
     const { format = 'mp4', fps = 30, bitrate = 10_000_000, audio = true } = opts;
@@ -602,6 +616,7 @@ export async function exportVideo(engine, opts = {}) {
     }
     opts.onFallback && opts.onFallback(reason);
   }
+  await beforeRealtime();
   const t0 = performance.now();
   const res = await recordVideo(engine, opts);
   return { ...res, fast: false, seconds: (performance.now() - t0) / 1000 };

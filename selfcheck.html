@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Promo Studio · Mac self-check</title>
+    <link rel="stylesheet" href="css/selfcheck.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Mac self-check</h1>
+      <p class="muted">Checks what this Mac can do for Promo Studio: video and sound encoders, the graphics chip, the AI setup and a 10 second export test. It takes about half a minute and nothing leaves this Mac.</p>
+      <p><button type="button" id="run">Run the check</button> <button type="button" id="copy" disabled>Copy the results</button></p>
+      <p id="status" role="status" class="muted"></p>
+      <table id="out" hidden>
+        <thead><tr><th scope="col">Check</th><th scope="col">Result</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </main>
+    <script type="module" src="js/selfcheck.js"></script>
+  </body>
+</html>

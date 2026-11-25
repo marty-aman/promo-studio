@@ -50,6 +50,7 @@ import { createTimeReadout } from './timereadout.js';
 import { findSong, titleFromFile, fetchLyrics } from './lyricsfetch.js';
 import { findCover } from './manager/covers.js';
 import { configureTodoAuto } from './manager/todoauto.js';
+import { installDesktopPage, isDesktop, desktop } from './desktop.js';
 import { songLyricsPlan, lyricsFromTiming, timingFromLyrics, autoSaveDecision, setSongTiming, keepTiming, retimeLines, timingStale, timingSourceOf, markTimed } from './manager/lyrictiming.js';
 
 const store = createStore(loadProject() || newProject());
@@ -1518,6 +1519,8 @@ const MEDIA_ID = /m_[0-9a-z]{6,}/g;
 let storageOpenNext = false;
 const storageDeps = {
   recs: () => media.all(),
+  /** Mac app: { disk: { free, total }, linked: { count, bytes } } from the main process; null in a browser. */
+  desktopInfo: isDesktop ? () => desktop.info() : null,
   /** Every id something saved points at: the edit, every artist, the designs, the projects and their versions, and any other saved setting. */
   async used() {
     const versions = await projectStore.allVersions().catch(() => []);
@@ -2294,6 +2297,7 @@ async function boot() {
   document.body.classList.add('ready');
   performance.mark('pvm-ready');
 }
+installDesktopPage(); // Mac app only: in-app viewer for blob: links, the `desktop` class
 mobile = initMobile({ header, modeSwitch, nowOn, keep: [undoBtn, redoBtn, exportBtn], tabRail, pageEl, transport, tlToolbar, engine, store, ui, panels, getMode: () => mode, stage });
 boot();
 

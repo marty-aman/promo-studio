@@ -30,6 +30,7 @@ export function lightOf(rec, analysis = null) {
     noAudio: !!rec.noAudio,
     analysis,
     at: rec.addedAt || Date.now(),
+    ...(rec.linked ? { linked: true } : {}), // Mac app: the file is read where it is (no blob in IndexedDB)
   };
 }
 
@@ -65,6 +66,7 @@ export function recordFromLight(meta) {
     ready: true,
     loaded: false,
     lastUse: 0,
+    ...(meta.linked ? { linked: true } : {}),
   };
   const a = meta.analysis;
   if (a && a.peaks && a.envelope) {
@@ -83,7 +85,7 @@ export function recordFromLight(meta) {
 export function pickRelease(recs, { keep = new Set(), before = Infinity } = {}) {
   const out = [];
   for (const r of recs) {
-    if (!r || !r.loaded || !isLazyKind(r.kind) || !r.blob) continue;
+    if (!r || !r.loaded || !isLazyKind(r.kind) || (!r.blob && !r.linked)) continue; // a linked file (Mac app) holds its element only
     if (keep.has(r.id) || r.holds > 0) continue;
     if ((r.lastUse || 0) >= before) continue;
     out.push(r.id);

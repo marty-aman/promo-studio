@@ -6,3 +6,5 @@ node_modules/
 *.webm
 *.png
 !docs/*.png
+dist-desktop/
+!test/fixtures/*.mp4

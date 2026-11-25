@@ -1,0 +1,15 @@
+/* The Mac self-check page (selfcheck.html), opened from the app menu. */
+:root { color-scheme: dark; }
+body { margin: 0; background: #0d0d12; color: #eee; font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+main { max-width: 820px; margin: 0 auto; padding: 24px; }
+h1 { margin: 0 0 8px; font-size: 24px; }
+.muted { color: #9a9aa6; }
+button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid #444; background: #1d1d26; color: #eee; cursor: pointer; }
+button:not(:disabled):hover { border-color: #ffd400; }
+button:disabled { opacity: 0.5; cursor: default; }
+#run { background: #ffd400; color: #111; border-color: #ffd400; }
+table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid #2a2a35; }
+td:first-child { width: 38%; color: #c8c8d0; }
+.yes { color: #6ddc8b; }
+.no { color: #ff8a8a; }
