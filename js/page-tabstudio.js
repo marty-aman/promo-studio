@@ -3,7 +3,7 @@
 // layers can use it.
 import { h, icon, button, toast, field, pickFiles } from './dom.js';
 import { media, addMedia } from './media.js';
-import { uid } from './core.js';
+import { uid, NEW_CHART_OFFSET } from './core.js';
 import { defaultTabLayer, drumSoundName } from './tab.js';
 import { drumHitsFromAudio } from './drums.js';
 import { TAB_ACCEPT, makeLayer } from './panel-layers.js';
@@ -1004,7 +1004,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
     const offset = S.model.offset != null ? S.model.offset : null;
     store.update((d) => {
       d.layers ||= [];
-      const ofs = offset != null ? offset : d.song ? d.song.offset : 0;
+      const ofs = offset != null ? offset : NEW_CHART_OFFSET;
       tabTracks.forEach((tr, i) => {
         const existing = d.layers.find((l) => l.type === 'tab' && l.mediaId === S.sourceId && l.track === tr.index);
         const L = existing || d.layers.find((l) => l.type === 'tab' && !l.mediaId);
@@ -1030,7 +1030,7 @@ export function buildTabStudio({ store, engine, ui, panels }) {
       const rec = await addMedia(file, file.name);
       store.update((d) => {
         d.layers ||= [];
-        const L = { ...makeLayer(d, 'midi'), name: S.model.title || 'MIDI notes', visible: true, mediaId: rec.id, tracks: [], offset: S.model.offset != null ? S.model.offset : d.song ? d.song.offset : 0 };
+        const L = { ...makeLayer(d, 'midi'), name: S.model.title || 'MIDI notes', visible: true, mediaId: rec.id, tracks: [], offset: S.model.offset != null ? S.model.offset : NEW_CHART_OFFSET };
         d.layers.push(L);
       });
       toast(`Saved “${file.name}” to your media and added a MIDI notes layer to the Video Studio edit. The rhythm game can use the file too.`, 'info', 6000);

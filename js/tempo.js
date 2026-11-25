@@ -69,9 +69,12 @@ export function gridFromBpm(bpm, first, length, source = 'set') {
 /** Where the first beat of a grid is: the origin you set, else the first detected beat, else 0. */
 export const gridFirst = (g) => (g && Number.isFinite(g.first) ? g.first : g && g.beats && g.beats.length ? g.beats[0] : 0);
 
-/** How far the grid has to reach: the song's length (when known) or the edit's length plus where the song starts. */
+/** How far the grid has to reach: the song's length (when known) or the latest song moment the edit plays (where the
+ * song starts plus the edit's length, or the end of its last-in-the-song part when it plays several) plus 5 s. */
 export function gridLength(project, songSeconds = 0) {
-  const need = (project.duration || 0) + ((project.song && project.song.offset) || 0) + 5;
+  const s = project.song;
+  const parts = s && Array.isArray(s.parts) ? s.parts : [];
+  const need = Math.max((project.duration || 0) + ((s && s.offset) || 0), ...parts.map((q) => +q.to || 0)) + 5;
   return Math.max(songSeconds || 0, need);
 }
 

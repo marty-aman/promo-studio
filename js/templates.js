@@ -1,5 +1,5 @@
 // Platform layouts (move everything into an app's clear area) and ready-made song templates.
-import { uid, timelineToSong } from './core.js';
+import { uid, NEW_CHART_OFFSET } from './core.js';
 import { defaultLyricStyle } from './state.js';
 import { GRADE_PRESETS } from './renderer.js';
 import { defaultTabLayer, isBassTrack } from './tab.js';
@@ -79,8 +79,6 @@ export function tabSources(all) {
 
 // ---- layers for band templates
 
-const songStart = (d) => +timelineToSong(0, d.song).toFixed(3);
-
 /**
  * Reuse a guitar (or bass) tab layer, or add one from the first Guitar Pro file with a matching track.
  * With no matching file it adds an empty layer so the Guitar Pro tab asks for one.
@@ -97,11 +95,11 @@ function ensureTab(d, sources, used, { bass }) {
     for (const src of sources) {
       const tr = src.tracks.find((x) => isBassTrack(x) === bass);
       if (tr) {
-        L = { ...defaultTabLayer(), id: uid('lyr'), type: 'tab', name: bass ? 'Bass tab' : 'Guitar tab', visible: true, mediaId: src.id, track: tr.index, offset: songStart(d) };
+        L = { ...defaultTabLayer(), id: uid('lyr'), type: 'tab', name: bass ? 'Bass tab' : 'Guitar tab', visible: true, mediaId: src.id, track: tr.index, offset: NEW_CHART_OFFSET };
         break;
       }
     }
-    if (!L) L = { ...defaultTabLayer(), id: uid('lyr'), type: 'tab', name: bass ? 'Bass tab' : 'Guitar tab', visible: true, offset: songStart(d) };
+    if (!L) L = { ...defaultTabLayer(), id: uid('lyr'), type: 'tab', name: bass ? 'Bass tab' : 'Guitar tab', visible: true, offset: NEW_CHART_OFFSET };
     d.layers.push(L);
   }
   L.visible = true;
@@ -115,7 +113,7 @@ function ensureDrums(d, sources) {
   if (!L) {
     const src = sources.find((s) => s.drumTracks.length);
     if (!src) return null;
-    L = { ...defaultDrumLayer(), id: uid('lyr'), type: 'drums', name: 'Drum chart', visible: true, source: 'gp', mediaId: src.id, track: src.drumTracks[0].index, offset: songStart(d) };
+    L = { ...defaultDrumLayer(), id: uid('lyr'), type: 'drums', name: 'Drum chart', visible: true, source: 'gp', mediaId: src.id, track: src.drumTracks[0].index, offset: NEW_CHART_OFFSET };
     d.layers.push(L);
   }
   L.visible = true;

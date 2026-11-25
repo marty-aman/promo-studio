@@ -16,6 +16,7 @@ import {
   beatCutPlan,
   songToTimeline,
   timelineToSong,
+  NEW_CHART_OFFSET,
   songOffsetAt,
   hasSongParts,
   clipAt,
@@ -237,7 +238,7 @@ export function createPanels({ store, engine, ui }) {
     useTab(rec, into = {}) {
       let selectId = null;
       store.update((d) => {
-        const off = +timelineToSong(0, d.song).toFixed(3);
+        const off = NEW_CHART_OFFSET;
         const target = into.tabLayer || into.drumLayer ? d.layers.find((l) => l.id === (into.tabLayer || into.drumLayer)) : null;
         if (target && target.type === 'tab' && rec.tracks.length) {
           Object.assign(target, { mediaId: rec.id, track: rec.tracks[0].index, offset: target.mediaId ? target.offset : off });
@@ -270,7 +271,7 @@ export function createPanels({ store, engine, ui }) {
       let selectId = null;
       const made = [];
       store.update((d) => {
-        const off = +timelineToSong(0, d.song).toFixed(3);
+        const off = NEW_CHART_OFFSET;
         const target = into.drumLayer || into.midiLayer ? d.layers.find((l) => l.id === (into.drumLayer || into.midiLayer)) : null;
         if (target && target.type === 'drums') {
           Object.assign(target, { source: 'midi', mediaId: rec.id, ...midiDrumDefaults(m), offset: target.mediaId ? target.offset : off });
