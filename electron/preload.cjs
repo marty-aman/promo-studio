@@ -51,8 +51,27 @@ contextBridge.exposeInMainWorld('desktop', {
     pick: (opts) => call('media:pick', opts || {}),
   },
   files: {
-    /** Step 2: write an export straight to a file the person picks. Not available yet (rejects). */
-    saveStream: (opts) => call('files:saveStream', opts || {}),
+    /**
+     * Step 2: write an export straight to a file. Opens the native save dialog (opts: { name, ext: 'mp4' }); resolves
+     * null if the person cancels, else { name, path, write(position, bytes), finish(), abort() }. Pieces go in
+     * order; finish() resolves { path, name, bytes, reveal() }; abort() deletes the partial file.
+     */
+    saveStream: async (opts) => {
+      const o = opts && typeof opts === 'object' ? opts : {};
+      const r = await call('files:saveStream', { name: String(o.name || ''), ext: String(o.ext || 'mp4') });
+      if (!r) return null;
+      const { id } = r;
+      return Object.freeze({
+        name: r.name,
+        path: r.path,
+        write: (position, bytes) => (bytes instanceof Uint8Array && Number.isSafeInteger(position) ? call('files:write', id, position, bytes) : Promise.reject(new Error('Not a piece of file'))),
+        finish: async () => {
+          const f = await call('files:finish', id);
+          return Object.freeze({ ...f, reveal: () => call('files:reveal', f.path) });
+        },
+        abort: () => call('files:abort', id).catch(() => true),
+      });
+    },
   },
   shell: {
     /** Open a web page (http, https), a mailto: or a tel: link in the default app. */

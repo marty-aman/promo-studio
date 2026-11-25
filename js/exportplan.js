@@ -100,7 +100,12 @@ export function audioPlan(p, from, to) {
 }
 
 /** Video codecs to try for a format, best first (H.264 level 4.0 fits 1080p at 30 fps, 4.2 at 60). */
-export function videoCodecs(format, fps) {
+export function videoCodecs(format, fps, codec = 'h264') {
+  if (format === 'mp4' && codec === 'hevc') {
+    // HEVC main profile, level 4.0 (1080p at 30 fps) or 4.1 (60 fps); hvc1 first (what QuickTime and Instagram read), then hev1
+    const lv = fps > 30 ? 'L123' : 'L120';
+    return ['hvc1', 'hev1'].map((tag) => ({ codec: `${tag}.1.6.${lv}.B0`, mux: 'hevc' }));
+  }
   if (format === 'mp4') {
     const lv = fps > 30 ? '2a' : '28';
     return ['avc1.6400', 'avc1.4d00', 'avc1.42e0'].map((c) => ({ codec: c + lv, mux: 'avc' }));
@@ -116,6 +121,9 @@ export function videoCodecs(format, fps) {
 
 /** Audio codecs for a format: AAC in MP4 (what Instagram and TikTok expect), Opus in WebM. */
 export const audioCodecs = (format) => (format === 'mp4' ? [{ codec: 'mp4a.40.2', mux: 'aac' }] : [{ codec: 'opus', mux: 'A_OPUS' }]);
+
+/** A short name for the codec an export used, from its WebCodecs codec string. */
+export const codecLabel = (codec) => (/^(hvc1|hev1)/.test(codec) ? 'HEVC (H.265)' : /^avc/.test(codec) ? 'H.264' : /^vp09/.test(codec) ? 'VP9' : /^vp8/.test(codec) ? 'VP8' : String(codec));
 
 /** Seconds of export per second of video: how long it took over how long the video is. */
 export const speedRatio = (seconds, videoSeconds) => (videoSeconds > 0 ? +(seconds / videoSeconds).toFixed(3) : 0);

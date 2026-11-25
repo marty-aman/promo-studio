@@ -9,7 +9,7 @@ import { gridOf } from './tempo.js';
 import { peakOf } from './studioedit.js';
 import { matteFor, preparePerson, onMatteChange } from './bgremove.js';
 import { fastSupport, fastExport } from './fastexport.js';
-import { holdForExport } from './desktop.js';
+import { holdForExport, desktop } from './desktop.js';
 import { audioPlan } from './exportplan.js';
 
 export class Engine {
@@ -601,14 +601,25 @@ async function exportWith(engine, opts, beforeRealtime) {
   if (mode === 'fast') {
     const { format = 'mp4', fps = 30, bitrate = 10_000_000, audio = true } = opts;
     const { w, h } = engine.dims();
-    const support = await fastSupport(format, { w, h, fps, bitrate, audio });
+    // Mac app only: `saveAs` (a file name) streams a fast MP4 export straight to a file the person picks, and
+    // `codec: 'hevc'` asks for HEVC. Without them (the web version, section and batch exports) nothing changes.
+    const stream = !!(opts.saveAs && desktop && desktop.files && format === 'mp4');
+    const wantHevc = stream && opts.codec === 'hevc';
+    let support = await fastSupport(format, { w, h, fps, bitrate, audio, codec: wantHevc ? 'hevc' : 'h264' });
+    if (wantHevc && !support.ok) support = await fastSupport(format, { w, h, fps, bitrate, audio }); // no HEVC here: H.264
     // some sounds can only be matched by playing them (e.g. a sped-up clip keeps its pitch in the preview)
     const mixNote = audio ? audioPlan(engine.project, 0, engine.project.duration).realtime : '';
     let reason = support.ok ? mixNote : support.reason;
     if (support.ok && !mixNote) {
+      let sink = null;
+      if (stream) {
+        sink = await desktop.files.saveStream({ name: opts.saveAs, ext: 'mp4' }); // the native save dialog
+        if (!sink) throw new Error('cancelled');
+      }
       try {
-        return await runFast(engine, opts, support);
+        return await runFast(engine, { ...opts, sink }, support);
       } catch (e) {
+        if (sink) await sink.abort().catch(() => {}); // the partial file goes
         if (e && e.message === 'cancelled') throw e;
         reason = `the fast export stopped (${(e && e.message) || e})`;
         console.warn('Fast export failed, recording in real time instead', e);
@@ -622,7 +633,7 @@ async function exportWith(engine, opts, beforeRealtime) {
   return { ...res, fast: false, seconds: (performance.now() - t0) / 1000 };
 }
 
-async function runFast(engine, { format = 'mp4', fps = 30, bitrate = 10_000_000, onProgress, onPhase, start = 0, end = null, audio = true }, support) {
+async function runFast(engine, { format = 'mp4', fps = 30, bitrate = 10_000_000, onProgress, onPhase, start = 0, end = null, audio = true, sink = null }, support) {
   engine.pause();
   const dur = engine.project.duration;
   const from = Math.max(0, +start || 0);
@@ -640,7 +651,7 @@ async function runFast(engine, { format = 'mp4', fps = 30, bitrate = 10_000_000,
   const held = new Promise((r) => (unlock = r));
   if (navigator.locks) navigator.locks.request('promo-studio-export', () => held).catch(() => {});
   try {
-    const res = await fastExport(engine, { format, fps, bitrate, audio, from, to, support, onProgress, onPhase, isCancelled: () => cancelled });
+    const res = await fastExport(engine, { format, fps, bitrate, audio, from, to, support, onProgress, onPhase, isCancelled: () => cancelled, sink });
     return { ...res, fast: true };
   } finally {
     unlock();

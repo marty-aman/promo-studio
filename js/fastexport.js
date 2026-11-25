@@ -6,9 +6,11 @@ import { renderFrame } from './renderer.js';
 import { media, clipElement } from './media.js';
 import { layoutClips } from './core.js';
 import { openFrames, clearTracks } from './framesource.js';
+import { createSinkWriter } from './streamsink.js';
 
 const SR = 48000;
 
+const isHevc = (codec) => codec.startsWith('hvc1') || codec.startsWith('hev1');
 const videoConfig = (codec, w, h, fps, bitrate) => ({
   codec,
   width: w,
@@ -16,23 +18,25 @@ const videoConfig = (codec, w, h, fps, bitrate) => ({
   bitrate,
   framerate: fps,
   // software VP8/VP9 in "quality" mode takes about a second a frame at 1080p; "realtime" keeps up
-  latencyMode: codec.startsWith('avc') ? 'quality' : 'realtime',
+  // hardwareAcceleration is left at its default: Chromium then uses the Mac's hardware encoder (VideoToolbox) for H.264 and HEVC when it has one
+  latencyMode: codec.startsWith('avc') || isHevc(codec) ? 'quality' : 'realtime',
   ...(codec.startsWith('avc') ? { avc: { format: 'avc' } } : {}),
+  ...(isHevc(codec) ? { hevc: { format: 'hevc' } } : {}),
 });
 const audioConfig = (codec) => ({ codec, sampleRate: SR, numberOfChannels: 2, bitrate: 192000 });
 
 const supportCache = new Map();
-/** Can this browser export `format` fast? { ok, video, audio, reason } (cached per format, size and rate). */
-export function fastSupport(format, { w, h, fps = 30, bitrate = 10e6, audio = true } = {}) {
-  const key = [format, w, h, fps, bitrate, audio].join('|');
-  if (!supportCache.has(key)) supportCache.set(key, probe(format, w, h, fps, bitrate, audio));
+/** Can this browser export `format` fast? { ok, video, audio, reason } (cached per format, size, rate and codec). `codec` 'hevc' asks for HEVC in an MP4. */
+export function fastSupport(format, { w, h, fps = 30, bitrate = 10e6, audio = true, codec = 'h264' } = {}) {
+  const key = [format, w, h, fps, bitrate, audio, codec].join('|');
+  if (!supportCache.has(key)) supportCache.set(key, probe(format, w, h, fps, bitrate, audio, codec));
   return supportCache.get(key);
 }
-async function probe(format, w, h, fps, bitrate, audio) {
+async function probe(format, w, h, fps, bitrate, audio, want = 'h264') {
   if (!window.VideoEncoder || !window.VideoFrame) return { ok: false, reason: 'this browser has no WebCodecs video encoder' };
   if (audio && (!window.AudioEncoder || !window.AudioData || !window.OfflineAudioContext)) return { ok: false, reason: 'this browser has no WebCodecs sound encoder' };
   let video = null;
-  for (const c of videoCodecs(format, fps)) {
+  for (const c of videoCodecs(format, fps, want)) {
     const cfg = videoConfig(c.codec, w, h, fps, bitrate);
     try {
       if ((await VideoEncoder.isConfigSupported(cfg)).supported) {
@@ -43,7 +47,7 @@ async function probe(format, w, h, fps, bitrate, audio) {
       /* not this one */
     }
   }
-  if (!video) return { ok: false, reason: format === 'mp4' ? 'this browser cannot encode H.264 for MP4 itself' : 'this browser cannot encode VP9 or VP8 itself' };
+  if (!video) return { ok: false, reason: want === 'hevc' ? 'this computer cannot encode HEVC' : format === 'mp4' ? 'this browser cannot encode H.264 for MP4 itself' : 'this browser cannot encode VP9 or VP8 itself' };
   let sound = null;
   if (audio) {
     for (const c of audioCodecs(format)) {
@@ -185,12 +189,14 @@ async function encodeAudio(buf, cfg, isCancelled) {
   return out;
 }
 
-async function makeMuxer(format, video, sound, w, h, fps) {
+async function makeMuxer(format, video, sound, w, h, fps, writer = null) {
   if (format === 'mp4') {
-    const { Muxer, ArrayBufferTarget } = await import('../vendor/mp4-muxer/mp4-muxer.mjs');
-    const target = new ArrayBufferTarget();
+    const { Muxer, ArrayBufferTarget, StreamTarget } = await import('../vendor/mp4-muxer/mp4-muxer.mjs');
     const audio = sound ? { codec: sound.mux, numberOfChannels: 2, sampleRate: SR } : undefined;
-    return { target, muxer: new Muxer({ target, video: { codec: 'avc', width: w, height: h, frameRate: fps }, audio, fastStart: 'in-memory', firstTimestampBehavior: 'cross-track-offset' }) };
+    // to disk: the pieces go out as they are made (8 MB at a time); the index (moov) follows the media data, and the
+    // muxer goes back once to fill in the media data's size. In memory: the index goes first, as before.
+    const target = writer ? new StreamTarget({ onData: (data, position) => writer.onData(data, position), chunked: true, chunkSize: 8 * 1024 * 1024 }) : new ArrayBufferTarget();
+    return { target, muxer: new Muxer({ target, video: { codec: video.mux === 'hevc' ? 'hevc' : 'avc', width: w, height: h, frameRate: fps }, audio, fastStart: writer ? false : 'in-memory', firstTimestampBehavior: 'cross-track-offset' }) };
   }
   const { Muxer, ArrayBufferTarget } = await import('../vendor/webm-muxer/webm-muxer.mjs');
   const target = new ArrayBufferTarget();
@@ -203,7 +209,7 @@ async function makeMuxer(format, video, sound, w, h, fps) {
  * and `onProgress(0..1)` report where it is; `isCancelled()` stops it (rejects with 'cancelled').
  * Resolves { blob, mime, frames, seconds }.
  */
-export async function fastExport(engine, { format, fps, bitrate, audio, from, to, support, onProgress, onPhase, isCancelled }) {
+export async function fastExport(engine, { format, fps, bitrate, audio, from, to, support, onProgress, onPhase, isCancelled, sink = null }) {
   const t0 = performance.now();
   const p = engine.project;
   const { w, h } = engine.dims();
@@ -224,8 +230,10 @@ export async function fastExport(engine, { format, fps, bitrate, audio, from, to
 
   // 2. the pictures, one exact frame at a time
   onPhase && onPhase('video');
-  const { target, muxer } = await makeMuxer(format, support.video, audio ? support.audio : null, w, h, fps);
+  const writer = sink ? createSinkWriter(sink) : null;
+  const { target, muxer } = await makeMuxer(format, support.video, audio ? support.audio : null, w, h, fps, writer);
   let err = null;
+  let saved = null;
   let ai = 0;
   const enc = new VideoEncoder({
     output: (chunk, meta) => {
@@ -316,12 +324,22 @@ export async function fastExport(engine, { format, fps, bitrate, audio, from, to
       }
       onProgress && onProgress((i + 1) / N);
       await room(enc, 4);
+      if (writer) {
+        writer.check();
+        const wait = writer.room(); // the disk is behind: wait, so the queue stays a few pieces long
+        if (wait) await wait;
+        writer.check();
+      }
       await nextTask(); // lets clicks (Cancel) and the progress bar through
     }
     await enc.flush();
     if (err) throw err;
     while (ai < audioChunks.length) muxer.addAudioChunk(...audioChunks[ai++]);
     muxer.finalize();
+    if (writer) {
+      await writer.drain();
+      saved = await sink.finish();
+    }
   } finally {
     if (enc.state !== 'closed') enc.close();
     for (const src of decoded.values()) src.close();
@@ -332,5 +350,7 @@ export async function fastExport(engine, { format, fps, bitrate, audio, from, to
   }
   const codecs = [support.video.codec, audio && support.audio ? support.audio.codec : null].filter(Boolean).join(',');
   const type = format === 'mp4' ? 'video/mp4' : 'video/webm';
-  return { blob: new Blob([target.buffer], { type }), mime: `${type};codecs=${codecs}`, frames: N, seconds: (performance.now() - t0) / 1000, ...stats };
+  const done = { mime: `${type};codecs=${codecs}`, codec: support.video.codec, frames: N, seconds: (performance.now() - t0) / 1000, ...stats };
+  if (saved) return { ...done, blob: null, saved, streamed: { pieces: writer.pieces, bytes: writer.bytes, peakPending: writer.peakPending } };
+  return { ...done, blob: new Blob([target.buffer], { type }) };
 }

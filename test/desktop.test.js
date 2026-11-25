@@ -112,7 +112,7 @@ test('only web, mail and phone links open outside the app; app pages are app://p
   for (const u of ['file:///etc/passwd', 'javascript:alert(1)', 'blob:app://promo-studio/x', 'smb://host/share', 'https://user:pw@example.com', 'vscode://x', '', null]) assert.ok(!externalAllowed(u), String(u));
   assert.ok(fromApp(`${ORIGIN}/index.html`));
   assert.ok(!fromApp('app://other/index.html') && !fromApp('https://promo-studio/') && !fromApp('nonsense'));
-  assert.ok(CAPABILITIES.includes('media.link') && !CAPABILITIES.includes('files.saveStream'));
+  assert.ok(CAPABILITIES.includes('media.link') && CAPABILITIES.includes('files.saveStream'));
   assert.deepEqual(NATIVE_TOOLS, ['whisper']); // step 3 filled in native.run (electron/native.cjs)
 });
 
