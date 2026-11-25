@@ -6,7 +6,7 @@
 import { h, icon, button, toast } from './dom.js';
 import { media, ensureLayerAnalyses } from './media.js';
 import { exportVideo, pickMimeType } from './engine.js';
-import { applyBatchItem, zipStore } from './batch.js';
+import { applyBatchItem, mvClip, zipStore } from './batch.js';
 import { sectionSpans, sectionOnTimeline, fmtTime, sectionSlug } from './manager/releases.js';
 
 const state = { running: false, done: 0, total: 0, current: '', result: null, error: '', cancel: false, picked: null, how: 'cut', songId: '' };
@@ -37,7 +37,13 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
   const mvRef = song.files && song.files.video;
   const mv = mvRef && media.get(mvRef.mediaId);
   if (state.how === 'mv' && !mv) state.how = 'cut';
-  const inEdit = (s) => sectionOnTimeline(s, offset, p.duration);
+  const inEdit = (s) => sectionOnTimeline(s, p.song || offset, p.duration);
+  // the picture part of the edit (before its end card): a promo of a section that sits there is cut from there
+  const picEnd = p.endCard.enabled ? Math.max(0, p.duration - p.endCard.duration) : p.duration;
+  const inPicture = (s) => {
+    const r = sectionOnTimeline(s, p.song || offset, picEnd);
+    return r && r.to - r.from >= s.end - s.start - 0.05 ? r : null;
+  };
   const mp4 = pickMimeType('mp4');
   const fmt = mp4 && mp4.startsWith('video/mp4') ? 'mp4' : 'webm';
   const chosen = spans.filter((s) => state.picked.has(s.id) && (state.how !== 'cut' || inEdit(s)));
@@ -65,9 +71,23 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
         } else {
           const len = +(sec.end - sec.start).toFixed(2);
           const useMv = state.how === 'mv' && mv;
-          store.update((d) => applyBatchItem(d, { songOffset: sec.start, mvIn: useMv ? Math.max(0, sec.start + (mvRef.offset || 0)) : null }, { len, mvId: useMv ? mv.id : null, mvDuration: useMv ? mv.duration : 0 }), 'sections');
+          const r = inPicture(sec);
+          const mvIn = useMv && r ? +(sec.start + (mvRef.offset || 0) - r.from).toFixed(3) : 0;
+          let range = {};
+          if (r && mvIn >= 0) {
+            // the section's own place in the edit (clips, texts, layers, keyframes, items turned off there), then
+            // the end card straight after it: the same export range as a cut, with the edit ending at the section
+            store.update((d) => {
+              if (useMv) d.clips = [mvClip(mv.id, mvIn, Math.min(r.to, Math.max(0.5, mv.duration - mvIn)), d.song ? 0 : 1)];
+              d.duration = +(r.to + (d.endCard.enabled ? d.endCard.duration : 0)).toFixed(3);
+            }, 'sections');
+            range = { start: r.from, end: store.get().duration };
+          } else {
+            // a section this edit doesn't hold: a short of it from the start of the edit, as Batch export makes
+            store.update((d) => applyBatchItem(d, { songOffset: sec.start, mvIn: useMv ? Math.max(0, sec.start + (mvRef.offset || 0)) : null }, { len, mvId: useMv ? mv.id : null, mvDuration: useMv ? mv.duration : 0 }), 'sections');
+          }
           await ensureLayerAnalyses(store.get());
-          res = await exportVideo(engine, { format: fmt, fps: 30, bitrate: 10e6 });
+          res = await exportVideo(engine, { format: fmt, fps: 30, bitrate: 10e6, ...range });
           store.update((d) => {
             const back = JSON.parse(snap);
             for (const k of Object.keys(d)) delete d[k];

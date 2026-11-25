@@ -1,6 +1,7 @@
 // Releases (singles, EPs and albums), cover art, and the sections of a song (intro, verse,
 // chorus…) with their timestamps. Pure functions, unit tested.
 import { mid } from './model.js';
+import { songToTimeline } from '../core.js';
 
 export const RELEASE_TYPES = [['single', 'Single'], ['ep', 'EP'], ['album', 'Album'], ['deluxe', 'Deluxe / reissue'], ['live', 'Live album'], ['comp', 'Compilation']];
 export const releaseTypeLabel = (k) => (RELEASE_TYPES.find(([v]) => v === k) || ['', 'Release'])[1];
@@ -180,14 +181,18 @@ export function normalizeSections(raw) {
 }
 
 /**
- * Where a section sits on the video edit's timeline, given the edit's song offset (song time at
- * timeline 0): { from, to } in timeline seconds, clipped to the edit, or null when it isn't in it.
+ * Where a section sits on the video edit's timeline: { from, to } in timeline seconds, clipped to the edit, or
+ * null when it isn't in it. `song` is the edit's song (its offset, or the parts of a several-sections edit) or just
+ * a song offset (song time at timeline 0). This is the export range a section exports: the edit from its own place
+ * there, so its clips, texts, layers, keyframes and the items turned off there are the ones that show.
  */
-export function sectionOnTimeline(sec, songOffset = 0, duration = Infinity) {
+export function sectionOnTimeline(sec, song = 0, duration = Infinity) {
   if (sec.end == null) return null;
-  const from = sec.start - songOffset;
-  const to = sec.end - songOffset;
-  if (to <= 0 || from >= duration) return null;
+  const s = typeof song === 'number' ? { offset: song } : song;
+  const from = songToTimeline(sec.start, s);
+  // the last moment of the section, so a section that ends where its part ends stays in that part
+  const to = sec.end > sec.start ? songToTimeline(sec.end - 1e-4, s) + 1e-4 : from;
+  if (to <= 0 || from >= duration || to <= from) return null;
   return { from: Math.max(0, +from.toFixed(3)), to: Math.min(duration, +to.toFixed(3)) };
 }
 
