@@ -21,6 +21,8 @@ import { buildStats } from './page-stats.js';
 import { buildReleases } from './page-releases.js';
 import { buildFans } from './page-fans.js';
 import { paneX } from '../panes-ui.js';
+import { openExportDialog, openImportDialog } from '../everything-ui.js';
+import { isDesktop } from '../desktop.js';
 
 const VIEW_KEY = 'pvm.manager.view.v1';
 // when the last backup file was made and when you first changed anything: { lastBackupAt, firstEditAt } (ms)
@@ -233,6 +235,8 @@ export function createManager({ root, studio }) {
         toast(e.message, 'error', 5000);
       }
     }, { iconName: 'upload', variant: 'sm ghost', title: 'Load a backup file' }),
+    isDesktop ? null : button('Export everything', () => openExportDialog(), { iconName: 'download', variant: 'sm ghost', title: 'One .zip with every song, project, sound and media file stored in this browser, to move it into the Mac app' }),
+    button('Import everything', () => openImportDialog(), { iconName: 'upload', variant: 'sm ghost', title: 'Replace this library with a zip made by Export everything' }),
     relinkButton('manager'),
     button('Google Drive', () => openDriveSetup(), { iconName: 'cloud', variant: 'sm ghost', title: 'Connect Google Drive so you can pick files from it' }),
   );
