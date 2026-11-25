@@ -1,7 +1,7 @@
 // App shell: layout, wiring, keyboard shortcuts and autosave.
 import { openSongPart, partSummary, templatePartPicker, templatePartChoice, templatePartPicked } from './panel-songpart.js';
 import { editSignature } from './songpart.js';
-import { ASPECTS, clipAt, layoutClips, splitClip, clamp, linesFromText, timelineToSong, songOffsetAt, uid, detectBeats } from './core.js';
+import { ASPECTS, clipAt, layoutClips, splitClip, clamp, linesFromText, timelineToSong, songOffsetAt, uid, detectBeats, NEW_CHART_OFFSET } from './core.js';
 import { gameParts, applySongTemplate, SONG_TEMPLATES } from './songtemplates.js';
 import { syncLayer } from './layersync.js';
 import { describeSyncPoint, inForSyncPoint } from './clipsync.js';
@@ -2085,7 +2085,7 @@ function sendToEdit(rec, how) {
   if (how === 'tab') return panels.actions.useTab(rec);
   if (how === 'tabstudio') {
     const own = songSync.tab(rec.id);
-    const offset = own && own.saved ? own.saved.offset : +timelineToSong(0, store.get().song).toFixed(3);
+    const offset = own && own.saved ? own.saved.offset : NEW_CHART_OFFSET;
     loadTabStudio().then((t) => {
       t.openInTabStudio(rec, offset);
       setMode('tabstudio');

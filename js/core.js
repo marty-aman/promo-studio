@@ -143,6 +143,15 @@ export function timelineToSong(t, song) {
   return q.from + (t - q.at);
 }
 
+/**
+ * Where a new chart or stem layer (tab, drum chart, MIDI notes, rhythm game) starts in the song: its `offset`, in
+ * song seconds. 0, the song's 0:00, because a Guitar Pro, MIDI or stem file covers the whole song; not the song
+ * time at the edit's 0:00, which put bar 1 over the Chorus in an edit of the Chorus. A layer shows its own time
+ * (timelineToSong(t, song) − offset) × tempoScale at edit time t, so each part of the song shows its own bars.
+ * A sync saved on the song, Auto-sync or a nudge replaces it.
+ */
+export const NEW_CHART_OFFSET = 0;
+
 /** How far into the song the video is at `t`, minus `t`: song.offset for one stretch, the part's own for several. */
 export const songOffsetAt = (t, song) => timelineToSong(t, song) - t;
 

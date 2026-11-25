@@ -161,14 +161,15 @@ test('Suggested takes: cut for the part, several sections join; the own hook whe
   assert.equal(content(o), 15);
 });
 
-test('themes and look templates keep the edit’s song part; new layers start at its song moment', () => {
+test('themes and look templates keep the edit’s song part; new layers show its song moment', () => {
   const d = newProject();
   applySongPart(d, SEVERAL, { ...ctxOf(), picture: 'video' });
   const before = JSON.stringify([d.song, d.duration]);
   applyTheme(d, THEMES[0].id, { motion: true });
   applyTemplate(d, 'spotlight', []);
   assert.equal(JSON.stringify([d.song, d.duration]), before);
-  assert.equal(+timelineToSong(0, d.song).toFixed(3), 40); // what a new tab, drum, MIDI or game layer gets as its offset
+  // a new tab, drum, MIDI or game layer starts with the song (offset 0), so at the edit's 0:00 it is 40 s in
+  assert.equal(+timelineToSong(0, d.song).toFixed(3), 40);
 });
 
 test('defaultTemplatePart: your Song part, else the remembered one, else each template’s own pick', () => {

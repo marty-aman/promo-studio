@@ -1,6 +1,6 @@
 // Layers panel: add, show/hide, reorder and edit stacked layers
 // (video layers, guitar tabs, drum charts, audio visualizers).
-import { uid, timelineToSong, songToTimeline, formatTime } from './core.js';
+import { uid, timelineToSong, songToTimeline, formatTime, NEW_CHART_OFFSET } from './core.js';
 import { LAYER_TYPES, isVisible, findLayer } from './state.js';
 import { media, tabTimeline, drumTimeline, drumHitsFromStem, vizFeatures } from './media.js';
 import { MIDI_ACCEPT, noteCounts } from './midi.js';
@@ -66,24 +66,24 @@ function makeLayerRaw(p, type, t = 0) {
   if (type === 'video') return { ...base, opacity: 1, blend: 'source-over', clips: [] };
   if (type === 'tab') {
     const rec = all.find((m) => m.kind === 'tab' && m.tracks && m.tracks.length);
-    return { ...defaultTabLayer(), ...base, mediaId: rec ? rec.id : null, track: rec ? rec.tracks[0].index : 0, offset: +timelineToSong(0, p.song).toFixed(3) };
+    return { ...defaultTabLayer(), ...base, mediaId: rec ? rec.id : null, track: rec ? rec.tracks[0].index : 0, offset: NEW_CHART_OFFSET };
   }
   if (type === 'drums') {
     const gp = all.find((m) => m.kind === 'tab' && m.drumTracks && m.drumTracks.length);
     const stem = all.find((m) => m.kind === 'audio' && (!p.song || m.id !== p.song.mediaId));
     return gp
-      ? { ...defaultDrumLayer(), ...base, source: 'gp', mediaId: gp.id, track: gp.drumTracks[0].index, offset: +timelineToSong(0, p.song).toFixed(3) }
+      ? { ...defaultDrumLayer(), ...base, source: 'gp', mediaId: gp.id, track: gp.drumTracks[0].index, offset: NEW_CHART_OFFSET }
       : { ...defaultDrumLayer(), ...base, source: 'audio', mediaId: stem ? stem.id : null, offset: 0 };
   }
   if (type === 'game') {
     // the song's guitar part: a Guitar Pro guitar track, else a guitar stem
     const tab = all.find((m) => m.kind === 'tab' && m.tracks && m.tracks.some((t) => !isBassTrack(t)));
-    if (tab) return { ...defaultGameLayer(), ...base, source: 'tab', mediaId: tab.id, track: tab.tracks.find((t) => !isBassTrack(t)).index, offset: +timelineToSong(0, p.song).toFixed(3), backdrop: (p.clips || []).length ? 'none' : 'arena' };
+    if (tab) return { ...defaultGameLayer(), ...base, source: 'tab', mediaId: tab.id, track: tab.tracks.find((t) => !isBassTrack(t)).index, offset: NEW_CHART_OFFSET, backdrop: (p.clips || []).length ? 'none' : 'arena' };
     return { ...defaultGameLayer(), ...base, source: 'stem', mediaId: null, backdrop: (p.clips || []).length ? 'none' : 'arena' };
   }
   if (type === 'midi') {
     const rec = all.find((m) => m.kind === 'midi' && m.midi && m.midi.tracks.some((t) => t.notes && !t.isDrum)) || all.find((m) => m.kind === 'midi');
-    return { ...defaultMidiLayer(), ...base, mediaId: rec ? rec.id : null, offset: +timelineToSong(0, p.song).toFixed(3) };
+    return { ...defaultMidiLayer(), ...base, mediaId: rec ? rec.id : null, offset: NEW_CHART_OFFSET };
   }
   return { ...defaultVizLayer(), ...base };
 }
@@ -687,7 +687,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         'div',
         {},
         common,
-        b.segmented('Notes come from', g('source', 'gp'), set((x, v) => ((x.source = v), (x.mediaId = null), (x.offset = v !== 'audio' ? +timelineToSong(0, store.get().song).toFixed(3) : 0))), [['gp', 'Guitar Pro drum track'], ['midi', 'MIDI file'], ['audio', 'Drum stem (audio)']]),
+        b.segmented('Notes come from', g('source', 'gp'), set((x, v) => ((x.source = v), (x.mediaId = null), (x.offset = NEW_CHART_OFFSET))), [['gp', 'Guitar Pro drum track'], ['midi', 'MIDI file'], ['audio', 'Drum stem (audio)']]),
         field(isStem ? 'Drum stem' : isMidi ? 'MIDI file' : 'Guitar Pro file', fileSel),
         isMidi ? null : songNote(isStem ? stemFs : gpFs, isStem ? 'Stems' : 'Guitar Pro tabs'),
         isStem
@@ -785,7 +785,7 @@ export function buildLayersPanel(b, ctx, opts = {}) {
         {},
         common,
         b.segmented('Instrument', g('instrument', 'guitar'), set((x, v) => ((x.instrument = v), (x.mediaId = null), (x.label = x.label && INSTRUMENTS.some(([, l]) => l === x.label) ? INSTRUMENTS.find(([k]) => k === v)[1] : x.label))), INSTRUMENTS),
-        b.segmented('Notes come from', g('source', 'tab'), set((x, v) => ((x.source = v), (x.mediaId = null), (x.offset = v === 'stem' ? 0 : +timelineToSong(0, store.get().song).toFixed(3)))), [['tab', 'Guitar Pro'], ['midi', 'MIDI'], ['stem', 'Stem (audio)']]),
+        b.segmented('Notes come from', g('source', 'tab'), set((x, v) => ((x.source = v), (x.mediaId = null), (x.offset = NEW_CHART_OFFSET))), [['tab', 'Guitar Pro'], ['midi', 'MIDI'], ['stem', 'Stem (audio)']]),
         field(L.source === 'stem' ? 'Stem' : L.source === 'midi' ? 'MIDI file' : 'Guitar Pro file', fileSel, L.source === 'stem' ? (drums ? 'Kick, snare and hi-hat are found by listening.' : 'A gem wherever a new note starts; its fret from how bright it sounds. A chart (Guitar Pro or MIDI) is more exact.') : null),
         songIds ? songNote(fs, L.source === 'stem' ? 'Stems' : 'Guitar Pro tabs') : null,
         trackSel,
