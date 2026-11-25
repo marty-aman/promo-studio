@@ -8,8 +8,13 @@ import { media, ensureLayerAnalyses } from './media.js';
 import { exportVideo, pickMimeType } from './engine.js';
 import { applyBatchItem, mvClip, zipStore } from './batch.js';
 import { sectionSpans, sectionOnTimeline, fmtTime, sectionSlug } from './manager/releases.js';
+import { realtimeNote } from './exportplan.js';
+import { writeBlob } from './streamsink.js';
+import { desktop } from './desktop.js';
+import { loadSettings } from './state.js';
 
-const state = { running: false, done: 0, total: 0, current: '', result: null, error: '', cancel: false, picked: null, how: 'cut', songId: '' };
+// notes: [{ label, text }] sections recorded in real time and why; saved: { folder, files: [{ name, path, bytes, reveal }] } (Mac app)
+const state = { running: false, done: 0, total: 0, current: '', result: null, error: '', cancel: false, picked: null, how: 'cut', songId: '', notes: [], saved: null };
 const slug = (s) => String(s || 'promo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'promo';
 
 /** The Manager song this edit is for: the one it was made from, else the one whose file it uses. */
@@ -47,6 +52,8 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
   const mp4 = pickMimeType('mp4');
   const fmt = mp4 && mp4.startsWith('video/mp4') ? 'mp4' : 'webm';
   const chosen = spans.filter((s) => state.picked.has(s.id) && (state.how !== 'cut' || inEdit(s)));
+  // Mac app, fast MP4: every section is written straight into one folder picked once (the web keeps the download)
+  const toFolder = !!(desktop && desktop.files && desktop.files.pickFolder) && fmt === 'mp4' && engine.exportMode !== 'realtime';
 
   const how = h('select', { 'aria-label': 'How to export the sections' }, h('option', { value: 'cut', selected: state.how === 'cut' }, 'Cut from this edit, as you edited it'), h('option', { value: 'promo', selected: state.how === 'promo' }, 'A promo of each: the section, your look and end card'), mv ? h('option', { value: 'mv', selected: state.how === 'mv' }, `From the music video, in sync (${mv.name})`) : null);
   how.addEventListener('change', () => ((state.how = how.value), render()));
@@ -54,20 +61,32 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
   const run = async () => {
     if (!chosen.length) return toast(state.how === 'cut' ? 'None of the ticked sections are in this edit.' : 'Tick at least one section.', 'error');
     if (state.how !== 'cut' && !p.song) return toast('Choose the song in the Audio tab first.', 'error');
+    let folder = null;
+    if (toFolder) {
+      try {
+        folder = await desktop.files.pickFolder(); // the native folder dialog, once for all the sections
+      } catch (e) {
+        return toast(e.message || 'That folder cannot be used', 'error');
+      }
+      if (!folder) return; // cancelled
+    }
     const snap = JSON.stringify(store.get());
-    Object.assign(state, { running: true, done: 0, total: chosen.length, result: null, error: '', cancel: false });
+    Object.assign(state, { running: true, done: 0, total: chosen.length, result: null, error: '', cancel: false, notes: [], saved: folder ? { folder: { name: folder.name, path: folder.path }, files: [] } : null });
     render();
     const files = [];
+    const stream = folder ? { saveAs: '', folder, codec: loadSettings().exportCodec === 'hevc' ? 'hevc' : 'h264' } : {}; // the main export's codec choice
     try {
       for (const sec of chosen) {
         if (state.cancel) break;
         state.current = sec.label;
         render();
+        const name = `${slug(song.title)}-${sectionSlug(sec, spans.indexOf(sec))}`; // numbered by its place in the song
+        const opts = { format: fmt, fps: 30, bitrate: 10e6, ...(folder ? { ...stream, saveAs: `${name}.mp4` } : {}), onFallback: (why) => (state.notes.push({ label: sec.label, text: realtimeNote(why) }), render()) };
         let res;
         if (state.how === 'cut') {
           const r = inEdit(sec);
           await ensureLayerAnalyses(store.get());
-          res = await exportVideo(engine, { format: fmt, fps: 30, bitrate: 10e6, start: r.from, end: r.to });
+          res = await exportVideo(engine, { ...opts, start: r.from, end: r.to });
         } else {
           const len = +(sec.end - sec.start).toFixed(2);
           const useMv = state.how === 'mv' && mv;
@@ -87,7 +106,7 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
             store.update((d) => applyBatchItem(d, { songOffset: sec.start, mvIn: useMv ? Math.max(0, sec.start + (mvRef.offset || 0)) : null }, { len, mvId: useMv ? mv.id : null, mvDuration: useMv ? mv.duration : 0 }), 'sections');
           }
           await ensureLayerAnalyses(store.get());
-          res = await exportVideo(engine, { format: fmt, fps: 30, bitrate: 10e6, ...range });
+          res = await exportVideo(engine, { ...opts, ...range });
           store.update((d) => {
             const back = JSON.parse(snap);
             for (const k of Object.keys(d)) delete d[k];
@@ -95,7 +114,12 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
           }, 'sections');
         }
         const ext = res.mime.includes('mp4') ? 'mp4' : 'webm';
-        files.push({ name: `${slug(song.title)}-${sectionSlug(sec, spans.indexOf(sec))}.${ext}`, blob: res.blob }); // numbered by its place in the song
+        if (res.saved) state.saved.files.push(res.saved);
+        // recorded in real time instead: an MP4 goes into the same folder, anything else into the download
+        else if (folder && ext === 'mp4') {
+          const sink = await folder.saveStream({ name: `${name}.mp4`, ext: 'mp4' });
+          state.saved.files.push(await writeBlob(sink, res.blob));
+        } else files.push({ name: `${name}.${ext}`, blob: res.blob });
         state.done++;
         render();
       }
@@ -106,7 +130,7 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
       }
       state.files = files;
     } catch (e) {
-      state.error = e.message === 'cancelled' ? '' : e.message || 'Export failed';
+      state.error = e.message === 'cancelled' ? '' : e.message || 'Export failed'; // a partial file was already deleted
     } finally {
       const back = JSON.parse(snap);
       store.update((d) => {
@@ -142,8 +166,21 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
     h('div', { class: 'row' }, button('All', () => (spans.forEach((s) => state.picked.add(s.id)), render()), { variant: 'sm ghost' }), button('None', () => (state.picked.clear(), render()), { variant: 'sm ghost' }), h('span', { class: 'muted tiny' }, chosen.length ? `About ${Math.max(1, Math.ceil(secs / 60))} min to record; keep this tab in front.` : '')),
     state.running
       ? h('div', {}, h('div', { class: 'export-progress' }, h('div', { style: { width: `${Math.round((state.done / Math.max(1, state.total)) * 100)}%` } })), h('div', { class: 'row' }, h('span', { class: 'small' }, `${state.done + 1} of ${state.total}: ${state.current}`), button('Stop', () => ((state.cancel = true), exportVideo.cancel && exportVideo.cancel()), { variant: 'ghost sm' })))
-      : button(chosen.length > 1 ? `Export ${chosen.length} sections (.zip)` : chosen.length ? `Export ${chosen[0].label}` : 'Export sections', run, { iconName: 'download', variant: 'primary wide', disabled: !chosen.length }),
+      : button(chosen.length > 1 ? `Export ${chosen.length} sections${toFolder ? ' to a folder' : ' (.zip)'}` : chosen.length ? `Export ${chosen[0].label}${toFolder ? ' to a folder' : ''}` : 'Export sections', run, { iconName: 'download', variant: 'primary wide', disabled: !chosen.length }),
+    toFolder && !state.running && !state.saved ? h('p', { class: 'muted tiny' }, 'Asks once for a folder, then writes each section there as it is made.') : null,
+    // why a section was not fast, as it happens and in the summary (the same reasons as the main export)
+    state.notes.length
+      ? h('div', { class: 'warn-list small', role: 'status', 'data-testid': 'sections-realtime' },
+          h('p', {}, state.running ? `${state.notes[state.notes.length - 1].label}: ${state.notes[state.notes.length - 1].text} Keep this tab in front.` : `${state.notes.length === 1 ? '1 section was' : `${state.notes.length} sections were`} recorded in real time:`),
+          state.running ? null : h('ul', {}, state.notes.map((n) => h('li', {}, h('strong', {}, `${n.label}: `), n.text))))
+      : null,
     state.error ? h('p', { class: 'error-text' }, state.error) : null,
+    !state.running && state.saved && state.saved.files.length
+      ? h('div', { 'data-testid': 'sections-saved' },
+          h('p', { class: 'small' }, `Saved ${state.saved.files.length === 1 ? '1 video' : `${state.saved.files.length} videos`} to ${state.saved.folder.path}:`),
+          h('ul', { class: 'muted tiny' }, state.saved.files.map((f) => h('li', {}, `${f.name} (${f.bytes < 1e5 ? `${Math.max(1, Math.round(f.bytes / 1e3))} KB` : `${(f.bytes / 1e6).toFixed(1)} MB`})`))),
+          state.saved.files[0].reveal ? button('Show in Finder', () => state.saved.files[0].reveal(), { variant: 'sm' }) : null)
+      : null,
     state.result ? h('a', { class: 'btn wide', href: state.result.url, download: state.result.name }, icon('download', 16), h('span', {}, `Download ${state.result.name} (${(state.result.size / 1e6).toFixed(1)} MB${state.result.count > 1 ? `, ${state.result.count} videos` : ''})`)) : null,
   );
 }

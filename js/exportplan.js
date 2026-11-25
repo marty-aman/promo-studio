@@ -142,3 +142,6 @@ export function keyBefore(order, t, eps = 1e-4) {
   for (let i = 0; i < order.length; i++) if (order[i].key && order[i].ts <= t + eps) k = i;
   return k;
 }
+
+/** What a person reads when an export could not be fast: "Recorded in real time because <reason>." (the reason from onFallback). */
+export const realtimeNote = (reason) => `Recorded in real time because ${String(reason || 'the fast export is not available here').replace(/[.\s]+$/, '')}.`;

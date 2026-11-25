@@ -9,7 +9,7 @@ const BRIDGE_VERSION = 1;
  * What this build can do, for window.desktop.info().capabilities. Later steps add their own names here when their
  * stubs are filled in: 'native.run:<tool>' (bundled tools).
  */
-const CAPABILITIES = ['media.link', 'media.urlFor', 'media.read', 'media.reveal', 'media.pick', 'shell.openExternal', 'print.toPDF', 'exports.power', 'files.saveStream', 'disk.space', 'native.models'];
+const CAPABILITIES = ['media.link', 'media.urlFor', 'media.read', 'media.reveal', 'media.pick', 'shell.openExternal', 'print.toPDF', 'exports.power', 'files.saveStream', 'files.pickFolder', 'disk.space', 'native.models'];
 
 /** Command-line tools native.run may start (electron/native.cjs holds the list; 'native.run:<tool>' joins the capabilities when its binary is in place). */
 const NATIVE_TOOLS = ['whisper'];

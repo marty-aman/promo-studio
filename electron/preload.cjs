@@ -20,6 +20,24 @@ function pathOf(file) {
   }
 }
 
+/** files.saveStream: the save dialog (folder null) or straight into a picked folder (its token). */
+async function openStream(opts, folder) {
+  const o = opts && typeof opts === 'object' ? opts : {};
+  const r = await call('files:saveStream', { name: String(o.name || ''), ext: String(o.ext || 'mp4'), ...(folder ? { folder } : {}) });
+  if (!r) return null;
+  const { id } = r;
+  return Object.freeze({
+    name: r.name,
+    path: r.path,
+    write: (position, bytes) => (bytes instanceof Uint8Array && Number.isSafeInteger(position) ? call('files:write', id, position, bytes) : Promise.reject(new Error('Not a piece of file'))),
+    finish: async () => {
+      const f = await call('files:finish', id);
+      return Object.freeze({ ...f, reveal: () => call('files:reveal', f.path) });
+    },
+    abort: () => call('files:abort', id).catch(() => true),
+  });
+}
+
 contextBridge.exposeInMainWorld('desktop', {
   bridge: 1,
   /** { bridge, version, name, electron, chrome, platform, arch, capabilities: [..], disk: { free, total }, linked: { count, bytes } } */
@@ -52,26 +70,21 @@ contextBridge.exposeInMainWorld('desktop', {
   },
   files: {
     /**
+     * Ask once for a folder to export several videos into (the native folder dialog). Resolves null if the person
+     * cancels, else { name, path, saveStream(opts) }: that saveStream writes straight into the folder without a
+     * dialog, under a free name (" 2", " 3"… when one is taken), and resolves what files.saveStream does.
+     */
+    pickFolder: async () => {
+      const f = await call('files:pickFolder');
+      if (!f) return null;
+      return Object.freeze({ name: f.name, path: f.path, saveStream: (opts) => openStream(opts, f.folder) });
+    },
+    /**
      * Step 2: write an export straight to a file. Opens the native save dialog (opts: { name, ext: 'mp4' }); resolves
      * null if the person cancels, else { name, path, write(position, bytes), finish(), abort() }. Pieces go in
      * order; finish() resolves { path, name, bytes, reveal() }; abort() deletes the partial file.
      */
-    saveStream: async (opts) => {
-      const o = opts && typeof opts === 'object' ? opts : {};
-      const r = await call('files:saveStream', { name: String(o.name || ''), ext: String(o.ext || 'mp4') });
-      if (!r) return null;
-      const { id } = r;
-      return Object.freeze({
-        name: r.name,
-        path: r.path,
-        write: (position, bytes) => (bytes instanceof Uint8Array && Number.isSafeInteger(position) ? call('files:write', id, position, bytes) : Promise.reject(new Error('Not a piece of file'))),
-        finish: async () => {
-          const f = await call('files:finish', id);
-          return Object.freeze({ ...f, reveal: () => call('files:reveal', f.path) });
-        },
-        abort: () => call('files:abort', id).catch(() => true),
-      });
-    },
+    saveStream: (opts) => openStream(opts, null),
   },
   shell: {
     /** Open a web page (http, https), a mailto: or a tel: link in the default app. */
