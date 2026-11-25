@@ -1268,6 +1268,20 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .mgr-release-pick { display: grid; gap: 4px; margin-bottom: 8px; }
 .mgr-sections input.mgr-time, input.mgr-time { width: 80px; font-variant-numeric: tabular-nums; }
 .mgr-sections td.n { text-align: right; }
+.tf { display: inline-grid; gap: 2px; min-width: 0; }
+.tf-row { display: inline-flex; align-items: center; gap: 2px; }
+.tf-row input.mgr-time { width: 88px; }
+.tf-nudge { min-width: 28px; height: 28px; padding: 0; font-size: 15px; line-height: 1; }
+.tf-hint { font-variant-numeric: tabular-nums; min-height: 1em; max-width: 220px; overflow-wrap: anywhere; }
+.timefmt select { width: auto; }
+.songpart-range .tf-row input.mgr-time { width: 100%; min-width: 80px; }
+.songpart-range .tf, .songpart-range .tf-row { display: flex; } .songpart-range .tf { flex-direction: column; align-items: stretch; }
+@media (max-width: 600px) {
+  .mgr-sections .tf-row input.mgr-time { width: 76px; }
+  .mgr-sections .tf-row { flex-wrap: wrap; }
+  .tf-nudge { min-width: 32px; height: 32px; }
+  body.touch .tf-row input.mgr-time { font-size: 16px; } /* no iOS zoom on focus */
+}
 .mgr-stack { display: grid; gap: 16px; min-width: 0; }
 .mgr-stack > .mgr-sect { margin-bottom: 0; }
 .mgr-detect-run { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
