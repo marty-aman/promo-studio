@@ -51,6 +51,7 @@ import { findSong, titleFromFile, fetchLyrics } from './lyricsfetch.js';
 import { findCover } from './manager/covers.js';
 import { configureTodoAuto } from './manager/todoauto.js';
 import { installDesktopPage, isDesktop, desktop } from './desktop.js';
+import { maybeWelcome } from './everything-ui.js';
 import { songLyricsPlan, lyricsFromTiming, timingFromLyrics, autoSaveDecision, setSongTiming, keepTiming, retimeLines, timingStale, timingSourceOf, markTimed } from './manager/lyrictiming.js';
 
 const store = createStore(loadProject() || newProject());
@@ -2298,6 +2299,7 @@ async function boot() {
   performance.mark('pvm-ready');
 }
 installDesktopPage(); // Mac app only: in-app viewer for blob: links, the `desktop` class
+maybeWelcome(); // Mac app, empty library: how to bring the browser's data over
 mobile = initMobile({ header, modeSwitch, nowOn, keep: [undoBtn, redoBtn, exportBtn], tabRail, pageEl, transport, tlToolbar, engine, store, ui, panels, getMode: () => mode, stage });
 boot();
 
