@@ -9,10 +9,10 @@ const BRIDGE_VERSION = 1;
  * What this build can do, for window.desktop.info().capabilities. Later steps add their own names here when their
  * stubs are filled in: 'files.saveStream' (export straight to a file) and 'native.run:<tool>' (bundled tools).
  */
-const CAPABILITIES = ['media.link', 'media.urlFor', 'media.read', 'media.reveal', 'media.pick', 'shell.openExternal', 'print.toPDF', 'exports.power', 'disk.space'];
+const CAPABILITIES = ['media.link', 'media.urlFor', 'media.read', 'media.reveal', 'media.pick', 'shell.openExternal', 'print.toPDF', 'exports.power', 'disk.space', 'native.models'];
 
-/** Bundled command-line tools native.run may start (none yet). */
-const NATIVE_TOOLS = [];
+/** Command-line tools native.run may start (electron/native.cjs holds the list; 'native.run:<tool>' joins the capabilities when its binary is in place). */
+const NATIVE_TOOLS = ['whisper'];
 
 /** Is this URL one of the app's own pages (app://promo-studio/...)? */
 function fromApp(url) {

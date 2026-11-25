@@ -113,7 +113,7 @@ test('only web, mail and phone links open outside the app; app pages are app://p
   assert.ok(fromApp(`${ORIGIN}/index.html`));
   assert.ok(!fromApp('app://other/index.html') && !fromApp('https://promo-studio/') && !fromApp('nonsense'));
   assert.ok(CAPABILITIES.includes('media.link') && !CAPABILITIES.includes('files.saveStream'));
-  assert.deepEqual(NATIVE_TOOLS, []);
+  assert.deepEqual(NATIVE_TOOLS, ['whisper']); // step 3 filled in native.run (electron/native.cjs)
 });
 
 test('link in place: only big videos that are files on disk, in the Mac app, unless the choice says otherwise', async () => {

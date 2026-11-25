@@ -91,6 +91,13 @@ export function deezerByISRC(isrc, { timeout = 12000 } = {}) {
 }
 
 /**
+ * The only script in the Deezer frame. It holds nothing that changes from call to call (the nonce and the URL come
+ * in through the frame's `name`), so the Mac app's Content-Security-Policy can allow exactly this script by its
+ * hash (electron/serve.cjs; test/native-whisper.test.js checks the two agree) instead of allowing every inline script.
+ */
+export const DEEZER_FRAME_SCRIPT = "var o=JSON.parse(name);window.cb=function(d){parent.postMessage({n:o.n,d:d},'*')};var s=document.createElement('script');s.src=o.u+(o.u.indexOf('?')<0?'?':'&')+'output=jsonp&callback=cb';s.onerror=function(){parent.postMessage({n:o.n,d:null},'*')};document.head.appendChild(s);";
+
+/**
  * Any Deezer API URL as JSONP inside a sandboxed iframe (scripts only, no same-origin), so
  * Deezer's script can't read this app's storage. Resolves the JSON, or null.
  */
@@ -114,8 +121,8 @@ export function deezerJSONP(url, { timeout = 12000 } = {}) {
     };
     const timer = setTimeout(() => done(null), timeout);
     window.addEventListener('message', onMsg);
-    const n = JSON.stringify(nonce);
-    frame.srcdoc = `<!doctype html><script>function cb(d){parent.postMessage({n:${n},d:d},'*')}</script><script src="${url}${url.includes('?') ? '&' : '?'}output=jsonp&callback=cb" onerror="parent.postMessage({n:${n},d:null},'*')"></script>`;
+    frame.name = JSON.stringify({ n: nonce, u: url }); // read by the frame's one fixed script (nothing variable in the script text)
+    frame.srcdoc = `<!doctype html><script>${DEEZER_FRAME_SCRIPT}</script>`;
     document.body.append(frame);
   });
 }

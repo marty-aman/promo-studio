@@ -13,6 +13,7 @@ import { h, icon, button, toast } from './dom.js';
 import { storageBreakdown, biggestFiles, unusedMedia, fmtBytes, GROUP_LABEL } from './medialight.js';
 import { storageLevel } from './projectlib.js';
 import { LINK_CHOICES, linkChoice, setLinkChoice } from './desktop.js';
+import { nativeWhisperBlock } from './ai/panel-nativewhisper.js';
 
 const KIND_LABEL = { video: 'Video', audio: 'Audio', image: 'Photo', tab: 'Tab', midi: 'MIDI', font: 'Font' };
 const GROUPS = ['video', 'audio', 'photos', 'models', 'projects', 'other'];
@@ -72,7 +73,7 @@ export async function measureStorage(deps) {
     quota,
     level: storageLevel(usage, quota),
     persisted,
-    groups: storageBreakdown(recs, { models, projects, usage }),
+    groups: storageBreakdown(recs, { models: models + ((desk && desk.nativeModelsBytes) || 0), projects, usage }), // whisper.cpp models (Mac app) sit in the app's folder, not in browser storage
     biggest: biggestFiles(recs, 5).map((f) => ({ ...f, used: used.has(f.id) })),
     unused: unusedMedia(all, used).map((f) => ({ ...f, linked: linked.some((r) => r.id === f.id) })),
     desktop: desk ? { free: desk.disk && desk.disk.free, total: desk.disk && desk.disk.total, linked: linked.length, linkedBytes: linked.reduce((n, r) => n + (r.size || 0), 0) } : null,
@@ -82,7 +83,7 @@ export async function measureStorage(deps) {
 }
 
 /** Mac app: the disk's free space, the linked files and the big-video choice. */
-function desktopBlock(d) {
+function desktopBlock(d, native) {
   const sel = h('select', { 'aria-label': 'Big videos', 'data-desktop-link': '' }, Object.entries(LINK_CHOICES).map(([v, label]) => h('option', { value: v, selected: v === linkChoice() }, label)));
   sel.addEventListener('change', () => setLinkChoice(sel.value));
   return h(
@@ -91,6 +92,7 @@ function desktopBlock(d) {
     h('p', {}, d.free != null ? `Mac disk: ${fmtBytes(d.free)} free of ${fmtBytes(d.total)}.` : 'The Mac did not say how much disk is free.'),
     h('p', { class: 'muted' }, d.linked ? `${d.linked} file${d.linked === 1 ? '' : 's'} linked where ${d.linked === 1 ? 'it is' : 'they are'} (${fmtBytes(d.linkedBytes)}, not copied and not counted above).` : 'No files are linked in place.'),
     h('label', { class: 'row' }, h('span', {}, 'Big videos: '), sel),
+    native,
   );
 }
 
@@ -102,6 +104,7 @@ export function storagePanel(deps, { open = false } = {}) {
   box.append(summary, body);
   if (open) box.open = true;
   const picked = new Set();
+  const native = nativeWhisperBlock({ onChange: () => refresh() }); // built once: it keeps its own download progress (Mac app only; null in a browser)
   let data = null;
   let busy = false;
 
@@ -159,7 +162,7 @@ export function storagePanel(deps, { open = false } = {}) {
     const allOn = unused.length > 0 && sel.length === unused.length;
     const parts = [
       bar(level.pct, level.warn),
-      data.desktop ? desktopBlock(data.desktop) : null,
+      data.desktop ? desktopBlock(data.desktop, native) : null,
       level.warn ? h('p', { class: 'storage-warn small', role: 'alert' }, `This browser is ${level.pct != null ? `${Math.round(level.pct * 100)} %` : 'almost'} full. When it is full, new files and edits are not saved. Back up, then clean up below.`) : null,
       h(
         'p',

@@ -16,14 +16,15 @@ const MEDIA_PREFIX = '/__media/';
 
 /**
  * The CSP. Scripts come only from the app itself (no inline scripts, nothing remote except Deezer's JSONP search,
- * which runs in a sandboxed frame). 'unsafe-eval' is there because the vendored ONNX runtime (AI features) builds
- * functions with new Function; 'wasm-unsafe-eval' for every WebAssembly module. Network reads (connect, img,
+ * which runs in a sandboxed frame whose one fixed inline script is allowed by hash). 'unsafe-eval' is there because the vendored ONNX runtime (AI features) builds
+ * functions with new Function, and 'blob:' because it imports its own module through a blob URL (both only run code
+ * the app itself made); 'wasm-unsafe-eval' for every WebAssembly module. Network reads (connect, img,
  * media) are any https host: the app calls many APIs and image CDNs (stock photos, Spotify, Hugging Face, Google
  * APIs, Freesound, Wikimedia, lyrics), and a stale list would quietly break a feature.
  */
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' https://api.deezer.com",
+  "script-src 'self' blob: 'wasm-unsafe-eval' 'unsafe-eval' https://api.deezer.com 'sha256-NLiIopAhHYlUOoDThfy0ayBr/jplNI4xnPNLoVHasnY='",
   "worker-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",

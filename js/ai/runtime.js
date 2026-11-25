@@ -2,13 +2,17 @@
 // Every AI feature that runs a model in the browser goes through here (lyric auto-sync today; footage
 // captions and clip search later), so there is one place that
 //  - loads the vendored library (no CDN at run time: wasmPaths points at our own folder),
-//  - picks WebGPU when the browser has it, else single-threaded WASM,
+//  - picks WebGPU when the browser has it, else WASM (multithreaded when the page is cross-origin isolated, as in
+//    the Mac app; one thread in a normal browser tab),
+//  - in the Mac app, runs whisper.cpp instead when the person turned it on and it is in place (js/ai/nativewhisper.js),
+//    falling back to the browser model if that fails and the browser model is already downloaded,
 //  - downloads model weights from huggingface.co only after the person agreed (consent is checked here, not
 //    just in the UI), and says so in `modelInfo()`,
 //  - reports a download that does not fit in the browser's storage to the app's storage-full message,
 //  - can be replaced by a fake for tests (setPipelineForTesting), like bgremove.js's segmenter.
 // No song data is ever sent: the only network calls are the model files' GET requests to huggingface.co.
 import { reportSaveFail } from '../state.js';
+import { nativeReady, makeNativePipe } from './nativewhisper.js';
 
 export const VENDOR_BASE = new URL('../../vendor/transformers/', import.meta.url).href;
 export const ASR_TASK = 'automatic-speech-recognition';
@@ -49,8 +53,26 @@ export function setPipelineForTesting(task, fake) {
   loaded.clear();
 }
 
+/** How many WASM threads: 1 unless the page is cross-origin isolated (SharedArrayBuffer), then the cores, up to MAX_THREADS. */
+export const MAX_THREADS = 4;
+export function threadCount({ isolated = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated, cores = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 1 } = {}) {
+  return isolated ? Math.max(1, Math.min(MAX_THREADS, cores)) : 1;
+}
+
+// For the Mac self-check's timing runs only: force the device ('wasm' | 'webgpu') and the thread count. The threads
+// are read once, when the first model loads in a page, so changing them takes a reload (the self-check does that).
+const override = { device: null, threads: null };
+export function setRuntimeOverride({ device = null, threads = null } = {}) {
+  override.device = device === 'wasm' || device === 'webgpu' ? device : null;
+  override.threads = Number.isInteger(threads) && threads > 0 ? threads : null;
+  loaded.clear();
+}
+/** The threads the WASM backend uses in this page (the override, else threadCount()). */
+export const wasmThreads = () => override.threads || threadCount();
+
 /** WebGPU when the browser really has an adapter; Firefox on Linux has none, so it runs on WASM. */
 export async function pickDevice() {
+  if (override.device) return override.device;
   try {
     if (typeof navigator !== 'undefined' && navigator.gpu && (await navigator.gpu.requestAdapter())) return 'webgpu';
   } catch {
@@ -67,8 +89,8 @@ async function lib() {
       env.useBrowserCache = true;
       const wasm = env.backends.onnx.wasm;
       wasm.wasmPaths = { mjs: `${VENDOR_BASE}ort-wasm-simd-threaded.asyncify.mjs`, wasm: `${VENDOR_BASE}ort-wasm-simd-threaded.asyncify.wasm` };
-      // the page is not cross-origin isolated (no SharedArrayBuffer), so one thread
-      wasm.numThreads = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
+      // one thread unless the page is cross-origin isolated (SharedArrayBuffer): the Mac app is, a plain tab is not
+      wasm.numThreads = wasmThreads();
       return m;
     });
     libPromise.catch(() => (libPromise = null));
@@ -93,13 +115,18 @@ async function cachedFiles(s) {
 }
 
 /**
- * What the download prompt needs: { id, label, sizeMB, cached, device, fake }.
- * `cached` = the weights are already in this browser (no download, no prompt).
+ * What the download prompt needs: { id, label, sizeMB, cached, device, fake, threads, native }.
+ * `cached` = the weights are already in this browser (no download, no prompt). In the Mac app with whisper.cpp
+ * turned on and in place, `native` is the ggml model name, `cached` is true and `device` is 'whisper.cpp'.
  */
 export async function modelInfo(model = DEFAULT_ASR) {
   const s = spec(model);
   const fake = fakes.has(s.task);
-  return { id: s.id, label: s.label, sizeMB: s.approxMB, cached: fake || (await cachedFiles(s)), device: fake ? 'test' : await pickDevice(), fake };
+  if (!fake && s.task === ASR_TASK && model === DEFAULT_ASR) {
+    const n = await nativeReady();
+    if (n.ready) return { id: `whisper.cpp ggml-${n.model}`, label: 'Whisper (whisper.cpp on this Mac)', sizeMB: 0, cached: true, device: 'whisper.cpp', fake: false, threads: null, native: n.model };
+  }
+  return { id: s.id, label: s.label, sizeMB: s.approxMB, cached: fake || (await cachedFiles(s)), device: fake ? 'test' : await pickDevice(), fake, threads: wasmThreads(), native: null };
 }
 
 const isQuota = (e) => !!e && (e.name === 'QuotaExceededError' || /quota|storage|disk|space/i.test(String(e.message || e)));
@@ -109,10 +136,10 @@ const isQuota = (e) => !!e && (e.name === 'QuotaExceededError' || /quota|storage
  * (the caller asks first with the size from modelInfo()). onProgress(fraction 0..1, text) while downloading.
  * Rejects with .code 'consent' | 'quota' | 'load'.
  */
-export async function loadPipeline(task, model = DEFAULT_ASR, { onProgress, consented = false } = {}) {
+export async function loadBrowserPipeline(task, model = DEFAULT_ASR, { onProgress, consented = false } = {}) {
   if (fakes.has(task)) return fakes.get(task);
   const s = spec(model);
-  const key = `${task}|${s.id}`;
+  const key = `${task}|${s.id}|${override.device || ''}|${override.threads || ''}`;
   if (loaded.has(key)) return loaded.get(key);
   if (!consented && !(await cachedFiles(s))) {
     const e = new Error(`“${s.label}” needs a one-time download of about ${s.approxMB} MB. Ask first.`);
@@ -152,6 +179,36 @@ export async function loadPipeline(task, model = DEFAULT_ASR, { onProgress, cons
   });
   loaded.set(key, p);
   return p;
+}
+
+/**
+ * The speech pipe for `task`. In the Mac app with whisper.cpp on and in place it is whisper.cpp (see nativewhisper.js);
+ * if that run fails it uses the browser model for the rest of the session when that model is already downloaded,
+ * else the error says what to do. Everywhere else, and for every other model, it is loadBrowserPipeline.
+ * Same arguments and result as before: `await pipe(audio, options)`.
+ */
+export async function loadPipeline(task, model = DEFAULT_ASR, opts = {}) {
+  if (!fakes.has(task) && task === ASR_TASK && model === DEFAULT_ASR) {
+    const n = await nativeReady();
+    if (n.ready) {
+      const native = makeNativePipe({ model: n.model });
+      let failed = null;
+      return async (audio, options) => {
+        if (!failed) {
+          try {
+            return await native(audio, options);
+          } catch (e) {
+            failed = e;
+          }
+        }
+        // whisper.cpp could not run: the browser model, if it is already here (no download without asking)
+        const s = spec(model);
+        if (await cachedFiles(s)) return (await loadBrowserPipeline(task, model, { ...opts, consented: true }))(audio, options);
+        throw new Error(`whisper.cpp stopped: ${(failed && failed.message) || failed}. Turn it off under Storage > Faster speech to use the browser model (a one-time ${s.approxMB} MB download).`);
+      };
+    }
+  }
+  return loadBrowserPipeline(task, model, opts);
 }
 
 /** Forget the loaded pipelines and delete every downloaded model file from this browser. Returns true when something was deleted. */

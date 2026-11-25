@@ -2,7 +2,7 @@
 // 'electron' only), so it holds no logic beyond shaping calls: every check is in main.cjs. The page names media
 // ids; file paths never reach it (a picked File's path is read here and sent straight to main).
 //
-// The surface is fixed in step 1. Later steps fill in the stubs (files.saveStream, native.run) and add names to
+// The surface is fixed in step 1. Later steps fill in the stubs (files.saveStream, native.run; step 3 also added native.status/download/removeModel/reveal/onEvent) and add names to
 // info().capabilities; they do not rename calls or change arguments.
 'use strict';
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
@@ -63,8 +63,25 @@ contextBridge.exposeInMainWorld('desktop', {
     toPDF: (html, title) => call('print:toPDF', String(html), String(title || 'document')),
   },
   native: {
-    /** Step 3: run a bundled tool by name. No tools yet (rejects). */
-    run: (name, args) => call('native:run', String(name), Array.isArray(args) ? args.map(String) : []),
+    /**
+     * Run a tool from the allowlist ('whisper') with structured options, e.g. ['--model', 'base', '--language', 'en'].
+     * opts: { input: Uint8Array (a 16 kHz mono WAV), id } -> { json, seconds }. Progress arrives through onEvent.
+     */
+    run: (name, args, opts) => call('native:run', String(name), Array.isArray(args) ? args.map(String) : [], { id: opts && opts.id ? String(opts.id) : '', input: opts && opts.input instanceof Uint8Array ? opts.input : null }),
+    /** { tools: { whisper: { installed } }, models: [{ name, label, bytes, installed, partial, downloading }], binDir, modelsDir, modelsBytes } */
+    status: () => call('native:status'),
+    /** Download a model ('base' | 'small') into the app's models folder. Only with { consent: true }; checked against a pinned sha256. */
+    download: (model, opts) => call('native:download', String(model), { consent: !!(opts && opts.consent === true) }),
+    cancelDownload: (model) => call('native:cancelDownload', String(model)),
+    removeModel: (model) => call('native:removeModel', String(model)),
+    /** Open the folder for the tool binary ('bin') or the models ('models') in Finder. */
+    reveal: (what) => call('native:reveal', what === 'models' ? 'models' : 'bin'),
+    /** cb({ type: 'download', model, loaded, total } | { type: 'run', tool, id, progress }). Returns a function that stops listening. */
+    onEvent: (cb) => {
+      const f = (_e, data) => cb(data);
+      ipcRenderer.on('native:event', f);
+      return () => ipcRenderer.removeListener('native:event', f);
+    },
   },
   exports: {
     /** An export starts: keep the Mac awake; `realtime` also keeps timers running in the background. Resolves a token. */
