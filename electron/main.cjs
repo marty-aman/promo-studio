@@ -13,6 +13,7 @@ const { SCHEME, HOST, ORIGIN, MEDIA_PREFIX, BASE_HEADERS, appFile, fileResponse,
 const { createLinks } = require('./links.cjs');
 const { createNative } = require('./native.cjs');
 const { createExportStreams } = require('./export-stream.cjs');
+const { defaultVideoDir } = require('./paths.cjs');
 const { BRIDGE_VERSION, CAPABILITIES, NATIVE_TOOLS, externalAllowed, fromApp } = require('./policy.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -344,14 +345,15 @@ app.whenReady().then(async () => {
       // dev-only test hook (never in a packaged app): the save location without a dialog
       if (DEV && process.env.PVM_SAVE_DIR) return path.join(path.resolve(process.env.PVM_SAVE_DIR), defaultName);
       const w = BrowserWindow.getAllWindows().find((x) => x.webContents.id === owner) || undefined;
-      const r = await dialog.showSaveDialog(w, { defaultPath: path.join(app.getPath('movies'), defaultName), filters: [{ name: 'MP4 video', extensions: [ext] }] });
+      const dir = defaultVideoDir(app);
+      const r = await dialog.showSaveDialog(w, { defaultPath: dir ? path.join(dir, defaultName) : defaultName, filters: [{ name: 'MP4 video', extensions: [ext] }] });
       return r.canceled || !r.filePath ? null : r.filePath;
     },
     pickFolder: async ({ owner }) => {
       // dev-only test hook (never in a packaged app): the folder without a dialog
       if (DEV && process.env.PVM_SAVE_DIR) return path.resolve(process.env.PVM_SAVE_DIR);
       const w = BrowserWindow.getAllWindows().find((x) => x.webContents.id === owner) || undefined;
-      const r = await dialog.showOpenDialog(w, { title: 'Choose a folder for the videos', buttonLabel: 'Save here', defaultPath: app.getPath('movies'), properties: ['openDirectory', 'createDirectory'] });
+      const r = await dialog.showOpenDialog(w, { title: 'Choose a folder for the videos', buttonLabel: 'Save here', defaultPath: defaultVideoDir(app), properties: ['openDirectory', 'createDirectory'] });
       return r.canceled || !r.filePaths || !r.filePaths[0] ? null : r.filePaths[0];
     },
   });
