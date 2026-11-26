@@ -592,8 +592,11 @@ h4.sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; col
 
 /* ---- Post check */
 .postcheck { position: relative; }
-.postcheck-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 6px 5px 10px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--panel-2); color: var(--text); cursor: pointer; font-size: 12px; }
-.postcheck-pill .pc-score { min-width: 26px; padding: 1px 6px; border-radius: 999px; font-size: 11px; color: #111; background: var(--muted); }
+.postcheck-pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--panel-2); color: var(--text); cursor: pointer; font-size: 12px; }
+.postcheck-pill:hover { border-color: var(--text); }
+.postcheck-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.postcheck-pill .pc-label { display: none; }
+.postcheck-pill .pc-score { min-width: 28px; height: 28px; padding: 0 4px; box-sizing: border-box; border-radius: 999px; display: grid; place-items: center; font-size: 12px; color: #111; background: var(--muted); }
 .postcheck-pill.strong .pc-score { background: var(--ok); }
 .postcheck-pill.ok .pc-score { background: var(--accent); }
 .postcheck-pill.risky .pc-score { background: var(--danger); }
@@ -615,7 +618,6 @@ h4.sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; col
 .pc-item.warn .pc-ic { background: #fb923c; }
 .pc-item.tip .pc-ic { background: var(--raised); color: var(--text); }
 .pc-item.good .pc-ic { background: var(--ok); }
-@media (max-width: 1100px) { .postcheck-pill .pc-label { display: none; } }
 
 /* ---- pop-up editing tips (bottom right of the preview) */
 .stage { position: relative; }
@@ -1544,7 +1546,6 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 /* roomy windows show every label; narrower ones keep the buttons and drop the words */
 @media (max-width: 1500px) {
   .save-state:not(.bad) { display: none; }
-  .postcheck-pill .pc-label { display: none; }
   .topbar .aspect { flex-basis: 170px; }
 }
 @media (max-width: 1360px) {

@@ -59,6 +59,7 @@ body.m-compact .m-more { display: block; position: fixed; z-index: 60; top: var(
 .m-more-body .proj-name { border: 1px solid var(--border-strong); background: var(--bg); width: 100%; max-width: none; }
 .m-more-body .aspect, .m-more-body .artist-sel { width: 100%; max-width: none; }
 .m-more-body .save-state { display: block !important; margin: 0; }
+.m-more-body .postcheck-pill { padding-left: 10px; }
 .m-more-body .postcheck-pill .pc-label { display: inline !important; }
 .m-more-body .now-on { max-width: none; justify-content: flex-start; }
 .m-more-body .now-on .now-sep, .m-more-body .now-on .now-song, .m-more-body .now-on .now-band { display: inline !important; max-width: none; }
