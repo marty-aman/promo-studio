@@ -23,6 +23,9 @@ export function swatchMotion(t) {
   }
   if (t.fields.animation === 'beat') cls.push('lt-m-pulse');
   if (t.fields.animation === 'neon') cls.push('lt-m-flicker');
+  if (t.fields.animation === 'wipe') cls.push('lt-m-wipe');
+  if (t.fields.animation === 'tracking') cls.push('lt-m-track');
+  if (t.fields.hit) cls.push('lt-m-hit');
   return { cls: cls.join(' '), style };
 }
 

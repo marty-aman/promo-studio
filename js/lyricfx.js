@@ -5,6 +5,7 @@
 // Pure functions only, so they are unit tested.
 import { beatEnvelope } from './core.js';
 import { gridOf } from './tempo.js';
+import { WIPE_DIRS, TRACK_DIRS, FLASH_LOOKS } from './lyricanim.js';
 
 /** How often the pulse hits, in beats. */
 export const DIVISIONS = [
@@ -50,7 +51,22 @@ export const FX_FIELDS = {
   slamSpeed: [1, 0.1, 4, 0.05, 'Slam shake speed', times],
   // 3D tunnel
   tunnelSpeed: [1, 0, 4, 0.05, 'Tunnel speed', times],
+  // wipe reveal entrance: which way it uncovers (lyricanim.js WIPE_DIRS) and how long it takes
+  wipeDir: [0, 0, 3, 1, 'Wipe direction', (v) => WIPE_DIRS[Math.round(v)] || WIPE_DIRS[0]],
+  wipeLen: [1, 0.25, 4, 0.05, 'Wipe length', times],
+  // tracking entrance: wide to tight or tight to wide, and how wide
+  trackDir: [0, 0, 1, 1, 'Letter spacing', (v) => TRACK_DIRS[Math.round(v)] || TRACK_DIRS[0]],
+  trackAmt: [1, 0, 3, 0.05, 'Spacing amount', pct],
+  // flash hit (style.hit): how strong, white or inverted
+  flashAmt: [1, 0.1, 1, 0.05, 'Flash strength', pct],
+  flashLook: [0, 0, 1, 1, 'Flash look', (v) => FLASH_LOOKS[Math.round(v)] || FLASH_LOOKS[0]],
+  // ghost echo (style.echo): how visible, how big, how far
+  echoAmt: [1, 0, 3, 0.05, 'Echo strength', pct],
+  echoSize: [1, 0, 3, 0.05, 'Echo size', times],
+  echoDist: [1, 0, 4, 0.05, 'Echo distance', times],
 };
+// settings that pick one of a few choices (a slider with named stops): saved as whole numbers
+const STEP_FIELDS = ['wipeDir', 'trackDir', 'flashLook'];
 export const SHAKE_DIRS = [['both', 'All ways'], ['x', 'Side to side'], ['y', 'Up and down']];
 
 /** A setting's value: the line's or style's own, else its default. */
@@ -70,7 +86,7 @@ export function cleanFx(fx, { explicit = false } = {}) {
   for (const [k, [, min, max]] of Object.entries(FX_FIELDS)) {
     const n = typeof fx[k] === 'string' ? parseFloat(fx[k]) : fx[k];
     if (typeof n !== 'number' || !Number.isFinite(n)) continue;
-    out[k] = k === 'div' ? (DIV_VALUES.includes(n) ? n : 1) : Math.max(min, Math.min(max, n));
+    out[k] = k === 'div' ? (DIV_VALUES.includes(n) ? n : 1) : Math.max(min, Math.min(max, STEP_FIELDS.includes(k) ? Math.round(n) : n));
   }
   if (fx.shakeBeat === true || (explicit && fx.shakeBeat === false)) out.shakeBeat = fx.shakeBeat;
   if (SHAKE_DIRS.some(([d]) => d === fx.shakeDir) && (explicit || fx.shakeDir !== 'both')) out.shakeDir = fx.shakeDir;
@@ -113,6 +129,14 @@ export function fxGroups(style) {
   const g = [];
   if (display === 'poster' || display === 'tunnel' || (display === 'line' && anim === 'beat')) g.push('pulse');
   if (display === 'line' && ['glitch', 'neon', 'wave', 'bounce'].includes(anim)) g.push(anim);
+  // wave 1 animations (lyricanim.js): the wipe and tracking entrances, the flash hit and the ghost echo (style.hit,
+  // style.echo: a look theme never sets them, so its own settings stay as they were)
+  if (display === 'line' && (anim === 'wipe' || anim === 'tracking')) g.push(anim);
+  if (display === 'line' && style.hit) {
+    if (style.hit === 'div' && !g.includes('pulse')) g.unshift('pulse');
+    g.push('flash');
+  }
+  if (display === 'line' && style.echo) g.push('echo');
   if (display === 'poster') g.push('slam');
   if (display === 'tunnel') g.push('tunnel');
   g.push('shake');
@@ -129,8 +153,12 @@ export const GROUP_FIELDS = {
   slam: ['slamShake', 'slamSpeed'],
   tunnel: ['tunnelSpeed'],
   shake: ['shake', 'shakeSpeed'],
+  wipe: ['wipeDir', 'wipeLen'],
+  tracking: ['trackDir', 'trackAmt'],
+  flash: ['flashAmt', 'flashLook'],
+  echo: ['echoAmt', 'echoSize', 'echoDist'],
 };
-export const GROUP_LABEL = { pulse: 'Pulse on the beat', glitch: 'Glitch', neon: 'Neon flicker', wave: 'Wave', bounce: 'Drop & bounce', slam: 'Poster slam', tunnel: 'Tunnel', shake: 'Shake' };
+export const GROUP_LABEL = { pulse: 'Pulse on the beat', glitch: 'Glitch', neon: 'Neon flicker', wave: 'Wave', bounce: 'Drop & bounce', slam: 'Poster slam', tunnel: 'Tunnel', shake: 'Shake', wipe: 'Wipe reveal', tracking: 'Tracking', flash: 'Flash hit', echo: 'Ghost echo' };
 
 /** Does the lyric beat need its own maths (own tempo, division or length), or is it the frame's beat? */
 export const ownBeat = (style, fx) => !!(style && style.tempo && style.tempo.bpm > 0) || fxv(fx, 'div') !== 1 || fxv(fx, 'len') !== 1;

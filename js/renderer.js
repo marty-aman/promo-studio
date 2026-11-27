@@ -25,6 +25,7 @@ import { drawLyricDisplay } from './lyricviz.js';
 import { lineStyle } from './linestyle.js';
 import { beatsOf, gridOf } from './tempo.js';
 import { fxv, glitchThreshold, lyricBeat, shakeOffset } from './lyricfx.js';
+import { flashLevel, wipeRect, trackState, graphemes, echoPass, sidePlacement, emphOf, slamScale } from './lyricanim.js';
 import { drawBackdrop } from './backgrounds.js';
 import { blurred } from './canvasfx.js';
 import { animate } from './keyframes.js';
@@ -170,8 +171,64 @@ export const TEXT_ANIMATIONS = [
   ['neon', 'Neon flicker'],
   ['glitch', 'Glitch'],
   ['beat', 'Pulse on the beat'],
+  ['wipe', 'Wipe reveal'],
+  ['tracking', 'Tracking (letter spacing)'],
   ['none', 'No animation'],
 ];
+
+/**
+ * layoutWords with key words bigger (lyricanim.js emphasis): an emphasised word takes `k` times its room, so the
+ * words around it move aside. Only used when a line has key words, so other lines keep layoutWords exactly.
+ * Each word keeps its unscaled width as `base`.
+ */
+function layoutWordsEmph(ctx, text, maxW, set, k) {
+  const space = ctx.measureText(' ').width;
+  const lines = [];
+  let cur = { words: [], width: 0 };
+  String(text).split(/\s+/).filter(Boolean).forEach((word, i) => {
+    const base = ctx.measureText(word).width;
+    const w = set.has(i) ? base * k : base;
+    const add = cur.words.length ? space + w : w;
+    if (cur.words.length && cur.width + add > maxW) {
+      lines.push(cur);
+      cur = { words: [], width: 0 };
+      cur.words.push({ text: word, w, base });
+      cur.width = w;
+    } else {
+      cur.words.push({ text: word, w, base });
+      cur.width += add;
+    }
+  });
+  if (cur.words.length) lines.push(cur);
+  return { lines, space };
+}
+
+// tracking with no ctx.letterSpacing (older Safari): letters measured and drawn one by one, centred like fillText
+function trackedText(ctx, op, text, sp) {
+  const gs = graphemes(text);
+  const widths = gs.map((g) => ctx.measureText(g).width);
+  let x = -(widths.reduce((a, b) => a + b, 0) + sp * Math.max(0, gs.length - 1)) / 2;
+  const align = ctx.textAlign;
+  ctx.textAlign = 'left';
+  gs.forEach((g, i) => {
+    ctx[op](g, x, 0);
+    x += widths[i] + sp;
+  });
+  ctx.textAlign = align;
+}
+
+// ghost echo (lyricanim.js): a faint copy of the whole line, bigger behind it or trailing it, drawn first
+function drawEcho(ctx, text, cx, cy, style, life, dur, beat) {
+  const fx = style.fx;
+  const e = echoPass(style.echo, { amt: fxv(fx, 'echoAmt'), size: fxv(fx, 'echoSize'), dist: fxv(fx, 'echoDist') }, style.sizePx);
+  if (!e) return;
+  ctx.save();
+  ctx.translate(cx + e.dx, cy + e.dy);
+  ctx.scale(e.scale, e.scale);
+  ctx.translate(-cx, -cy);
+  drawAnimatedText(ctx, text, cx, cy, { ...style, echoPass: true, flash: 0, shadow: false, opacity: (style.opacity ?? 1) * e.alpha }, life - e.lag, dur, beat);
+  ctx.restore();
+}
 
 const outBounce = (x) => {
   const n1 = 7.5625;
@@ -190,13 +247,16 @@ const outBounce = (x) => {
  */
 function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
   if (!text) return;
+  if (style.echo && !style.echoPass) drawEcho(ctx, text, cx, cy, style, life, dur, beat);
   const t = style.uppercase ? text.toUpperCase() : text;
   const px = style.sizePx;
   ctx.save();
   ctx.font = fontStr(px, style.font);
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
-  const { lines, space } = layoutWords(ctx, t, style.maxW);
+  const emph = style.emph || null; // key words (lyricanim.js emphOf): { set, size, color, slam }
+  const laid = emph ? layoutWordsEmph(ctx, t, style.maxW, emph.set, emph.size) : layoutWords(ctx, t, style.maxW);
+  let { lines, space } = laid;
   const lh = px * 1.12;
   const totalH = lines.length * lh;
 
@@ -254,6 +314,24 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
       break;
     default:
   }
+  // wave 1 entrances (lyricanim.js), kept out of the switch above so the older ones stay exactly as they were
+  let trackSp = 0;
+  let wipeP = 1;
+  if (anim === 'tracking') {
+    const tr = trackState(fxv(fx, 'trackDir'), fxv(fx, 'trackAmt'), life, dur, px);
+    trackSp = tr.sp;
+    alpha = Math.min(pOut, tr.alpha);
+    if (trackSp > 0) {
+      // every word takes the extra room of its spaced-out letters, so the words never run into each other
+      lines = lines.map((ln) => {
+        const words = ln.words.map((w) => ({ ...w, w: w.w + trackSp * Math.max(0, graphemes(w.text).length - 1) }));
+        return { words, width: words.reduce((a, w) => a + w.w, 0) + (space + trackSp) * (words.length - 1) };
+      });
+      space += trackSp;
+    }
+  } else if (anim === 'wipe') {
+    wipeP = ease.outCubic(clamp(life / (0.5 * fxv(fx, 'wipeLen')), 0, 1));
+  }
   let ex = STILL;
   if (exitType) {
     ex = exitTransform(exitType, exitProgress(dur - life, style.outDuration ?? 0.35));
@@ -264,6 +342,27 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
   rot += ((style.rotate || 0) * Math.PI) / 180 + ex.rot;
   if (rot) ctx.rotate(rot);
   ctx.scale(scale * ex.scale, scale * scaleY * ex.scale);
+  if (wipeP < 1) {
+    // the part of the block uncovered so far (padded for outlines, glow and shadows)
+    const pad = px * 0.35;
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    for (const ln of lines) {
+      const lx = style.align === 'left' ? -style.maxW / 2 : style.align === 'right' ? style.maxW / 2 - ln.width : -ln.width / 2;
+      x0 = Math.min(x0, lx);
+      x1 = Math.max(x1, lx + ln.width);
+    }
+    const r = wipeRect(fxv(fx, 'wipeDir'), wipeP, { x: x0 - pad, y: -totalH / 2 - pad, w: x1 - x0 + pad * 2, h: totalH + pad * 2 });
+    ctx.beginPath();
+    ctx.rect(r.x, r.y, r.w, r.h);
+    ctx.clip();
+  }
+  // tracking: the browser's own letter spacing when it has it, else letters one by one (trackedText)
+  const nativeSp = trackSp > 0 && 'letterSpacing' in ctx;
+  if (nativeSp) ctx.letterSpacing = `${trackSp.toFixed(2)}px`;
+  const ownSp = trackSp > 0 && !nativeSp ? trackSp : 0;
+  const flash = style.flash > 0 ? style.flash : 0;
+  const flashInv = flash > 0 && fxv(fx, 'flashLook') >= 1;
 
   // progress through the line for per-word effects (finish slightly before the end)
   const prog = style.wordFracs ? clamp(life / Math.max(0.2, dur), 0, 1) : clamp(life / Math.max(0.2, dur * 0.92), 0, 1);
@@ -331,6 +430,8 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
         wy = Math.sin(life * 5 * fxv(fx, 'waveSpeed') - idx * 0.7 * fxv(fx, 'waveSpread')) * px * 0.12 * fxv(fx, 'waveAmt');
         wAlpha = Math.min(1, clamp(life / 0.2, 0, 1));
       }
+      const isEmph = !!(emph && emph.set.has(idx));
+      if (isEmph) wScale *= emph.size * (emph.slam ? slamScale((prog - wt.start) * dur) : 1);
       if (glitching) {
         wx = (noise(gFrame + idx * 7) - 0.5) * px * 0.25 * gAmt;
         wy += (noise(gFrame * 1.7 + idx) - 0.5) * px * 0.12 * gAmt;
@@ -357,20 +458,42 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
         ctx.shadowBlur = px * 0.18;
         ctx.shadowOffsetY = px * 0.05;
       }
+      if (nativeSp) ctx.translate(trackSp / 2, 0); // the spacing after the last letter, so the word stays centred
       if (outlinePx > 0) {
         ctx.strokeStyle = anim === 'neon' ? style.highlight : style.outline;
         ctx.lineWidth = outlinePx * 2;
-        ctx.strokeText(text, 0, 0);
+        if (ownSp) trackedText(ctx, 'strokeText', text, ownSp);
+        else ctx.strokeText(text, 0, 0);
         if (anim !== 'neon') ctx.shadowColor = 'transparent';
       }
       const highlighted = (anim === 'karaoke' || anim === 'words') && prog >= wt.end;
-      ctx.fillStyle = highlighted ? style.highlight : style.color;
-      ctx.fillText(text, 0, 0);
+      ctx.fillStyle = isEmph ? emph.color : highlighted ? style.highlight : style.color;
+      if (ownSp) trackedText(ctx, 'fillText', text, ownSp);
+      else ctx.fillText(text, 0, 0);
       ctx.shadowColor = 'transparent';
+      if (flash) {
+        // flash hit (lyricanim.js flashLevel): 3 frames of a white word, or an inverted one (black on a white block)
+        ctx.save();
+        ctx.globalAlpha *= flash;
+        const ww = (word.base || word.w) + px * 0.2;
+        if (flashInv) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(-ww / 2, -lh / 2, ww, lh);
+          ctx.fillStyle = '#000000';
+        } else {
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = '#ffffff';
+          ctx.shadowBlur = px * 0.35;
+        }
+        if (ownSp) trackedText(ctx, 'fillText', text, ownSp);
+        else ctx.fillText(text, 0, 0);
+        ctx.restore();
+      }
       if (anim === 'karaoke' && prog > wt.start && prog < wt.end) {
         const f = (prog - wt.start) / (wt.end - wt.start);
+        const kw = word.base || word.w; // an emphasised word is drawn scaled; its fill covers its own letters
         ctx.beginPath();
-        ctx.rect(-word.w / 2, -lh, word.w * f, lh * 2);
+        ctx.rect(-kw / 2, -lh, kw * f, lh * 2);
         ctx.clip();
         ctx.fillStyle = style.highlight;
         ctx.fillText(text, 0, 0);
@@ -1112,13 +1235,30 @@ function drawLyrics(ctx, W, H, project, t, beat = 0) {
   const s = line.keys && line.keys.size ? { ...s0, size: line.size } : s0;
   const y = clamp(line.y ?? s.y, 5, 95);
   const lb = lyricBeat(project, s.fx, ts, beat);
-  const cx = (W * (line.x ?? s.x ?? 50)) / 100;
+  let cx = (W * (line.x ?? s.x ?? 50)) / 100;
+  const st = { ...s, sizePx: (W * s.size) / 100, maxW: (W * s.maxWidth) / 100, opacity: line.opacity, rotate: line.rotate, wordFracs: savedWordFractions(line) };
+  // wave 1 (lyricanim.js): duet side, key words and the flash hit; each is off unless the line or style sets it
+  const side = sidePlacement(s.side, W, st.maxW, line.x != null ? (W * line.x) / 100 : null);
+  if (side) {
+    cx = side.cx;
+    st.align = side.align;
+    st.maxW = side.maxW;
+  }
+  const em = line0.emph ? emphOf(line0, s.highlight) : null;
+  if (em) st.emph = em;
+  if (s.hit) {
+    const life = ts - line.start;
+    // the flash follows the lyric beat: every beat (division 1) or the pulse division and length you set
+    const beatE = s.hit === 'beat' ? lyricBeat(project, { ...(s.fx || {}), div: 1, len: 1 }, ts, beat) : 0;
+    const divE = s.hit === 'div' ? lb : 0;
+    st.flash = flashLevel(s.hit, { life, beatE, divE, divDecay: 9 / fxv(s.fx, 'len'), amt: fxv(s.fx, 'flashAmt') });
+  }
   withShake(ctx, s.fx, ts, (W * s.size) / 100, lb, cx, (H * y) / 100, () => drawAnimatedText(
     ctx,
     line.text,
     cx,
     (H * y) / 100,
-    { ...s, sizePx: (W * s.size) / 100, maxW: (W * s.maxWidth) / 100, opacity: line.opacity, rotate: line.rotate, wordFracs: savedWordFractions(line) },
+    st,
     ts - line.start,
     line.end - line.start,
     lb,

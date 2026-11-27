@@ -1899,6 +1899,16 @@ body.touch .tl-legend input.lg-color { width: 32px; min-width: 32px; height: 32p
 @keyframes lt-thump { 0% { translate: var(--lt-ax, var(--lt-amp)) calc(-1 * var(--lt-ay, var(--lt-amp))); } 10% { translate: calc(-1 * var(--lt-ax, var(--lt-amp))) var(--lt-ay, var(--lt-amp)); } 22%, 100% { translate: 0 0; } }
 @keyframes lt-pulse { 0% { scale: 1.18; } 40%, 100% { scale: 1; } }
 @keyframes lt-flicker { 0%, 8%, 14%, 100% { opacity: 1; } 5%, 11% { opacity: .25; } }
+/* wave 1 lyric animations (lyricanim.js): wipe reveal, tracking, flash hit */
+.lt-card:is(:hover, :focus-visible, .on) .lt-m-wipe { animation: lt-wipe 1.4s ease-out infinite; }
+.lt-card:is(:hover, :focus-visible, .on) .lt-m-track { animation: lt-track 1.6s ease-out infinite; }
+.lt-card:is(:hover, :focus-visible, .on) .lt-m-hit { animation: lt-hit .5s steps(1, end) infinite; }
+@keyframes lt-wipe { 0% { clip-path: inset(0 100% 0 0); } 45%, 100% { clip-path: inset(0 0 0 0); } }
+@keyframes lt-track { 0% { letter-spacing: .5em; opacity: 0; } 60%, 100% { letter-spacing: 0; opacity: 1; } }
+@keyframes lt-hit { 0%, 12% { filter: brightness(3) saturate(0); } 13%, 100% { filter: none; } }
+/* a line's key word chips and duet side (panel-lineanim.js) */
+.la-words { flex-wrap: wrap; }
+body.touch .la-words .chip { min-height: 44px; min-width: 44px; }
 @media (prefers-reduced-motion: reduce) { .lt-card .lt-word { animation: none !important; } }
 .tl-legend select.lg-theme { flex: none; width: auto; max-width: 112px; min-width: 0; height: 22px; padding: 0 2px; font-size: 11px; }
 body.touch .lt-card { min-height: 64px; }

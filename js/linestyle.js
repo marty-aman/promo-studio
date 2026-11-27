@@ -12,8 +12,13 @@ export const LINE_PRESETS = [
   ['spoken', 'Spoken word', 'Typewriter text on a dark strip'],
 ];
 
-/** The fields a line can override (anything else comes from the shared lyric style). */
-export const LINE_FIELDS = ['font', 'size', 'color', 'highlight', 'outline', 'outlineWidth', 'animation', 'outAnimation', 'outDuration', 'uppercase', 'box', 'boxColor', 'boxOpacity', 'shadow'];
+/**
+ * The fields a line can override (anything else comes from the shared lyric style). side (duet side), hit (flash
+ * hit) and echo (ghost echo) are lyricanim.js's; missing means off, so looks saved before them keep their ids.
+ */
+export const LINE_FIELDS = ['font', 'size', 'color', 'highlight', 'outline', 'outlineWidth', 'animation', 'outAnimation', 'outDuration', 'uppercase', 'box', 'boxColor', 'boxOpacity', 'shadow', 'side', 'hit', 'echo'];
+/** The fields above that may be missing (= off): look themes need not set them, and old looks never have them. */
+export const OPTIONAL_LINE_FIELDS = ['side', 'hit', 'echo'];
 
 function hexRgb(hex) {
   const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || '');
