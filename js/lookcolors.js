@@ -33,6 +33,8 @@ export function lookId(line) {
   if (!hasLineStyle(line)) return '';
   const { preset, lookKey, ...rest } = line.style;
   const own = LINE_FIELDS.filter((k) => rest[k] !== undefined).map((k) => [k, rest[k]]);
+  // a look's own effect settings (a look theme's fx) are part of the look; looks without them keep their old ids
+  if (rest.fx && typeof rest.fx === 'object' && Object.keys(rest.fx).length) own.push(['fx', Object.keys(rest.fx).sort().map((k) => [k, rest.fx[k]])]);
   if (preset && PRESET_LOOK[preset] && !own.length && !lookKey) return `p:${preset}`;
   return `c:${hash(JSON.stringify(lookKey ? [preset || '', own, lookKey] : [preset || '', own])).toString(36)}`;
 }

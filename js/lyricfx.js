@@ -59,8 +59,12 @@ export const fxv = (fx, key) => {
   return typeof v === 'number' && Number.isFinite(v) ? v : FX_FIELDS[key][0];
 };
 
-/** A clean copy of a saved fx object: known keys only, numbers kept in range, junk dropped. null when empty. */
-export function cleanFx(fx) {
+/**
+ * A clean copy of a saved fx object: known keys only, numbers kept in range, junk dropped. null when empty.
+ * explicit: keep "Shake on the beat" off and "All ways" too (a look's own fx, lookapply.js: they must win over the
+ * shared settings underneath, so they are written out even at their defaults).
+ */
+export function cleanFx(fx, { explicit = false } = {}) {
   if (!fx || typeof fx !== 'object') return null;
   const out = {};
   for (const [k, [, min, max]] of Object.entries(FX_FIELDS)) {
@@ -68,14 +72,15 @@ export function cleanFx(fx) {
     if (typeof n !== 'number' || !Number.isFinite(n)) continue;
     out[k] = k === 'div' ? (DIV_VALUES.includes(n) ? n : 1) : Math.max(min, Math.min(max, n));
   }
-  if (fx.shakeBeat === true) out.shakeBeat = true;
-  if (SHAKE_DIRS.some(([d]) => d === fx.shakeDir) && fx.shakeDir !== 'both') out.shakeDir = fx.shakeDir;
+  if (fx.shakeBeat === true || (explicit && fx.shakeBeat === false)) out.shakeBeat = fx.shakeBeat;
+  if (SHAKE_DIRS.some(([d]) => d === fx.shakeDir) && (explicit || fx.shakeDir !== 'both')) out.shakeDir = fx.shakeDir;
   return Object.keys(out).length ? out : null;
 }
 
 /**
  * Saved effect settings made safe on load (normalizeProject): junk dropped, numbers in range, an empty fx
- * removed. Lines without fx are passed through as they are. Returns { lyricStyle, lyrics }.
+ * removed; the same for a look's own fx (line.style.fx, from a look theme). Lines without fx are passed through
+ * as they are. Returns { lyricStyle, lyrics }.
  */
 export function cleanLyricFx(lyricStyle, lyrics) {
   const st = { ...lyricStyle };
@@ -87,6 +92,11 @@ export function cleanLyricFx(lyricStyle, lyrics) {
   if (st.tempo && !(st.tempo.bpm > 0)) delete st.tempo;
   const list = Array.isArray(lyrics)
     ? lyrics.map((l) => {
+        if (l && l.style && typeof l.style === 'object' && 'fx' in l.style) {
+          const c = cleanFx(l.style.fx, { explicit: true });
+          const { fx, ...st2 } = l.style;
+          l = { ...l, style: c ? { ...st2, fx: c } : st2 };
+        }
         if (!l || !('fx' in l)) return l;
         const c = cleanFx(l.fx);
         const { fx, ...rest } = l;

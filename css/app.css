@@ -1884,7 +1884,24 @@ body.touch .tl-legend input.lg-color { width: 32px; min-width: 32px; height: 32p
 .lt-dots { position: absolute; right: 3px; bottom: 3px; display: flex; gap: 2px; }
 .lt-dots i { width: 7px; height: 7px; border-radius: 50%; border: 1px solid rgba(255,255,255,.35); }
 .lt-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt-motion { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt-card.edited .lt-name::after { content: ' · edited'; color: var(--muted); font-weight: 400; }
+.lt-edited { margin: 0; }
+/* the swatch word moves like the theme while the card is hovered, focused or picked (lookthemes.js swatchMotion) */
+.lt-card:is(:hover, :focus-visible, .on) .lt-m-shake { animation: lt-shake var(--lt-dur, .3s) steps(2, jump-none) infinite; }
+.lt-card:is(:hover, :focus-visible, .on) .lt-m-thump { animation: lt-thump .5s ease-out infinite; }
+.lt-card:is(:hover, :focus-visible, .on) .lt-m-pulse { animation: lt-pulse .5s ease-out infinite; }
+.lt-card:is(:hover, :focus-visible, .on) .lt-m-flicker { animation: lt-flicker 1.6s linear infinite; }
+.lt-card:is(:hover, :focus-visible, .on) .lt-m-pulse.lt-m-thump { animation: lt-pulse .5s ease-out infinite, lt-thump .5s ease-out infinite; }
+.lt-m-x { --lt-ay: 0px; }
+.lt-m-y { --lt-ax: 0px; }
+@keyframes lt-shake { 0% { translate: calc(-1 * var(--lt-ax, var(--lt-amp))) var(--lt-ay, var(--lt-amp)); } 50% { translate: var(--lt-ax, var(--lt-amp)) calc(-1 * var(--lt-ay, var(--lt-amp))); } 100% { translate: calc(-.5 * var(--lt-ax, var(--lt-amp))) calc(.5 * var(--lt-ay, var(--lt-amp))); } }
+@keyframes lt-thump { 0% { translate: var(--lt-ax, var(--lt-amp)) calc(-1 * var(--lt-ay, var(--lt-amp))); } 10% { translate: calc(-1 * var(--lt-ax, var(--lt-amp))) var(--lt-ay, var(--lt-amp)); } 22%, 100% { translate: 0 0; } }
+@keyframes lt-pulse { 0% { scale: 1.18; } 40%, 100% { scale: 1; } }
+@keyframes lt-flicker { 0%, 8%, 14%, 100% { opacity: 1; } 5%, 11% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .lt-card .lt-word { animation: none !important; } }
 .tl-legend select.lg-theme { flex: none; width: auto; max-width: 112px; min-width: 0; height: 22px; padding: 0 2px; font-size: 11px; }
 body.touch .lt-card { min-height: 64px; }
 body.touch .lt-only { min-height: 44px; }
+body.touch .lt-motion { white-space: normal; line-height: 1.2; }
 body.touch .tl-legend select.lg-theme { height: 32px; }

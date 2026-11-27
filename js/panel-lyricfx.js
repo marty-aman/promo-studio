@@ -29,7 +29,16 @@ export function setFx(holder, key, v, under = null) {
  */
 export function lyricFxGroup(b, ctx, { style, holder, line = false }) {
   const { store } = ctx;
-  const shared = (p) => p.lyricStyle.fx;
+  // what a line's own settings sit on: the shared settings, then its look's (a look theme's, style.fx)
+  const shared = (p) => {
+    const x = line ? holder(p) : null;
+    const look = x && x.style && x.style.fx;
+    return look ? { ...(p.lyricStyle.fx || {}), ...look } : p.lyricStyle.fx;
+  };
+  const hasLookFx = () => {
+    const x = line ? holder(store.get()) : null;
+    return !!(x && x.style && x.style.fx);
+  };
   const fxOf = (p) => {
     const x = holder(p);
     return line ? { ...(shared(p) || {}), ...((x && x.fx) || {}) } : (x && x.fx) || {};
@@ -75,14 +84,15 @@ export function lyricFxGroup(b, ctx, { style, holder, line = false }) {
       );
     }
   }
-  const reset = button(line ? 'Use the shared effect settings' : 'Reset to default', () => {
+  const lookFx = hasLookFx();
+  const reset = button(line ? (lookFx ? 'Use the look’s effect settings' : 'Use the shared effect settings') : 'Reset to default', () => {
     store.update((d) => {
       const x = holder(d);
       if (!x) return;
       delete x.fx;
       if (!line) delete x.tempo;
     });
-    toast(line ? 'This line uses the shared effect settings again' : 'Effect settings are back to the default look');
+    toast(line ? (lookFx ? 'This line uses its look’s effect settings again' : 'This line uses the shared effect settings again') : 'Effect settings are back to the default look');
   }, { variant: 'ghost sm', title: line ? 'Drop this line’s own effect settings' : 'Pulse tempo, timing, sizes and shake back to how the style looks by default' });
   reset.setAttribute('data-k', 'lyricfx-reset');
   b._reg((p) => {
@@ -93,7 +103,7 @@ export function lyricFxGroup(b, ctx, { style, holder, line = false }) {
     'div',
     { class: 'lyric-fx', ...k(line ? 'lyricfx-line' : 'lyricfx') },
     h('h4', { class: 'ai-h' }, line ? 'This line’s effect settings' : 'Effect settings'),
-    h('p', { class: 'muted tiny' }, line ? 'Only this line. The pulse tempo is shared (Lyrics tab).' : 'How strong and how fast the lyric moves. Shown for the effects your lyric style uses.'),
+    h('p', { class: 'muted tiny' }, line ? (lookFx ? 'Only this line, over its look theme’s settings. The pulse tempo is shared (Lyrics tab).' : 'Only this line. The pulse tempo is shared (Lyrics tab).') : 'How strong and how fast the lyric moves. Shown for the effects your lyric style uses.'),
     ...parts,
     h('div', { class: 'row' }, reset),
   );
