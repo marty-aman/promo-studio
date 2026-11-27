@@ -1129,6 +1129,24 @@ off until you pick it, so projects saved before render exactly as they did (chec
 - A project saved by a newer app with an entrance or exit this one does not know opens with **Fade** (entrance) or the
   quick fade (exit) instead (`cleanLyricAnimations` in `normalizeProject`).
 
+### Lyric-video templates (Start → Templates and themes → From your song’s files)
+
+Four templates built for the **Part of the song** you pick (or their own pick), each ending on the song's end card
+and undone with one Ctrl+Z. They write look values, effect settings and animation ids (`js/songtemplates.js`).
+
+- **Blood Slam Cards**: one phrase per card in Blood & Ash capitals, starting on the chorus. The backdrop is your
+  footage, music video or cover dimmed under black (verses), a deep red wash (choruses) or ash grey (breakdowns,
+  bridges, solos). A key word in each line slams, chorus lines flash on their first word, shake on the beat.
+- **Glow Slam One-Word**: each line shown one word at a time (split on its saved word times, or an even share when
+  there are none; the card says so and offers **Auto-sync the words first**), tracking, ghost echo and a flash on
+  each word, a glow visualizer; Hellfire or Neon look.
+- **Stage Footage Cinematic**: the music video on its saved sync (or footage on the beat), cinema bars, vignette and
+  grain, small serif lyrics in the lower third with tracking and a trailing echo; Funeral Doom or Frostbite.
+- **Cover Art Sheet**: the scrolling lyric sheet over the blurred cover; the entire song unless you pick a part.
+- **Section looks** (under Part of the song): each lyric line in the part takes its section's look: intro and outro
+  whisper, verses clean, choruses scream, the breakdown its own. One undo; off puts the shared style back.
+- The smoke and stage-light scenes only draw behind a cut-out today, so the ash grade and the glow visualizer stand in.
+
 ### Timeline zoom (Video Studio)
 
 - Edits can be up to an hour long (the **Length** box and the end handle on the ruler; it was 10 minutes).

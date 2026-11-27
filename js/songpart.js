@@ -7,6 +7,8 @@
 import { uid, beatCutPlan, linesFromText, timelineToSong, songToTimeline } from './core.js';
 import { sectionSpans, numberRepeats, fmtTime } from './manager/releases.js';
 import { lyricsFromTiming, markTimed } from './manager/lyrictiming.js';
+import { changeLook } from './lookapply.js';
+import { OPTIONAL_LINE_FIELDS } from './linestyle.js';
 
 export const PART_KINDS = [
   ['all', 'Entire song'],
@@ -96,7 +98,7 @@ export function defaultPicture(d, ctx) {
   return 'keep';
 }
 
-const clipOf = (rec, inPoint, duration, extra = {}) => ({
+export const clipOf = (rec, inPoint, duration, extra = {}) => ({
   id: uid('clip'),
   mediaId: rec.id,
   kind: rec.kind === 'image' ? 'image' : 'video',
@@ -286,4 +288,89 @@ export function usableChoice(saved, sections, duration) {
   if (!saved || !PART_KINDS.some(([k]) => k === saved.kind)) return null;
   const c = { kind: saved.kind, ids: (saved.ids || []).filter((id) => sections.some((s) => s.id === id)), from: saved.from, to: saved.to, join: saved.join || { kind: 'fade', fade: DEFAULT_FADE }, picture: saved.picture };
   return describePart(c, sections, duration).ok ? c : null;
+}
+
+// ---------------------------------------------------------------- Section looks
+// A switch that gives each lyric line the look of its song section: intro and outro whisper, verses clean, choruses
+// scream, the breakdown its own. It writes the per-line look presets (linestyle.js LINE_PRESETS) through changeLook,
+// so the lines keep their duet side, flash hit and ghost echo, and the whole switch is one undo step.
+
+/** What a section label is: 'intro', 'verse', 'prechorus', 'chorus', 'bridge', 'breakdown', 'solo', 'outro' or ''. */
+export function sectionKind(label) {
+  const s = String(label || '').trim().toLowerCase();
+  if (/^intro\b/.test(s)) return 'intro';
+  if (/^pre[- ]?chorus\b/.test(s)) return 'prechorus';
+  if (/^(chorus|refrain|hook)\b/.test(s)) return 'chorus';
+  if (/^verse\b/.test(s)) return 'verse';
+  if (/^breakdown\b/.test(s)) return 'breakdown';
+  if (/^bridge\b/.test(s)) return 'bridge';
+  if (/^(solo|instrumental|interlude)\b/.test(s)) return 'solo';
+  if (/^outro\b/.test(s)) return 'outro';
+  return '';
+}
+
+/** The look preset each kind of section gets (kinds not here keep their look). */
+export const SECTION_LOOKS = { intro: 'whisper', verse: 'clean', prechorus: 'clean', chorus: 'scream', breakdown: 'breakdown', outro: 'whisper' };
+
+/** The section a song time falls in, or null. sections: partSections(). */
+export const sectionAt = (sections, t) => (sections || []).find((s) => t >= s.start && t < s.end) || null;
+
+/**
+ * The stretches of the song the edit plays (song time): the part picked on the templates' picker when there is one
+ * (choice, as for templatePart), else the edit's own song.parts, else song.offset to the end card.
+ */
+export function playedRanges(d, choice, ctx) {
+  let lay = null;
+  try {
+    lay = templatePart(choice, ctx);
+  } catch {
+    lay = null;
+  }
+  if (lay) return lay.parts.map(({ from, to }) => ({ from, to }));
+  const s = d.song || { offset: 0 };
+  if (Array.isArray(s.parts) && s.parts.length) return s.parts.map(({ from, to }) => ({ from, to }));
+  const ec = d.endCard || {};
+  const len = Math.max(0, (d.duration || 0) - (ec.enabled ? ec.duration || 0 : 0));
+  return [{ from: s.offset || 0, to: (s.offset || 0) + len }];
+}
+
+/** The lines the switch would change: [{ id, preset, label }] for lines in the played part whose section has a look. */
+export function sectionLookPlan(d, choice, ctx) {
+  if (!ctx || !ctx.song) return [];
+  const sections = partSections(ctx.song, (ctx.audio && ctx.audio.duration) || 0);
+  if (!sections.length) return [];
+  const out = [];
+  for (const l of linesInParts(d.lyrics, playedRanges(d, choice, ctx))) {
+    const sec = sectionAt(sections, (l.start + l.end) / 2);
+    const preset = sec && SECTION_LOOKS[sectionKind(sec.label)];
+    if (preset) out.push({ id: l.id, preset, label: sec.label });
+  }
+  return out;
+}
+
+/** Is the switch on (every line it would change wears its section's look)? { on, count, sections } */
+export function sectionLooksState(d, choice, ctx) {
+  const plan = sectionLookPlan(d, choice, ctx);
+  const byId = new Map((d.lyrics || []).map((l) => [l.id, l]));
+  const on = plan.length > 0 && plan.every((p) => byId.get(p.id).style && byId.get(p.id).style.preset === p.preset);
+  const sections = ctx && ctx.song ? partSections(ctx.song, (ctx.audio && ctx.audio.duration) || 0).length : 0;
+  return { on, count: plan.length, sections };
+}
+
+// what a line keeps when its look changes: its look key and its duet side, flash hit and ghost echo
+const keepOf = (st) => Object.fromEntries(Object.entries(st || {}).filter(([k]) => k === 'lookKey' || OPTIONAL_LINE_FIELDS.includes(k)));
+
+/**
+ * Turn Section looks on (each line in the part gets its section's look) or off (lines wearing their section's look
+ * go back to the shared lyric style). Run inside store.update: one undo step. Returns the number of lines changed.
+ */
+export function setSectionLooks(d, on, choice, ctx) {
+  let n = 0;
+  for (const p of sectionLookPlan(d, choice, ctx)) {
+    const l = d.lyrics.find((x) => x.id === p.id);
+    const has = !!(l.style && l.style.preset === p.preset);
+    if (on === has) continue;
+    n += changeLook(d, p.id, (st) => (on ? { ...keepOf(st), preset: p.preset } : keepOf(st)), { only: true });
+  }
+  return n;
 }
