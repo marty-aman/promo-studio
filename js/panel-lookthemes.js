@@ -25,6 +25,11 @@ export function swatchMotion(t) {
   if (t.fields.animation === 'neon') cls.push('lt-m-flicker');
   if (t.fields.animation === 'wipe') cls.push('lt-m-wipe');
   if (t.fields.animation === 'tracking') cls.push('lt-m-track');
+  if (t.fields.animation === 'letters') cls.push('lt-m-letters');
+  if (t.fields.animation === 'buildhold') cls.push('lt-m-build');
+  if (t.fields.animation === 'paper') cls.push('lt-m-paper');
+  if (t.fields.outAnimation === 'scatter') cls.push('lt-m-scatter');
+  if (t.fields.outAnimation === 'ash') cls.push('lt-m-ash');
   if (t.fields.hit) cls.push('lt-m-hit');
   return { cls: cls.join(' '), style };
 }

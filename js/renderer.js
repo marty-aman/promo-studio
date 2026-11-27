@@ -25,11 +25,11 @@ import { drawLyricDisplay } from './lyricviz.js';
 import { lineStyle } from './linestyle.js';
 import { beatsOf, gridOf } from './tempo.js';
 import { fxv, glitchThreshold, lyricBeat, shakeOffset } from './lyricfx.js';
-import { flashLevel, wipeRect, trackState, graphemes, echoPass, sidePlacement, emphOf, slamScale } from './lyricanim.js';
+import { flashLevel, wipeRect, trackState, graphemes, echoPass, sidePlacement, emphOf, slamScale, letterStep, letterPose, holdEmph, buildHoldPose, paperSeed, paperFont, paperTone, paperPose, paperCorners } from './lyricanim.js';
 import { drawBackdrop } from './backgrounds.js';
 import { blurred } from './canvasfx.js';
 import { animate } from './keyframes.js';
-import { exitTransform, enterTransform, exitProgress, enterProgress, combine, isStill, STILL } from './exits.js';
+import { exitTransform, enterTransform, exitProgress, enterProgress, combine, isStill, STILL, scatterPiece, ashLetter } from './exits.js';
 
 // what the frame being rendered needs deep inside drawClip (set at the start of renderFrame)
 const FRAME = { env: null, t: 0, beat: 0 };
@@ -173,6 +173,9 @@ export const TEXT_ANIMATIONS = [
   ['beat', 'Pulse on the beat'],
   ['wipe', 'Wipe reveal'],
   ['tracking', 'Tracking (letter spacing)'],
+  ['letters', 'Letters one by one (rise, drop or fade)'],
+  ['buildhold', 'Build, then hold the last word'],
+  ['paper', 'Cut-paper strips'],
   ['none', 'No animation'],
 ];
 
@@ -217,6 +220,78 @@ function trackedText(ctx, op, text, sp) {
   ctx.textAlign = align;
 }
 
+// letters one by one (the 'letters' entrance and the ash exit): each letter drawn alone at its own place in the word,
+// where the whole word would have put it (the letter's width inside the word's own measure keeps the kerning), moved by
+// pose(i) = { alpha, dx, dy, scale, blur } or null for "not there yet". The context's textAlign must be 'center'.
+function paintLetters(ctx, op, text, pose) {
+  const full = ctx.measureText(text).width;
+  let acc = '';
+  graphemes(text).forEach((g, i) => {
+    const gw = ctx.measureText(g).width;
+    const left = ctx.measureText(acc + g).width - gw;
+    acc += g;
+    const p = pose(i);
+    if (!p || p.alpha <= 0.002) return;
+    ctx.save();
+    ctx.globalAlpha *= p.alpha;
+    if (p.blur > 0.3) ctx.filter = `blur(${p.blur.toFixed(1)}px)`;
+    ctx.translate(left - full / 2 + gw / 2 + p.dx, p.dy);
+    if (p.scale !== 1) ctx.scale(p.scale, p.scale);
+    ctx[op](g, 0, 0);
+    ctx.restore();
+  });
+}
+
+// cut-paper strips: words wrapped like layoutWords, each on a strip (padding either side), in its own font when
+// "Mixed fonts" is on. A word's strip width is its w (and base, which flash and karaoke read).
+function layoutPaper(ctx, text, maxW, px, mixed, family) {
+  const padX = px * 0.24;
+  const space = px * 0.1;
+  const lines = [];
+  let cur = { words: [], width: 0 };
+  String(text).split(/\s+/).filter(Boolean).forEach((word, i) => {
+    const font = mixed ? paperFont(paperSeed(word, i)) : family;
+    ctx.font = fontStr(px, font);
+    const w = ctx.measureText(word).width + padX * 2;
+    const add = cur.words.length ? space + w : w;
+    if (cur.words.length && cur.width + add > maxW) {
+      lines.push(cur);
+      cur = { words: [], width: 0 };
+      cur.words.push({ text: word, w, base: w, font });
+      cur.width = w;
+    } else {
+      cur.words.push({ text: word, w, base: w, font });
+      cur.width += add;
+    }
+  });
+  if (cur.words.length) lines.push(cur);
+  ctx.font = fontStr(px, family);
+  return { lines, space };
+}
+
+// a paper strip's colour: the base colour made a little lighter or darker (the tone is the strip's own)
+function shadeHex(hex, k) {
+  const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || '');
+  if (!m) return hex;
+  const to = k < 0 ? 0 : 255;
+  return '#' + [m[1], m[2], m[3]].map((c) => Math.round(parseInt(c, 16) + (to - parseInt(c, 16)) * Math.abs(k)).toString(16).padStart(2, '0')).join('');
+}
+
+function drawPaperStrip(ctx, w, h, seed, fill, px) {
+  const c = paperCorners(seed, w, h, px);
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = px * 0.14;
+  ctx.shadowOffsetY = px * 0.05;
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(c[0][0], c[0][1]);
+  for (let i = 1; i < 4; i++) ctx.lineTo(c[i][0], c[i][1]);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 // ghost echo (lyricanim.js): a faint copy of the whole line, bigger behind it or trailing it, drawn first
 function drawEcho(ctx, text, cx, cy, style, life, dur, beat) {
   const fx = style.fx;
@@ -254,10 +329,15 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
   ctx.font = fontStr(px, style.font);
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
-  const emph = style.emph || null; // key words (lyricanim.js emphOf): { set, size, color, slam }
-  const laid = emph ? layoutWordsEmph(ctx, t, style.maxW, emph.set, emph.size) : layoutWords(ctx, t, style.maxW);
+  let emph = style.emph || null; // key words (lyricanim.js emphOf): { set, size, color, slam }
+  // wave 2 entrances (lyricanim.js): build then hold takes the last word as a key word; paper strips lay out their own way
+  const buildHold = style.animation === 'buildhold';
+  const paper = style.animation === 'paper';
+  if (buildHold) emph = holdEmph(emph, t.split(/\s+/).filter(Boolean).length, fxv(style.fx, 'holdSize'), style.highlight);
+  else if (paper) emph = null;
+  const laid = paper ? layoutPaper(ctx, t, style.maxW, px, fxv(style.fx, 'paperFonts') >= 1, style.font) : emph ? layoutWordsEmph(ctx, t, style.maxW, emph.set, emph.size) : layoutWords(ctx, t, style.maxW);
   let { lines, space } = laid;
-  const lh = px * 1.12;
+  const lh = px * (paper ? 1.3 : 1.12);
   const totalH = lines.length * lh;
 
   const anim = style.animation || 'none';
@@ -333,9 +413,17 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
     wipeP = ease.outCubic(clamp(life / (0.5 * fxv(fx, 'wipeLen')), 0, 1));
   }
   let ex = STILL;
+  // scatter and ash (exits.js) move the words or letters one by one below, so the block itself stays where it is
+  let scatterQ = 0;
+  let ashQ = 0;
   if (exitType) {
-    ex = exitTransform(exitType, exitProgress(dur - life, style.outDuration ?? 0.35));
-    if (ex.blur) ctx.filter = `blur(${(ex.blur * ctx.canvas.height).toFixed(1)}px)`;
+    const q = exitProgress(dur - life, style.outDuration ?? 0.35);
+    if (exitType === 'scatter') scatterQ = q;
+    else if (exitType === 'ash') ashQ = q;
+    else {
+      ex = exitTransform(exitType, q);
+      if (ex.blur) ctx.filter = `blur(${(ex.blur * ctx.canvas.height).toFixed(1)}px)`;
+    }
   }
   ctx.globalAlpha *= alpha * (style.opacity ?? 1) * ex.alpha;
   ctx.translate(cx + ex.fx * ctx.canvas.width, cy + dy + ex.fy * ctx.canvas.height);
@@ -373,9 +461,13 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
   const gAmt = fxv(fx, 'glitchAmt');
   const glitching = anim === 'glitch' && (life < 0.35 || noise(gFrame * 3.1) > glitchThreshold(fx));
 
-  const outlinePx = px * (style.outlineWidth || 0) * 0.12;
+  const outlinePx = paper ? 0 : px * (style.outlineWidth || 0) * 0.12;
   let wi = 0;
   let charsSoFar = 0;
+  // letters one by one (the 'letters' entrance, and the ash exit once it starts): the number of letters and how many are behind us
+  const lettersOn = anim === 'letters' || ashQ > 0;
+  const totalLetters = lettersOn ? graphemes(t.replace(/\s+/g, '')).length : 0;
+  let lettersSoFar = 0;
   lines.forEach((line, li) => {
     const y = -totalH / 2 + lh * (li + 0.5);
     let x = style.align === 'left' ? -style.maxW / 2 : style.align === 'right' ? style.maxW / 2 - line.width : -line.width / 2;
@@ -392,6 +484,8 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
       const idx = wi;
       const wt = timings[wi] || { start: 0, end: 1 };
       wi += 1;
+      const ord0 = lettersSoFar;
+      if (lettersOn) lettersSoFar += graphemes(word.text).length;
       let text = word.text;
       if (charsSoFar >= reveal) {
         charsSoFar += text.length;
@@ -405,6 +499,8 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
       let wAlpha = 1;
       let wy = 0;
       let wx = 0;
+      let wRot = 0;
+      let strip = null;
       if (anim === 'words') {
         const since = (prog - wt.start) * dur;
         if (since < 0) {
@@ -429,6 +525,44 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
       } else if (anim === 'wave') {
         wy = Math.sin(life * 5 * fxv(fx, 'waveSpeed') - idx * 0.7 * fxv(fx, 'waveSpread')) * px * 0.12 * fxv(fx, 'waveAmt');
         wAlpha = Math.min(1, clamp(life / 0.2, 0, 1));
+      } else if (buildHold) {
+        // build, then hold: each word on its sung time (saved word times, else the even spread); the last one lands and stays
+        const since = (prog - wt.start) * dur;
+        if (since < 0) {
+          x += word.w + space;
+          continue;
+        }
+        const bh = buildHoldPose(since, idx === timings.length - 1);
+        wAlpha = bh.alpha;
+        wy = bh.dy * px;
+        wScale *= bh.slam;
+      } else if (paper) {
+        // cut-paper strips: each word on a tilted strip that slaps down and jumps on the beat
+        const seed = paperSeed(word.text, idx);
+        const pp = paperPose({ seed, idx, tilt: fxv(fx, 'paperTilt'), jump: fxv(fx, 'paperJump'), beat, since: life - idx * 0.07 });
+        if (pp.alpha <= 0) {
+          x += word.w + space;
+          continue;
+        }
+        wAlpha = pp.alpha;
+        wScale = pp.scale;
+        wy = pp.dy * px;
+        wRot = pp.rot;
+        const fill = shadeHex(style.box ? style.boxColor : style.color, paperTone(seed));
+        strip = { seed, fill, ink: readableOn(fill) };
+      }
+      if (scatterQ > 0) {
+        // scatter exit: the word flies outward from the middle of the block (exits.js scatterPiece)
+        const sp = scatterPiece(idx, scatterQ, x + word.w / 2, y, ctx.canvas.width * 0.5, fxv(fx, 'scatterDist'), fxv(fx, 'scatterSpin'));
+        wx += sp.tx;
+        wy += sp.ty;
+        wScale *= sp.scale;
+        wRot += sp.rot;
+        wAlpha *= sp.alpha;
+        if (wAlpha <= 0.002) {
+          x += word.w + space;
+          continue;
+        }
       }
       const isEmph = !!(emph && emph.set.has(idx));
       if (isEmph) wScale *= emph.size * (emph.slam ? slamScale((prog - wt.start) * dur) : 1);
@@ -440,8 +574,45 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
       ctx.globalAlpha *= wAlpha;
       ctx.translate(x + word.w / 2 + wx, y + wy);
       ctx.scale(wScale, wScale);
+      if (wRot) ctx.rotate(wRot);
       ctx.textAlign = 'center';
-      if (glitching) {
+      if (strip) {
+        drawPaperStrip(ctx, word.w, lh * 0.84, strip.seed, strip.fill, px);
+        ctx.font = fontStr(px, word.font);
+      }
+      // each letter alone (the letters entrance, the ash exit); the pose of letter i of this word
+      const lp = lettersOn
+        ? (i) => {
+            const n = ord0 + i;
+            let alpha = 1;
+            let dxl = 0;
+            let dyl = 0;
+            let sc = 1;
+            let blur = 0;
+            if (anim === 'letters') {
+              const l = letterPose(fxv(fx, 'letterMode'), life - n * letterStep(totalLetters, fxv(fx, 'letterStagger')));
+              if (!l) return null;
+              alpha = l.alpha;
+              dyl = l.dy;
+              sc = l.scale;
+            }
+            if (ashQ > 0) {
+              const a = ashLetter(n, ashQ, frame, fxv(fx, 'ashDrift'), fxv(fx, 'ashBlur'), fxv(fx, 'ashStagger'));
+              alpha *= a.alpha;
+              dxl += a.dx;
+              dyl += a.dy;
+              sc *= a.scale;
+              blur = a.blur;
+            }
+            return { alpha, dx: dxl * px, dy: dyl * px, scale: sc, blur: blur * px };
+          }
+        : null;
+      const paint = (op) => {
+        if (ownSp) trackedText(ctx, op, text, ownSp);
+        else if (lp) paintLetters(ctx, op, text, lp);
+        else ctx[op](text, 0, 0);
+      };
+      if (glitching && !lp) {
         const off = px * 0.06 * gAmt;
         ctx.globalAlpha *= 0.8;
         ctx.fillStyle = '#00f0ff';
@@ -453,7 +624,7 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
       if (anim === 'neon') {
         ctx.shadowColor = style.highlight;
         ctx.shadowBlur = px * (0.45 + 0.1 * fxv(fx, 'neonHum') * Math.sin(life * 12 * fxv(fx, 'neonSpeed')));
-      } else if (style.shadow) {
+      } else if (style.shadow && !paper) {
         ctx.shadowColor = 'rgba(0,0,0,0.55)';
         ctx.shadowBlur = px * 0.18;
         ctx.shadowOffsetY = px * 0.05;
@@ -462,14 +633,12 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
       if (outlinePx > 0) {
         ctx.strokeStyle = anim === 'neon' ? style.highlight : style.outline;
         ctx.lineWidth = outlinePx * 2;
-        if (ownSp) trackedText(ctx, 'strokeText', text, ownSp);
-        else ctx.strokeText(text, 0, 0);
+        paint('strokeText');
         if (anim !== 'neon') ctx.shadowColor = 'transparent';
       }
       const highlighted = (anim === 'karaoke' || anim === 'words') && prog >= wt.end;
-      ctx.fillStyle = isEmph ? emph.color : highlighted ? style.highlight : style.color;
-      if (ownSp) trackedText(ctx, 'fillText', text, ownSp);
-      else ctx.fillText(text, 0, 0);
+      ctx.fillStyle = strip ? strip.ink : isEmph ? emph.color : highlighted ? style.highlight : style.color;
+      paint('fillText');
       ctx.shadowColor = 'transparent';
       if (flash) {
         // flash hit (lyricanim.js flashLevel): 3 frames of a white word, or an inverted one (black on a white block)
@@ -485,8 +654,7 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
           ctx.shadowColor = '#ffffff';
           ctx.shadowBlur = px * 0.35;
         }
-        if (ownSp) trackedText(ctx, 'fillText', text, ownSp);
-        else ctx.fillText(text, 0, 0);
+        paint('fillText');
         ctx.restore();
       }
       if (anim === 'karaoke' && prog > wt.start && prog < wt.end) {
@@ -496,7 +664,7 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
         ctx.rect(-kw / 2, -lh, kw * f, lh * 2);
         ctx.clip();
         ctx.fillStyle = style.highlight;
-        ctx.fillText(text, 0, 0);
+        paint('fillText');
       }
       ctx.restore();
       x += word.w + space;
@@ -1225,7 +1393,7 @@ function drawLyrics(ctx, W, H, project, t, beat = 0) {
   if (ls.display && ls.display !== 'line') {
     const b = lyricBeat(project, ls.fx, ts, beat);
     let drawn = false;
-    withShake(ctx, ls.fx, ts, (W * ls.size) / 100, b, (W * (ls.x ?? 50)) / 100, (H * ls.y) / 100, () => (drawn = drawLyricDisplay(ctx, W, H, project.lyrics, ls, ts, b, project.theme)));
+    withShake(ctx, ls.fx, ts, (W * ls.size) / 100, b, (W * (ls.x ?? 50)) / 100, (H * ls.y) / 100, () => (drawn = drawLyricDisplay(ctx, W, H, project.lyrics, ls, ts, b, project.theme, ls.display === 'ticker' ? { grid: gridOf(project, ls) } : undefined)));
     if (drawn) return;
   }
   const line0 = activeLyric(project.lyrics, ts);

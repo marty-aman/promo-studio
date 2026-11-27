@@ -1155,6 +1155,25 @@ and undone with one Ctrl+Z. They write look values, effect settings and animatio
   whisper, verses clean, choruses scream, the breakdown its own. One undo; off puts the shared style back.
 - The smoke and stage-light scenes only draw behind a cut-out today, so the ash grade and the glow visualizer stand in.
 
+### Wave 2 lyric animations (Video Studio)
+
+Add-only ids, off until picked, so older projects render as before (checked pixel by pixel). Maths in
+`js/lyricanim.js` and `js/exits.js`; their settings are under **Effect settings**.
+
+- **Letters one by one** entrance: letters rise, drop or fade in, one after another (letter stagger). Only this id
+  draws letters separately.
+- **Build, then hold the last word** entrance: words appear on their sung time (saved word times, else the even
+  spread); the last word slams in, takes the accent colour, is bigger (**Last word size**) and stays.
+- **Cut-paper strips** entrance: each word on a slightly tilted paper strip (the box colour, else the text colour),
+  optional mixed fonts, strips jump on the beat.
+- **Horizontal ticker** display: one band in the lower third crawling right to left, locked to the tempo (one line
+  per bar) or at a speed you set. It does not follow the sung times; the sung line is in the highlight colour.
+- **Scatter apart** and **Smoke / ash dissolve** exits: text scatters word by word or dissolves letter by letter;
+  on layers and clips they move the whole picture (scatter tumbles off, ash blurs, drifts up and fades). Both also
+  work as entrances played backwards.
+- **Pulse on the beat** is always listed in the lyric Effect settings (whole song, one line, a look): greyed out
+  with a **Use Pulse on the beat** button when the style does not pulse. Nothing extra is saved.
+
 ### Timeline zoom (Video Studio)
 
 - Edits can be up to an hour long (the **Length** box and the end handle on the ruler; it was 10 minutes).

@@ -2077,7 +2077,7 @@ export function createPanels({ store, engine, ui }) {
     const hand = handTimedCount(lines);
     const stale = lines.filter(wordsStale);
     const anim = p.lyricStyle.animation;
-    const shows = (p.lyricStyle.display || 'line') !== 'line' || anim === 'karaoke' || anim === 'words' || p.lyrics.some((l) => l.emph && l.emph.slam);
+    const shows = (p.lyricStyle.display || 'line') !== 'line' || anim === 'karaoke' || anim === 'words' || anim === 'buildhold' || p.lyrics.some((l) => (l.emph && l.emph.slam) || (l.style && l.style.animation === 'buildhold'));
     return section(
       '4 · Word timing',
       h('p', { class: 'muted tiny' }, 'When each word of a line lights up in the Word by word and Karaoke looks. Drag a word’s edge or the word itself; it saves on the song with the line times.'),

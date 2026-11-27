@@ -3,7 +3,7 @@
 // The shared settings live in lyricStyle.fx (tempo in lyricStyle.tempo); a look's in style.fx of each of its lines
 // (lookapply.js); a line's own in line.fx. Drawn in that order, each over the one before.
 import { h, button, toast } from './dom.js';
-import { setLookFx, resetLookFx, lookFxState, lookFxOf } from './lookapply.js';
+import { setLookFx, resetLookFx, lookFxState, lookFxOf, changeLook } from './lookapply.js';
 import { tempoControl, hostTarget } from './panel-tempo.js';
 import { FX_FIELDS, DIVISIONS, SHAKE_DIRS, GROUP_FIELDS, GROUP_LABEL, fxGroups, fxv, fxChanged } from './lyricfx.js';
 
@@ -69,15 +69,22 @@ export function lyricFxGroup(b, ctx, { style, holder, line = false, look = null 
   };
   const groups = fxGroups(style);
   const cur = fxOf(store.get());
-  const timing = groups.includes('pulse') || !!cur.shakeBeat;
+  // the beat controls: the pulse, shake on the beat and the paper strips' jump use the pulse division and length; the ticker (locked to the tempo) uses only the tempo
+  const tempoOnly = groups.includes('ticker') && !groups.includes('paper') && !groups.includes('pulse') && !cur.shakeBeat;
+  const timing = groups.includes('pulse') || groups.includes('paper') || groups.includes('ticker') || !!cur.shakeBeat;
   const parts = [];
   if (timing) {
     parts.push(h('h5', { class: 'fx-h' }, 'Beat timing'));
     if (!line && !look) parts.push(tempoControl(b, ctx, lyricTempoTarget(), { title: 'Pulse tempo', note: 'The lyrics pulse to the project tempo (Audio tab) unless you set their own here. Moving the first beat sets their own tempo.' }));
-    const div = b.select('Pulse every', (p) => String(fxv(fxOf(p), 'div')), (d, v) => set('div')(d, +v), DIVISIONS);
-    div.setAttribute('data-fx', 'div');
-    parts.push(h('div', { class: 'grid2' }, div, range('len')));
+    if (!tempoOnly) {
+      const div = b.select('Pulse every', (p) => String(fxv(fxOf(p), 'div')), (d, v) => set('div')(d, +v), DIVISIONS);
+      div.setAttribute('data-fx', 'div');
+      parts.push(h('div', { class: 'grid2' }, div, range('len')));
+    }
   }
+  // "Pulse on the beat" is always listed: greyed out with a way to switch to it when the style does not pulse. Only the
+  // panel shows it (fxGroups, and so what is saved, is unchanged), and its controls are off, so nothing is written.
+  if (!groups.includes('pulse')) parts.push(pulseOff(b, ctx, { style, holder, line, look, range, fxOf, showTiming: !timing }));
   for (const g of groups) {
     const fields = GROUP_FIELDS[g].filter((f) => f !== 'div' && f !== 'len');
     if (!fields.length) continue;
@@ -120,6 +127,45 @@ export function lyricFxGroup(b, ctx, { style, holder, line = false, look = null 
 }
 
 const lines = (n) => `${n} line${n === 1 ? '' : 's'}`;
+
+/** Does this style pulse on the beat? (its group is a live one then) The displays that can: the poster, the tunnel, the line. */
+const PULSE_DISPLAYS = ['line', 'poster', 'tunnel'];
+
+/**
+ * The greyed-out "Pulse on the beat" group, for a style that does not pulse: a hint, a button that makes Pulse on the
+ * beat the animation (one undo; on a look it reaches every line with the look, on a line only that line), and the
+ * group's controls turned off. showTiming: also list Pulse every and Pulse length (the beat timing block is not above).
+ */
+function pulseOff(b, ctx, { style, holder, line, look, range, fxOf, showTiming }) {
+  const { store } = ctx;
+  const display = style.display || 'line';
+  const canSwitch = PULSE_DISPLAYS.includes(display);
+  const use = button('Use Pulse on the beat', () => {
+    store.update((d) => {
+      if (look) changeLook(d, look.id, (st) => ({ ...(st || {}), animation: 'beat' }), { ids: look.ids() });
+      else if (line) changeLook(d, holder(d).id, (st) => ({ ...(st || {}), animation: 'beat' }), { only: true });
+      else d.lyricStyle.animation = 'beat';
+    });
+    toast('The animation is now Pulse on the beat');
+  }, { variant: 'sm', title: 'Make Pulse on the beat the animation' });
+  use.setAttribute('data-k', 'lyricfx-pulse-use');
+  use.disabled = !canSwitch;
+  const controls = [];
+  if (showTiming) {
+    const div = b.select('Pulse every', (p) => String(fxv(fxOf(p), 'div')), () => {}, DIVISIONS);
+    div.setAttribute('data-fx', 'div');
+    controls.push(h('div', { class: 'grid2' }, div, range('len')));
+  }
+  controls.push(range('pulse'));
+  const box = h('div', { class: 'fx-off', 'data-k': 'lyricfx-pulse-off', 'aria-disabled': 'true' },
+    h('h5', { class: 'fx-h' }, GROUP_LABEL.pulse),
+    h('p', { class: 'muted tiny', 'data-k': 'lyricfx-pulse-hint' }, canSwitch ? 'Choose Pulse on the beat as the animation to use these.' : 'Pulse on the beat works with One line at a time, the Kinetic poster and the 3D word tunnel.'),
+    h('div', { class: 'row' }, use),
+    ...controls,
+  );
+  for (const el of box.querySelectorAll('input, select')) el.disabled = true;
+  return box;
+}
 
 /** The look's group: what it reaches ("This look (N lines)"), its controls, and Reset (to the theme's, or to none). */
 function lookGroup(b, ctx, look, parts) {

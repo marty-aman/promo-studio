@@ -124,7 +124,7 @@ test('key words are cleaned on load: bad entries, sizes and colours go', () => {
 test('unknown animation ids from a newer app open as a fade (entrance) and the quick fade (exit)', () => {
   const r = cleanLyricAnimations({
     lyricStyle: { animation: 'zzz', outAnimation: 'melt', hit: 'strobe', echo: 'x', side: 'up' },
-    lyrics: [{ id: 'a', text: 'hi', style: { animation: 'letters', outAnimation: 'fade', hit: 'beat' } }, { id: 'b', text: 'ok' }],
+    lyrics: [{ id: 'a', text: 'hi', style: { animation: 'confetti', outAnimation: 'fade', hit: 'beat' } }, { id: 'b', text: 'ok' }],
     texts: [{ id: 't', animation: 'zzz', outAnimation: 'nope' }, { id: 'u', animation: 'pop' }],
   });
   assert.deepEqual(r.lyricStyle, { animation: 'fade', outAnimation: '' });

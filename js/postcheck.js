@@ -63,7 +63,7 @@ export function postCheck(p) {
     const [x0, y0, x1, y1] = AREA.map((v) => v * 100);
     const outside = (x, y) => y > y1 || y < y0 || x > x1 + 2 || x < x0 - 2;
     const ls = p.lyricStyle || {};
-    const lyricOut = lyrics.length && ls.display !== 'sheet' && ls.display !== 'tunnel' && outside(ls.x ?? 50, ls.y ?? 72);
+    const lyricOut = lyrics.length && ls.display !== 'sheet' && ls.display !== 'tunnel' && ls.display !== 'ticker' && outside(ls.x ?? 50, ls.y ?? 72);
     const textOut = texts.some((t) => outside(t.x ?? 50, t.y ?? 18));
     if (lyricOut || textOut) add('safe', 'warn', 'Text under the app buttons', `${lyricOut ? 'Lyrics' : 'Some text'} sit where TikTok, Reels or Shorts put their buttons and caption, so they will be covered.`, { kind: 'layout' });
   }
