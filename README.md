@@ -829,6 +829,12 @@ extra audio, end card) have eyes too; hiding an audio row mutes it.
 - **Video layers:** clips placed freely in time over the main video, with opacity and blend mode
   (screen for smoke or light-leak footage, multiply for textures). Quick framings: picture in picture,
   full frame, top or bottom half (split screen), circle. Each clip has the full clip inspector.
+  Drag a clip up or down onto another video layer's row to move it there (the row lights up while you drag;
+  higher layers draw over lower ones). Drop it on the **New layer** strip over the top or under the bottom video
+  layer to give it a layer of its own. Selected clips move together by the same number of rows. A clip can't land
+  on another clip of the target layer, and a drop on a row that isn't a video layer changes nothing. The clip's
+  menu (right-click or long-press) and its settings have **Move to layer** too. One Ctrl+Z undoes a move. Clips
+  on the main Video track don't move to layers.
 - **Guitar tab:** as many tab layers as you need, e.g. lead and rhythm guitar or bass. All styles work for
   4- and 5-string bass and 6- and 7-string guitar, and colour each string (bass E-A-D-G match guitar E-A-D-G).
   Pick one of four styles:

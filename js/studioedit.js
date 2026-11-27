@@ -287,6 +287,87 @@ export function duplicateItem(d, sel, makeId = uid) {
   return pasteItem(d, c, { mode: 'after' }, makeId);
 }
 
+// ------------------------------------------------------------ moving clips between video layers
+
+/** The video layers, bottom to top (the order the preview stacks them: later layers draw over earlier ones). */
+export const videoLayers = (p) => (p.layers || []).filter((L) => L.type === 'video');
+
+const overlaps = (a0, a1, b0, b1) => a0 < b1 - 1e-6 && b0 < a1 - 1e-6;
+
+/**
+ * Plan moving the overlay clips `ids` up (+) or down (-) by `rows` video layers, and later by `delta` seconds.
+ * Rows past the top or the bottom video layer become new video layers there. Clips on the main Video track are
+ * left out (they are one gapless sequence with no start of their own). A clip may not land on a stretch of another
+ * layer that already has a clip: then the whole move is refused with { error }, nothing is overwritten.
+ * Returns { moves: [{ id, from, to }] (indexes into the bottom-to-top list with the new layers), newBelow, newAbove,
+ * delta } or { error }. A move of no rows gives { moves: [] }.
+ */
+export function planLayerMove(p, ids, rows, delta = 0) {
+  const V = videoLayers(p);
+  const moved = [];
+  for (const id of ids) {
+    const i = V.findIndex((L) => L.clips.some((c) => c.id === id));
+    if (i >= 0) moved.push({ id, i, clip: V[i].clips.find((c) => c.id === id) });
+  }
+  if (!rows || !moved.length) return { moves: [], newBelow: 0, newAbove: 0, delta };
+  const newBelow = Math.max(0, ...moved.map((m) => -(m.i + rows)));
+  const newAbove = Math.max(0, ...moved.map((m) => m.i + rows - (V.length - 1)));
+  const moving = new Set(moved.map((m) => m.id));
+  for (const m of moved) {
+    const L = V[m.i + rows];
+    if (!L) continue; // a new layer: empty
+    const a = Math.max(0, m.clip.start + delta);
+    const b = a + m.clip.duration;
+    const hit = L.clips.find((c) => !moving.has(c.id) && overlaps(a, b, c.start, c.start + c.duration));
+    if (hit) return { error: `${L.name || 'That layer'} already has a clip from ${hit.start.toFixed(1)}s to ${(hit.start + hit.duration).toFixed(1)}s there. Move the clip to a free stretch, or pick another layer.` };
+  }
+  return { moves: moved.map((m) => ({ id: m.id, from: m.i + newBelow, to: m.i + rows + newBelow })), newBelow, newAbove, delta };
+}
+
+/**
+ * Plan moving overlay clips to the layer `target` (a layer id, 'new' for a new layer on top of the video layers, or
+ * 'below' for a new one under them), counted from the layer of `ids[0]`. Same result as planLayerMove.
+ */
+export function planMoveTo(p, ids, target, delta = 0) {
+  const V = videoLayers(p);
+  const own = V.findIndex((L) => L.clips.some((c) => c.id === ids[0]));
+  if (own < 0) return { error: 'Only clips on a video layer can be moved to another layer.' };
+  const to = target === 'new' ? V.length : target === 'below' ? -1 : V.findIndex((L) => L.id === target);
+  if (to < 0 && target !== 'below') return { error: 'That layer is gone.' };
+  return planLayerMove(p, ids, to - own, delta);
+}
+
+/**
+ * Carry out a plan from planLayerMove in the draft `d` (one store.update = one undo step). Each clip keeps every
+ * setting (keyframes, effects, on/off, sound sync); `delta` moves it in time too. A layer left empty is kept.
+ * Returns { layers: [ids of the layers the clips went to], made: [ids of new layers] }.
+ */
+export function applyLayerMove(d, plan, makeId = uid) {
+  if (!plan || plan.error || !plan.moves || !plan.moves.length) return { layers: [], made: [] };
+  const V = videoLayers(d);
+  let n = V.length;
+  const fresh = () => ({ id: makeId('lyr'), type: 'video', name: `Video layer ${++n}`, visible: true, opacity: 1, blend: 'source-over', clips: [] });
+  const below = Array.from({ length: plan.newBelow }, fresh);
+  const above = Array.from({ length: plan.newAbove }, fresh);
+  // the new layers sit right under the bottom video layer and right over the top one
+  d.layers.splice(d.layers.indexOf(V[0]), 0, ...below);
+  d.layers.splice(d.layers.indexOf(V[V.length - 1]) + 1, 0, ...above);
+  const E = [...below, ...V, ...above];
+  const taken = plan.moves.map((m) => {
+    const src = E[m.from];
+    const i = src.clips.findIndex((c) => c.id === m.id);
+    return i < 0 ? null : { m, c: src.clips.splice(i, 1)[0] };
+  });
+  const to = new Set();
+  for (const t of taken) {
+    if (!t) continue;
+    t.c.start = r3(Math.max(0, t.c.start + (plan.delta || 0)));
+    E[t.m.to].clips.push(t.c);
+    to.add(E[t.m.to].id);
+  }
+  return { layers: [...to], made: [...below, ...above].map((L) => L.id) };
+}
+
 // ------------------------------------------------------------ safe areas
 
 /** Rectangles [x0, y0, x1, y1] (fractions of the frame) that each app keeps clear of its own buttons and captions. */

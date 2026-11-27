@@ -1049,6 +1049,15 @@ input[type='date'], input[type='time'] { color-scheme: dark; }
 .kf-menu button:hover, .kf-menu button:focus-visible { background: var(--panel-2); outline: none; }
 .kf-menu button.on { color: var(--accent); }
 .kf-menu button.danger { color: var(--danger); border-top: 1px solid var(--border); border-radius: 0 0 5px 5px; }
+.kf-menu > .bm-layers { display: grid; gap: 2px; padding: 2px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.bm-layers .bm-head { padding: 2px 8px; }
+/* moving an overlay clip to another video layer: the row it would land on, a ghost of the clip, the new-layer strips */
+.tl-track.newlayer { background: repeating-linear-gradient(135deg, transparent 0 8px, rgba(52, 211, 153, 0.07) 8px 16px); }
+.tl-track.drop-ok { background-color: rgba(52, 211, 153, 0.16); box-shadow: inset 0 0 0 2px #34d399; }
+.tl-track.drop-no { background-color: rgba(239, 68, 68, 0.12); box-shadow: inset 0 0 0 2px var(--danger); cursor: no-drop; }
+.tl-drop-ghost { position: absolute; top: 3px; bottom: 3px; z-index: 4; border: 2px dashed #34d399; border-radius: 6px; background: rgba(52, 211, 153, 0.22); pointer-events: none; }
+.tl-drop-ghost.no { border-color: var(--danger); background: rgba(239, 68, 68, 0.2); }
+.tl-head.newlayer { border-left-color: #34d399; font-style: italic; }
 
 /* ---- header: the band and song you're working on */
 .now-on { display: inline-flex; align-items: center; gap: 7px; min-width: 0; max-width: 340px; padding: 3px 10px 3px 3px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; font-size: 12.5px; cursor: pointer; }

@@ -1,7 +1,7 @@
 // Multi-track timeline: ruler, video lane, text, lyrics, song, extra audio and end card.
 import { layoutClips, songToTimeline, timelineToSong, snap, clamp, formatTime, maxClipDuration, ctaText, hasSongParts } from './core.js';
 import { media, videoWaveform } from './media.js';
-import { isVisible } from './state.js';
+import { isVisible, findClip } from './state.js';
 import { OFF_KEY, isOff } from './itemoff.js';
 import { h, icon, toast } from './dom.js';
 import { kfTarget } from './panel-kf.js';
@@ -15,6 +15,7 @@ import { looksById } from './lookcolors.js';
 import { LOOK_THEMES, themeState } from './lookthemes.js';
 import { applyTheme as applyLookTheme, applySharedTheme } from './lookapply.js';
 import { keyOf, inGroup, toggleIn, spans, planMove, applyMove } from './multimove.js';
+import { videoLayers, planMoveTo, applyLayerMove } from './studioedit.js';
 
 const HEAD_W = 112;
 const EYE_MIN_PX = 56; // narrower blocks keep all their width for grabbing (E and the menu still turn them off)
@@ -31,6 +32,10 @@ export function createTimeline({ root, store, engine, ui }) {
   let preview = null; // transient visual offset for clip reordering
   let groupKeys = null; // keys (multimove keyOf) of the blocks in a multi-selection, while there is one
   let groupPreview = null; // { plan } while a group is dragged: drawn shifted, written to the edit on release
+  // { target, start, dur, clash } while an overlay clip is dragged off its own row: where it would go (see rowTarget)
+  let drop = null;
+  let dragSerial = 0; // each overlay clip drag is its own undo step, even right after the last one
+  let zoneShift = 0; // px the timeline is scrolled down by so the strip over the top video layer moves no row under the pointer
 
 
   // Key for the lyric looks: a swatch per look (click selects its lines, the colour box changes it).
@@ -264,7 +269,7 @@ export function createTimeline({ root, store, engine, ui }) {
     const rows = [];
     const addRow = (name, cls, height, fill, opt = {}) => {
       const hidden = opt.layer ? opt.layer.visible === false : opt.vis ? !isVisible(p, opt.vis) : false;
-      const row = h('div', { class: `tl-track ${cls}${hidden ? ' hidden-row' : ''}`, style: { height: `${height}px` }, dataset: { track: cls } });
+      const row = h('div', { class: `tl-track ${cls}${hidden ? ' hidden-row' : ''}`, style: { height: `${height}px` }, dataset: { track: cls, ...(opt.layer ? { layer: opt.layer.id } : {}), ...(opt.where ? { where: opt.where } : {}) } });
       fill(row);
       content.append(row);
       const toggle = (e) => {
@@ -322,9 +327,13 @@ export function createTimeline({ root, store, engine, ui }) {
 
     // stacked layers, topmost first
     const visEnd = p.endCard.enabled ? total - p.endCard.duration : total;
+    // while an overlay clip is dragged off its row: a drop zone over the top video layer and one under the bottom one
+    const vls = videoLayers(p);
+    const zone = (where) => addRow('New layer', 'newlayer', 26, (row) => row.append(h('div', { class: 'tl-empty' }, where === 'top' ? 'Drop here for a new video layer on top' : 'Drop here for a new video layer underneath')), { where });
     for (const L of [...(p.layers || [])].reverse()) {
       const isSel = sel && sel.type === 'layer' && sel.id === L.id;
       if (L.type === 'video') {
+        if (drop && L === vls[vls.length - 1]) zone('top');
         addRow(L.name || 'Video layer', 'vlayer', 46, (row) => {
           if (!L.clips.length) row.append(h('div', { class: 'tl-empty' }, 'Empty video layer: add a clip in its settings'));
           for (const c of L.clips) {
@@ -345,6 +354,7 @@ export function createTimeline({ root, store, engine, ui }) {
             row.append(el);
           }
         }, { layer: L });
+        if (drop && L === vls[0]) zone('below');
         continue;
       }
       let a = 0;
@@ -548,9 +558,87 @@ export function createTimeline({ root, store, engine, ui }) {
       );
     }, { vis: 'endcard' });
 
+    if (drop) paintDrop(rows, s);
+    // the strip over the top video layer would push every row under it down: scroll by its height so nothing under the
+    // pointer moves (room at the bottom makes sure the scroll is possible), and back once it goes
+    const shift = drop ? 26 : 0;
+    content.style.paddingBottom = heads.style.paddingBottom = drop ? `${scroller.clientHeight}px` : '';
+    if (shift !== zoneShift) {
+      scroller.scrollTop += shift - zoneShift;
+      heads.scrollTop = scroller.scrollTop;
+      zoneShift = shift;
+    }
     drawKeyframes(p, s);
     playhead.style.left = `${engine.t * s}px`;
     content.append(playhead);
+  }
+
+  // ------------------------------------------------------------ moving overlay clips to another video layer
+
+  // a row's identity across renders: its layer, its drop zone, or its kind and place among rows of that kind
+  function rowKeys(rows) {
+    const seen = {};
+    return rows.map((r) => (r.dataset.layer ? `L:${r.dataset.layer}` : r.dataset.where ? `N:${r.dataset.where}` : `T:${r.dataset.track}:${(seen[r.dataset.track] = (seen[r.dataset.track] || 0) + 1)}`));
+  }
+  /** What is under the pointer at clientY for a dragged overlay clip: a video layer, a new-layer zone, or nothing. */
+  function rowTarget(y) {
+    const rows = [...content.querySelectorAll(':scope > .tl-track')];
+    const keys = rowKeys(rows);
+    const ruler = content.querySelector(':scope > .tl-ruler');
+    if (ruler && y < ruler.getBoundingClientRect().bottom) return { kind: 'new', where: 'top', key: 'N:top' }; // above everything
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i].getBoundingClientRect();
+      if (y < r.top || y >= r.bottom) continue;
+      const { track, layer, where } = rows[i].dataset;
+      if (where) return { kind: 'new', where, key: keys[i] };
+      if (track === 'vlayer') return { kind: 'layer', id: layer, key: keys[i] };
+      return { kind: 'none', key: keys[i] };
+    }
+    return { kind: 'none', key: null };
+  }
+  const targetOf = (tg) => (tg.kind === 'layer' ? tg.id : tg.where === 'below' ? 'below' : 'new');
+  const NOT_VIDEO = 'Clips can only go on a video layer. Drop it on a video layer row or on a “New layer” strip.';
+  /** The ids a layer move takes: the dragged clip first (rows are counted from its layer), then the rest of its group. */
+  function moveIds(id) {
+    const g = group();
+    const rest = g && inGroup(g, { type: 'clip', id }) ? g.filter((x) => x.type === 'clip').map((x) => x.id) : [];
+    return [...new Set([id, ...rest])];
+  }
+  /** Follow the pointer during an overlay clip drag; true while the clip is off its own row (drop is set). */
+  function trackDrop(e, id, layerId, delta) {
+    const tg = rowTarget(e.clientY);
+    if (!drop && tg.kind === 'layer' && tg.id === layerId) return false;
+    const p = store.get();
+    const c = findClip(p, id).clip;
+    if (!c) return false;
+    const was = drop && `${drop.target.key}|${drop.clash}|${drop.start}`;
+    const plan = tg.kind === 'none' || (tg.kind === 'layer' && tg.id === layerId) ? null : planMoveTo(p, moveIds(id), targetOf(tg), delta);
+    drop = { target: tg, own: tg.kind === 'layer' && tg.id === layerId, start: Math.max(0, c.start + delta), dur: c.duration, clash: plan && plan.error ? plan.error : null };
+    if (was !== `${drop.target.key}|${drop.clash}|${drop.start}`) render();
+    return true;
+  }
+  /** Highlight the row an overlay clip would land on, with a ghost of the clip at its time. */
+  function paintDrop(rows, s) {
+    const keys = rowKeys(rows);
+    const i = keys.indexOf(drop.target.key);
+    if (i < 0 || drop.own) return;
+    const row = rows[i];
+    const ok = drop.target.kind !== 'none' && !drop.clash;
+    row.classList.add(ok ? 'drop-ok' : 'drop-no');
+    const tip = drop.target.kind === 'none' ? NOT_VIDEO : drop.clash || (drop.target.kind === 'new' ? 'Let go for a new video layer' : 'Let go to move the clip here');
+    row.append(h('div', { class: `tl-drop-ghost${ok ? '' : ' no'}`, style: { left: `${drop.start * s}px`, width: `${Math.max(4, drop.dur * s)}px` }, title: tip, 'aria-hidden': 'true' }));
+    row.title = tip;
+  }
+  /** Move overlay clips to `target` (a layer id, 'new' or 'below'), `delta` seconds later, in one undo step. */
+  function moveToLayer(ids, target, delta = 0) {
+    const plan = planMoveTo(store.get(), ids, target, delta);
+    if (plan.error) {
+      toast(plan.error);
+      return false;
+    }
+    if (!plan.moves.length) return false;
+    store.update((d) => applyLayerMove(d, plan));
+    return true;
   }
 
   // ------------------------------------------------------------ keyframe diamonds on the selected block
@@ -747,6 +835,7 @@ export function createTimeline({ root, store, engine, ui }) {
       item('Split at playhead', () => ui.split()),
       item('Duplicate', () => ui.duplicate()),
       item('Copy', () => ui.copy()),
+      kind === 'oclip' ? layerMenuItems(id, item) : null,
       ui.toggleOff ? item(isOff(store.get(), selFor(kind, id)) ? `Turn on (${OFF_KEY})` : `Turn off (${OFF_KEY})`, () => ui.toggleOff([selFor(kind, id)])) : null,
       item('Settings', () => ui.openSettings && ui.openSettings()),
       item('Delete', () => ui.deleteSelection(), 'danger'),
@@ -756,6 +845,25 @@ export function createTimeline({ root, store, engine, ui }) {
     if (r.bottom > innerHeight) menu.style.top = `${Math.max(4, innerHeight - r.height - 4)}px`;
     if (r.right > innerWidth) menu.style.left = `${Math.max(4, innerWidth - r.width - 4)}px`;
     setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+  }
+  /** "Move to layer" in a clip's menu: every video layer, top first (the one it is on is ticked), and a new one. */
+  function layerMenuItems(id, item) {
+    const V = videoLayers(store.get());
+    const on = V.find((L) => L.clips.some((c) => c.id === id));
+    return h('div', { class: 'bm-layers', role: 'group', 'aria-label': 'Move to layer' },
+      h('div', { class: 'muted tiny bm-head' }, 'Move to layer'),
+      [...V].reverse().map((L) => {
+        const b = item(L === on ? `✓ ${L.name || 'Video layer'}` : L.name || 'Video layer', () => L !== on && moveToLayer([id], L.id));
+        b.dataset.moveTo = L.id;
+        if (L === on) b.setAttribute('aria-current', 'true');
+        return b;
+      }),
+      (() => {
+        const b = item('New layer', () => moveToLayer([id], 'new'));
+        b.dataset.moveTo = 'new';
+        return b;
+      })(),
+    );
   }
   content.addEventListener('contextmenu', (e) => {
     if (document.body.classList.contains('touch')) return e.preventDefault();
@@ -827,7 +935,7 @@ export function createTimeline({ root, store, engine, ui }) {
     const grp = group();
     if (groupable && !edge && (picking || (grp && inGroup(grp, bsel)))) {
       // a block of the multi-selection: a drag moves the whole group, a click (with Shift/Ctrl/Cmd) toggles it
-      drag = { op: 'gmove', kind, id, sel: bsel, x0: e.clientX, y0: e.clientY, moved: false, toggle: picking, inG: !!(grp && inGroup(grp, bsel)) };
+      drag = { op: 'gmove', kind, id, layerId: blockEl.dataset.layer, sel: bsel, x0: e.clientX, y0: e.clientY, moved: false, toggle: picking, inG: !!(grp && inGroup(grp, bsel)) };
       return;
     }
     const base = { kind, id, x0: e.clientX, y0: e.clientY, moved: false, edge };
@@ -861,7 +969,7 @@ export function createTimeline({ root, store, engine, ui }) {
       const L = p.layers.find((x) => x.id === blockEl.dataset.layer);
       const c = L && L.clips.find((x) => x.id === id);
       if (!c) return;
-      drag = { ...base, layerId: L.id, op: edge ? `trim-${edge}` : 'move', orig: { ...c } };
+      drag = { ...base, layerId: L.id, op: edge ? `trim-${edge}` : 'move', orig: { ...c }, serial: ++dragSerial };
     } else if (kind === 'layer') {
       const L = p.layers.find((x) => x.id === id);
       drag = { ...base, op: 'layershift', orig: { start: songToTimeline(L.offset || 0, p.song) } };
@@ -902,7 +1010,8 @@ export function createTimeline({ root, store, engine, ui }) {
       return;
     }
     if (drag.op === 'gmove') {
-      if (!drag.moved && Math.abs(dx) < slop) return;
+      // an overlay clip can also be dragged up or down onto another video layer
+      if (!drag.moved && (drag.kind === 'oclip' ? Math.hypot(dx, e.clientY - drag.y0) : Math.abs(dx)) < slop) return;
       drag.moved = true;
       const g = group();
       if (!drag.inG || !g) return; // Shift-dragging a block outside the group moves nothing
@@ -922,14 +1031,15 @@ export function createTimeline({ root, store, engine, ui }) {
         dt = na - me.start;
       }
       groupPreview = { plan: planMove(p, g, dt) };
+      if (drag.kind === 'oclip' && trackDrop(e, drag.id, drag.layerId, groupPreview.plan.delta || 0)) return;
       render();
       return;
     }
-    if (!drag.moved && Math.abs(dx) < slop) return;
+    if (!drag.moved && (drag.kind === 'oclip' && drag.op === 'move' ? Math.hypot(dx, e.clientY - drag.y0) : Math.abs(dx)) < slop) return;
     if (!drag.moved) clearPress();
     drag.moved = true;
     const dt = dx / s;
-    const key = `drag:${drag.op}:${drag.id}`;
+    const key = `drag:${drag.op}:${drag.id}${drag.serial ? `:${drag.serial}` : ''}`;
     const p = store.get();
 
     if (drag.op === 'range') {
@@ -1020,6 +1130,7 @@ export function createTimeline({ root, store, engine, ui }) {
           const endSnap = snapT(o.start + o.duration + dt, o.id);
           if (endSnap !== o.start + o.duration + dt && a === o.start + dt) a = endSnap - o.duration;
           c.start = +Math.max(0, a).toFixed(3);
+          drag.wrote = true;
         } else if (drag.op === 'trim-r') {
           c.duration = +clamp(snapT(o.start + o.duration + dt, o.id) - o.start, 0.2, maxClipDuration(o, rec ? rec.duration : Infinity)).toFixed(3);
         } else {
@@ -1030,6 +1141,7 @@ export function createTimeline({ root, store, engine, ui }) {
           c.duration = +(o.duration - d2).toFixed(3);
         }
       }, key);
+      if (drag.op === 'move') trackDrop(e, drag.id, drag.layerId, 0);
     } else if (drag.op === 'layershift') {
       const start = snapT(drag.orig.start + dt, drag.id);
       store.update((d) => {
@@ -1075,6 +1187,9 @@ export function createTimeline({ root, store, engine, ui }) {
     if (!drag) return;
     const d0 = drag;
     drag = null;
+    const dr = drop;
+    drop = null;
+    if (dr && e.type !== 'pointerup') dr.cancel = true;
     try {
       content.releasePointerCapture(e.pointerId);
     } catch {
@@ -1112,11 +1227,38 @@ export function createTimeline({ root, store, engine, ui }) {
         toast(gp.plan.error);
         return render();
       }
-      if (!gp.plan.delta && gp.plan.insertAt == null) return render();
-      store.update((d) => applyMove(d, g, gp.plan)); // the whole group in one undo step
+      // dragged onto another video layer: the group's overlay clips change layer by the same number of rows
+      let lp = null;
+      if (dr && !dr.own) {
+        if (dr.target.kind === 'none') {
+          toast(NOT_VIDEO);
+          return render();
+        }
+        lp = planMoveTo(store.get(), moveIds(d0.id), targetOf(dr.target), gp.plan.delta || 0);
+        if (lp.error) {
+          toast(lp.error);
+          return render();
+        }
+      }
+      if (!gp.plan.delta && gp.plan.insertAt == null && !(lp && lp.moves.length)) return render();
+      store.update((d) => {
+        applyMove(d, g, gp.plan); // the whole group in one undo step
+        if (lp) applyLayerMove(d, { ...lp, delta: 0 }); // applyMove already moved them in time
+      });
       return render();
     }
     if (d0.op === 'scrub' || d0.op === 'duration') return;
+    if (dr && d0.kind === 'oclip' && d0.moved) {
+      // an overlay clip let go off its own row: its time was written while dragging, the layer change happens now,
+      // and the two become one undo step (the time steps are undone, then time and layer are written together)
+      if (dr.cancel || dr.own) return render();
+      const c = findClip(store.get(), d0.id).clip;
+      const delta = c ? c.start - d0.orig.start : 0;
+      if (d0.wrote) store.undo();
+      if (dr.target.kind === 'none') toast(NOT_VIDEO);
+      else if (moveToLayer([d0.id], targetOf(dr.target), delta)) ui.select({ type: 'clip', id: d0.id });
+      return render();
+    }
     if (!d0.moved) {
       if (d0.kind === 'oclip') ui.select({ type: 'clip', id: d0.id });
       else if (d0.kind === 'layer' || d0.kind === 'vizrange') ui.select({ type: 'layer', id: d0.id });
