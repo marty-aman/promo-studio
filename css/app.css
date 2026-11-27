@@ -1842,3 +1842,26 @@ body.touch .off-bar .btn { min-height: 44px; }
 .wt-src-l { display: flex; flex-direction: column; gap: 2px; flex: 1 1 160px; min-width: 0; }
 .wt-src-l select { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
 .wt-hear { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+
+/* == lyric look colours (timeline only) == */
+.tl-block.lyr.looked { color: #fff; }
+.tl-block.lyr.looked::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0.35; }
+.lk-p0::before { background: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 2px, transparent 2px 7px); }
+.lk-p1::before { background: repeating-linear-gradient(90deg, rgba(255,255,255,.55) 0 2px, transparent 2px 7px); }
+.lk-p2::before { background: radial-gradient(rgba(255,255,255,.7) 1.2px, transparent 1.6px) 0 0 / 7px 7px; }
+.lk-p3::before { background: repeating-linear-gradient(45deg, rgba(255,255,255,.55) 0 2px, transparent 2px 7px); }
+.lk-p4::before { background: repeating-linear-gradient(0deg, rgba(255,255,255,.55) 0 1px, transparent 1px 6px); }
+.lk-p5::before { background: linear-gradient(90deg, rgba(255,255,255,.6) 0 3px, transparent 3px); }
+.tl-block.lyr.looked.selected { outline-color: #fff; box-shadow: 0 0 0 2px #000; }
+.timeline.has-legend { grid-template-rows: 38px auto minmax(0, 1fr); }
+body.m-sheets .timeline.has-legend { grid-template-rows: 48px auto minmax(0, 1fr); }
+.tl-legend { display: flex; flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; gap: 4px 10px; align-items: center; padding: 3px 8px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--panel); }
+.tl-legend[hidden] { display: none; }
+.tl-legend-title { font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
+.lg-item { flex: none; display: inline-flex; align-items: center; gap: 4px; }
+.lg-pick { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; color: var(--text); font: inherit; cursor: pointer; padding: 2px 0; position: relative; }
+.lg-pick::before { display: none; }
+.lg-sw { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 14px; border: 1px solid; border-radius: 3px; font-style: normal; font-size: 9px; font-weight: 700; color: #fff; }
+.tl-legend input.lg-color { flex: none; width: 22px; min-width: 22px; height: 22px; padding: 0; border: 1px solid var(--border-strong); border-radius: 4px; background: none; cursor: pointer; }
+body.touch .lg-pick { min-height: 32px; }
+body.touch .tl-legend input.lg-color { width: 32px; min-width: 32px; height: 32px; }
