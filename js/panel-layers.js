@@ -12,6 +12,7 @@ import { defaultGameLayer, INSTRUMENTS, GAME_THEMES, GAME_THEME_LIST } from './r
 import { gameChart } from './gamechart.js';
 import { isBassTrack } from './tab.js';
 import { midiDrumTrack } from './drums.js';
+import { layerSpan } from './clipplace.js';
 
 /** A drum layer's track and drum map for a MIDI file: the drum track, and the map its notes fit best. */
 export function midiDrumDefaults(midi) {
@@ -122,6 +123,16 @@ const FRAMINGS = {
 };
 
 // ---- Guitar Pro visualizer themes: swatch and live preview
+/** A new video layer holding all of `rec`, full frame, from the playhead `t` (see layerSpan). Returns { layer, clip, trimmed }. */
+export function clipLayer(p, rec, t) {
+  const span = layerSpan(t, rec.duration, p.duration);
+  const clip = makeOverlayClip(rec, span.start);
+  FRAMINGS.full.apply(clip);
+  clip.duration = span.duration;
+  const layer = { ...makeLayer(p, 'video'), name: rec.name.replace(/\.[a-z0-9]+$/i, ''), clips: [clip] };
+  return { layer, clip, trimmed: span.trimmed };
+}
+
 const PREVIEW_H = { tab: 90, highway: 220, neck: 120, strings: 110 };
 
 function tabSwatch(id) {

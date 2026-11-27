@@ -26,7 +26,7 @@ import {
   clamp,
 } from './core.js';
 import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSettings, saveSettings, loadTemplates, saveTemplates, findClip, findLayer, LAYER_TYPES } from './state.js';
-import { buildLayersPanel, makeLayer, TAB_ACCEPT, midiDrumDefaults } from './panel-layers.js';
+import { buildLayersPanel, makeLayer, clipLayer, TAB_ACCEPT, midiDrumDefaults } from './panel-layers.js';
 import { MIDI_ACCEPT } from './midi.js';
 import { MAX_LENGTH } from './tlzoom.js';
 import { drumConvertState } from './page-drumconvert.js';
@@ -1714,21 +1714,36 @@ export function createPanels({ store, engine, ui }) {
         });
         card.addEventListener('mouseleave', () => vid && (vid.remove(), (vid = null)));
       }
-      const addBtn = button('Add', async () => {
-        addBtn.disabled = true;
-        const label = addBtn.querySelector('span');
+      // Add: a new video layer at the playhead; Add to main track: appended to the main video track (as before)
+      const fetchInto = (btn, idle, use) => async () => {
+        addBtn.disabled = mainBtn.disabled = true;
+        const label = btn.querySelector('span');
+        label.textContent = 'Adding…';
         try {
           const blob = await downloadStock(item, (f) => (label.textContent = `${Math.round(f * 100)}%`));
           const name = `${prov.label} ${item.id.split('-')[1]}${blob.type.includes('webm') ? '.webm' : '.mp4'}`;
           const rec = await addMedia(blob, name, { source: item.provider, attribution: { provider: item.provider, author: item.author, pageUrl: item.pageUrl, license: item.license } });
-          actions.addClip(rec);
+          use(rec);
           label.textContent = 'Added';
+          (btn === addBtn ? mainBtn : addBtn).disabled = false;
         } catch (e) {
           toast(`${e.message}. You can download it from the provider page and upload it instead.`, 'error', 6000);
-          label.textContent = 'Add';
-          addBtn.disabled = false;
+          label.textContent = idle;
+          addBtn.disabled = mainBtn.disabled = false;
         }
-      }, { iconName: 'plus', variant: 'sm primary' });
+      };
+      const asLayer = (rec) => {
+        const made = clipLayer(store.get(), rec, engine.t);
+        store.update((d) => {
+          d.layers = [...(d.layers || []), made.layer];
+        });
+        ui.select({ type: 'layer', id: made.layer.id });
+        toast(made.trimmed ? 'Added as a new layer (cut to the end of the edit)' : 'Added as a new layer');
+      };
+      const addBtn = button('Add', () => addBtnRun(), { iconName: 'plus', variant: 'sm primary', title: 'Add as a new video layer at the playhead' });
+      const mainBtn = button('Add to main track', () => mainBtnRun(), { variant: 'ghost sm', title: 'Add to the end of the main video track' });
+      const addBtnRun = fetchInto(addBtn, 'Add', asLayer);
+      const mainBtnRun = fetchInto(mainBtn, 'Add to main track', (rec) => actions.addClip(rec));
       card.append(
         h(
           'div',
@@ -1736,6 +1751,7 @@ export function createPanels({ store, engine, ui }) {
           h('a', { href: item.pageUrl, target: '_blank', rel: 'noopener noreferrer', class: 'tiny' }, item.author),
           addBtn,
         ),
+        h('div', { class: 'stock-main' }, mainBtn),
       );
       grid.append(card);
     }
@@ -2964,7 +2980,7 @@ export function createPanels({ store, engine, ui }) {
 
     const credits = media
       .all()
-      .filter((m) => m.attribution && (p.clips.some((c) => c.mediaId === m.id) || p.audioTracks.some((a) => a.mediaId === m.id)))
+      .filter((m) => m.attribution && (p.clips.some((c) => c.mediaId === m.id) || p.audioTracks.some((a) => a.mediaId === m.id) || (p.layers || []).some((l) => l.type === 'video' && l.clips.some((c) => c.mediaId === m.id))))
       .map((m) => `${m.attribution.providerLabel || PROVIDERS[m.attribution.provider]?.label || `${m.attribution.source || 'Openverse'} via Openverse`}: ${m.attribution.author} (${m.attribution.license}) ${m.attribution.pageUrl}`);
     const capPicker = captionPicker({ project: p, settings, kind: 'video', credits });
 
