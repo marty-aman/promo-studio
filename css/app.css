@@ -1945,6 +1945,16 @@ body.touch .tl-legend input.lg-color { width: 32px; min-width: 32px; height: 32p
 /* a line's key word chips and duet side (panel-lineanim.js) */
 .la-words { flex-wrap: wrap; }
 body.touch .la-words .chip { min-height: 44px; min-width: 44px; }
+/* per-word effect settings (panel-lineanim.js, lyricfx.js wordFx) */
+.la-words .chip { position: relative; }
+.la-words .chip.is-key { font-weight: 700; }
+.wfx-dot { display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: 50%; background: var(--accent); vertical-align: middle; }
+.wfx-editor { border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 10px; margin: 6px 0 8px; min-width: 0; }
+.wfx-editor .grid2 > * { min-width: 0; }
+.wfx-h { margin: 0 0 4px; overflow-wrap: anywhere; }
+.wfx-own > .lbl::after { content: ' · this word'; color: var(--accent); font-weight: 600; }
+body.touch .seg button[data-k^="wfx-mode"] { min-height: 44px; }
+.wfx-editor .grid2 { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 @media (prefers-reduced-motion: reduce) { .lt-card .lt-word { animation: none !important; } }
 .tl-legend select.lg-theme { flex: none; width: auto; max-width: 112px; min-width: 0; height: 22px; padding: 0 2px; font-size: 11px; }
 body.touch .lt-card { min-height: 64px; }

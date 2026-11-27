@@ -115,7 +115,8 @@ export function cleanFx(fx, { explicit = false } = {}) {
 
 /**
  * Saved effect settings made safe on load (normalizeProject): junk dropped, numbers in range, an empty fx
- * removed; the same for a look's own fx (line.style.fx, from a look theme). Lines without fx are passed through
+ * removed; the same for a look's own fx (line.style.fx, from a look theme) and a line's per-word settings
+ * (line.wordFx). Lines without fx are passed through
  * as they are. Returns { lyricStyle, lyrics }.
  */
 export function cleanLyricFx(lyricStyle, lyrics) {
@@ -132,6 +133,11 @@ export function cleanLyricFx(lyricStyle, lyrics) {
           const c = cleanFx(l.style.fx, { explicit: true });
           const { fx, ...st2 } = l.style;
           l = { ...l, style: c ? { ...st2, fx: c } : st2 };
+        }
+        if (l && 'wordFx' in l) {
+          const w = cleanWordFx(l.wordFx);
+          const { wordFx, ...rest } = l;
+          l = w ? { ...rest, wordFx: w } : rest;
         }
         if (!l || !('fx' in l)) return l;
         const c = cleanFx(l.fx);
@@ -246,7 +252,7 @@ export function lyricBeat(project, fx, ts, frameBeat) {
  * The shake offset at song time ts for text of size px: { dx, dy, rot } or null when shake is off.
  * `noise` is the renderer's frame-stable noise; `beat` scales it when "Shake on the beat" is on.
  */
-export function shakeOffset(fx, ts, px, beat, noise) {
+export function shakeOffset(fx, ts, px, beat, noise, seed = 0) {
   const amt = fxv(fx, 'shake');
   if (!(amt > 0)) return null;
   const k = amt * (fx.shakeBeat ? beat : 1);
@@ -254,9 +260,9 @@ export function shakeOffset(fx, ts, px, beat, noise) {
   const dir = fx.shakeDir || 'both';
   const r = px * 0.25 * k;
   return {
-    dx: dir === 'y' ? 0 : (noise(f * 1.3 + 11) - 0.5) * 2 * r,
-    dy: dir === 'x' ? 0 : (noise(f * 1.7 + 53) - 0.5) * 2 * r,
-    rot: dir === 'both' ? (noise(f + 97) - 0.5) * 0.08 * k : 0,
+    dx: dir === 'y' ? 0 : (noise(f * 1.3 + 11 + seed) - 0.5) * 2 * r,
+    dy: dir === 'x' ? 0 : (noise(f * 1.7 + 53 + seed) - 0.5) * 2 * r,
+    rot: dir === 'both' ? (noise(f + 97 + seed) - 0.5) * 0.08 * k : 0,
   };
 }
 
@@ -268,3 +274,126 @@ export const glitchThreshold = (fx) => {
 
 /** Is any setting changed from its default? */
 export const fxChanged = (fx) => !!cleanFx(fx);
+
+// ---- per-word effect settings: line.wordFx = [{ i, w, shake?, pulse?, glitch?, size?, color? }]
+// One entry per word you tuned (its index and the word, so editing the text marks it out of date, like key words).
+// A word's own value wins over the line's, the look's and the shared settings (which lineStyle has already merged
+// into the line's fx): word > line > look > song. Missing values mean "as the line", so a line with no wordFx draws
+// exactly as before.
+
+/** [default, min, max, step, label, format]; the default is only for the slider when nothing is inherited. */
+export const WORD_FX_FIELDS = {
+  shake: [0, 0, 1, 0.01, 'Shake amount', pct],
+  pulse: [0, 0, 4, 0.05, 'Pulse size', pct],
+  glitch: [0, 0, 4, 0.05, 'Glitch amount', pct],
+  size: [1, 0.5, 3, 0.05, 'Size boost', times],
+};
+const WORD_HEX = /^#[\da-f]{6}$/i;
+const wPlain = (s) => String(s).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+const wWords = (text) => String(text || '').split(/\s+/).filter(Boolean);
+
+/** A clean copy of one saved entry ({ i, w } plus the values in range), or null when it holds no value. */
+function cleanWordEntry(e) {
+  if (!e || typeof e !== 'object' || !Number.isInteger(e.i) || e.i < 0 || typeof e.w !== 'string' || !e.w) return null;
+  const out = { i: e.i, w: e.w };
+  for (const [k, [, min, max]] of Object.entries(WORD_FX_FIELDS)) {
+    const n = e[k];
+    if (typeof n === 'number' && Number.isFinite(n)) out[k] = Math.max(min, Math.min(max, n));
+  }
+  if (typeof e.color === 'string' && WORD_HEX.test(e.color)) out.color = e.color;
+  return Object.keys(out).length > 2 ? out : null;
+}
+
+/** A clean copy of a saved line.wordFx (one entry per word index, sorted), or undefined when nothing is left. */
+export function cleanWordFx(list) {
+  if (!Array.isArray(list)) return undefined;
+  const by = new Map();
+  for (const e of list) {
+    const c = cleanWordEntry(e);
+    if (c) by.set(c.i, c);
+  }
+  return by.size ? [...by.values()].sort((a, b) => a.i - b.i) : undefined;
+}
+
+/** Is an entry out of date (the word at its index is not the word it was set on)? */
+const entryStale = (words, e) => wPlain(words[e.i]) !== wPlain(e.w) || !wPlain(e.w);
+
+/** Did the words change since any word was tuned? */
+export function wordFxStale(line) {
+  const list = line && line.wordFx;
+  if (!Array.isArray(list) || !list.length) return false;
+  const words = wWords(line.text);
+  return list.some((e) => entryStale(words, e));
+}
+
+/** The word settings that still fit the line, as a Map index -> entry, or null when there are none. */
+export function wordFxOf(line) {
+  const list = line && line.wordFx;
+  if (!Array.isArray(list) || !list.length) return null;
+  const words = wWords(line.text);
+  const m = new Map();
+  for (const e of list) if (e && !entryStale(words, e)) m.set(e.i, e);
+  return m.size ? m : null;
+}
+
+/**
+ * line.wordFx after setting word i's `key` to v (undefined or null clears that value; key null clears the word).
+ * Entries that went out of date are dropped. Returns undefined when nothing is left.
+ */
+export function setWordFx(line, i, key, v) {
+  const words = wWords(line.text);
+  const keep = (Array.isArray(line.wordFx) ? line.wordFx : []).filter((e) => e && e.i !== i && !entryStale(words, e));
+  if (!(i >= 0 && i < words.length)) return cleanWordFx(line.wordFx);
+  const cur = (Array.isArray(line.wordFx) ? line.wordFx : []).find((e) => e && e.i === i && !entryStale(words, e));
+  const next = key == null ? null : { ...(cur || {}), i, w: words[i] };
+  if (next) {
+    if (v == null) delete next[key];
+    else next[key] = v;
+  }
+  return cleanWordFx(next ? [...keep, next] : keep);
+}
+
+/**
+ * What a word is drawn with: { shake, pulse, glitch, size, color, own: { key: true } }. The word's own value, else the
+ * line's (lineFx: the line's merged fx). Pulse and glitch count only when the line's animation uses them
+ * (anim 'beat' / 'glitch'), so a fade line's word inherits no pulse; size 1 and colour null mean "as the line".
+ */
+export function resolveWordFx(lineFx, entry, anim) {
+  const own = {};
+  const pick = (k, inherited) => {
+    if (entry && entry[k] != null) {
+      own[k] = true;
+      return entry[k];
+    }
+    return inherited;
+  };
+  return {
+    shake: pick('shake', fxv(lineFx, 'shake')),
+    pulse: pick('pulse', anim === 'beat' ? fxv(lineFx, 'pulse') : 0),
+    glitch: pick('glitch', anim === 'glitch' ? fxv(lineFx, 'glitchAmt') : 0),
+    size: pick('size', 1),
+    color: pick('color', null),
+    own,
+  };
+}
+
+/**
+ * A word's own shake, relative to the line's (so it jitters by itself while the rest of the line keeps the line's
+ * shake). amt: the word's shake amount; idx: its index (a different noise seed per word). null when it adds nothing.
+ */
+export function wordShake(lineFx, amt, idx, ts, px, beat, noise, at = { x: 0, y: 0 }) {
+  const mine = amt > 0 ? shakeOffset({ ...(lineFx || {}), shake: amt }, ts, px, beat, noise, (idx + 1) * 37.3) : null;
+  const line = shakeOffset(lineFx || {}, ts, px, beat, noise);
+  if (!mine && !line) return null;
+  const z = { dx: 0, dy: 0, rot: 0 };
+  const a = mine || z;
+  const b = line || z;
+  // the line's turn about the block's middle also moves a word at (x, y) by about rot × (-y, x): take that back too
+  return { dx: a.dx - b.dx + b.rot * at.y, dy: a.dy - b.dy - b.rot * at.x, rot: a.rot - b.rot };
+}
+
+/**
+ * A word's own pulse as a scale on top of the block's: the word ends at 1 + 0.12 × its pulse × beat, whatever the
+ * line's pulse (linePulse: the line's own pulse size when the line pulses, else 0).
+ */
+export const wordPulseScale = (pulse, linePulse, beat) => (1 + 0.12 * pulse * beat) / (1 + 0.12 * linePulse * beat);

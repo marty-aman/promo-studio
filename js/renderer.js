@@ -24,7 +24,7 @@ import { drawViz } from './viz.js';
 import { drawLyricDisplay } from './lyricviz.js';
 import { lineStyle } from './linestyle.js';
 import { beatsOf, gridOf } from './tempo.js';
-import { fxv, glitchThreshold, lyricBeat, shakeOffset } from './lyricfx.js';
+import { fxv, glitchThreshold, lyricBeat, shakeOffset, wordFxOf, resolveWordFx, wordShake, wordPulseScale } from './lyricfx.js';
 import { flashLevel, wipeRect, trackState, graphemes, echoPass, sidePlacement, emphOf, slamScale, letterStep, letterPose, holdEmph, buildHoldPose, paperSeed, paperFont, paperTone, paperPose, paperCorners } from './lyricanim.js';
 import { drawBackdrop } from './backgrounds.js';
 import { blurred } from './canvasfx.js';
@@ -180,17 +180,19 @@ export const TEXT_ANIMATIONS = [
 ];
 
 /**
- * layoutWords with key words bigger (lyricanim.js emphasis): an emphasised word takes `k` times its room, so the
- * words around it move aside. Only used when a line has key words, so other lines keep layoutWords exactly.
+ * layoutWords with key words bigger (lyricanim.js emphasis) and per-word size boosts (lyricfx.js wordFx): word i
+ * takes kOf(i) times its room, so the words around it move aside. Only used when a line has key words or a word
+ * size boost, so other lines keep layoutWords exactly.
  * Each word keeps its unscaled width as `base`.
  */
-function layoutWordsEmph(ctx, text, maxW, set, k) {
+function layoutWordsEmph(ctx, text, maxW, kOf) {
   const space = ctx.measureText(' ').width;
   const lines = [];
   let cur = { words: [], width: 0 };
   String(text).split(/\s+/).filter(Boolean).forEach((word, i) => {
     const base = ctx.measureText(word).width;
-    const w = set.has(i) ? base * k : base;
+    const k = kOf(i);
+    const w = k !== 1 ? base * k : base;
     const add = cur.words.length ? space + w : w;
     if (cur.words.length && cur.width + add > maxW) {
       lines.push(cur);
@@ -335,7 +337,18 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
   const paper = style.animation === 'paper';
   if (buildHold) emph = holdEmph(emph, t.split(/\s+/).filter(Boolean).length, fxv(style.fx, 'holdSize'), style.highlight);
   else if (paper) emph = null;
-  const laid = paper ? layoutPaper(ctx, t, style.maxW, px, fxv(style.fx, 'paperFonts') >= 1, style.font) : emph ? layoutWordsEmph(ctx, t, style.maxW, emph.set, emph.size) : layoutWords(ctx, t, style.maxW);
+  // per-word effect settings (lyricfx.js wordFx): Map word index -> the word's own values, or null
+  const wfx = style.wordFx || null;
+  const boost = (i) => {
+    const e = wfx && wfx.get(i);
+    return e && e.size != null ? e.size : 1;
+  };
+  const boosted = !!wfx && [...wfx.values()].some((e) => e.size != null);
+  const laid = paper
+    ? layoutPaper(ctx, t, style.maxW, px, fxv(style.fx, 'paperFonts') >= 1, style.font)
+    : emph || boosted
+      ? layoutWordsEmph(ctx, t, style.maxW, (i) => (emph && emph.set.has(i) ? emph.size : 1) * boost(i))
+      : layoutWords(ctx, t, style.maxW);
   let { lines, space } = laid;
   const lh = px * (paper ? 1.3 : 1.12);
   const totalH = lines.length * lh;
@@ -566,9 +579,31 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
       }
       const isEmph = !!(emph && emph.set.has(idx));
       if (isEmph) wScale *= emph.size * (emph.slam ? slamScale((prog - wt.start) * dur) : 1);
-      if (glitching) {
-        wx = (noise(gFrame + idx * 7) - 0.5) * px * 0.25 * gAmt;
-        wy += (noise(gFrame * 1.7 + idx) - 0.5) * px * 0.12 * gAmt;
+      // this word's own settings (word > line > look > song): size, pulse, glitch, shake and colour for it alone
+      const wo = wfx && wfx.get(idx);
+      let wGlitch = glitching;
+      let wgAmt = gAmt;
+      let wColor = null;
+      let wShake = null;
+      if (wo) {
+        const r = resolveWordFx(fx, wo, anim);
+        if (r.own.size) wScale *= r.size;
+        if (r.own.pulse) wScale *= wordPulseScale(r.pulse, anim === 'beat' ? fxv(fx, 'pulse') : 0, beat);
+        if (r.own.glitch) {
+          wgAmt = r.glitch;
+          wGlitch = r.glitch > 0 && (anim === 'glitch' ? glitching : life < 0.35 || noise(gFrame * 3.1 + (idx + 1) * 5.7) > glitchThreshold(fx));
+        }
+        if (r.own.shake) wShake = wordShake(fx, r.shake, idx, (style.ts0 || 0) + life, px, beat, noise, { x: x + word.w / 2, y });
+        if (r.own.color) wColor = r.color;
+      }
+      if (wGlitch) {
+        wx = (noise(gFrame + idx * 7) - 0.5) * px * 0.25 * wgAmt;
+        wy += (noise(gFrame * 1.7 + idx) - 0.5) * px * 0.12 * wgAmt;
+      }
+      if (wShake) {
+        wx += wShake.dx;
+        wy += wShake.dy;
+        wRot += wShake.rot;
       }
       ctx.save();
       ctx.globalAlpha *= wAlpha;
@@ -612,8 +647,8 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
         else if (lp) paintLetters(ctx, op, text, lp);
         else ctx[op](text, 0, 0);
       };
-      if (glitching && !lp) {
-        const off = px * 0.06 * gAmt;
+      if (wGlitch && !lp) {
+        const off = px * 0.06 * wgAmt;
         ctx.globalAlpha *= 0.8;
         ctx.fillStyle = '#00f0ff';
         ctx.fillText(text, -off, 0);
@@ -637,7 +672,7 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
         if (anim !== 'neon') ctx.shadowColor = 'transparent';
       }
       const highlighted = (anim === 'karaoke' || anim === 'words') && prog >= wt.end;
-      ctx.fillStyle = strip ? strip.ink : isEmph ? emph.color : highlighted ? style.highlight : style.color;
+      ctx.fillStyle = strip ? strip.ink : wColor || (isEmph ? emph.color : highlighted ? style.highlight : style.color);
       paint('fillText');
       ctx.shadowColor = 'transparent';
       if (flash) {
@@ -1414,6 +1449,12 @@ function drawLyrics(ctx, W, H, project, t, beat = 0) {
   }
   const em = line0.emph ? emphOf(line0, s.highlight) : null;
   if (em) st.emph = em;
+  // per-word effect settings (lyricfx.js): each tuned word's own shake, pulse, glitch, size and colour
+  const wf = line0.wordFx ? wordFxOf(line0) : null;
+  if (wf) {
+    st.wordFx = wf;
+    st.ts0 = line.start;
+  }
   if (s.hit) {
     const life = ts - line.start;
     // the flash follows the lyric beat: every beat (division 1) or the pulse division and length you set
