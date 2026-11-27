@@ -5,7 +5,7 @@
 // Pure functions only, so they are unit tested.
 import { beatEnvelope } from './core.js';
 import { gridOf } from './tempo.js';
-import { WIPE_DIRS, TRACK_DIRS, FLASH_LOOKS } from './lyricanim.js';
+import { WIPE_DIRS, TRACK_DIRS, FLASH_LOOKS, LETTER_MODES } from './lyricanim.js';
 
 /** How often the pulse hits, in beats. */
 export const DIVISIONS = [
@@ -64,9 +64,29 @@ export const FX_FIELDS = {
   echoAmt: [1, 0, 3, 0.05, 'Echo strength', pct],
   echoSize: [1, 0, 3, 0.05, 'Echo size', times],
   echoDist: [1, 0, 4, 0.05, 'Echo distance', times],
+  // wave 2: per-letter stagger entrance (which way the letters come in, and the gap between letters)
+  letterMode: [0, 0, 2, 1, 'Letters move', (v) => LETTER_MODES[Math.round(v)] || LETTER_MODES[0]],
+  letterStagger: [1, 0, 3, 0.05, 'Letter stagger', times],
+  // build then hold entrance: the size of the last word, which lands and stays
+  holdSize: [1.2, 1, 2, 0.05, 'Last word size', times],
+  // horizontal ticker display: where the crawl speed comes from, how fast, and the gap between lines
+  tickerLock: [1, 0, 1, 1, 'Crawl pace', (v) => (Math.round(v) ? 'Tempo (one line per bar)' : 'Set by hand')],
+  tickerSpeed: [1, 0.1, 4, 0.05, 'Crawl speed', times],
+  tickerGap: [1, 0.3, 4, 0.05, 'Gap between lines', times],
+  // scatter exit: how far the words fly and how much they spin
+  scatterDist: [1, 0.2, 3, 0.05, 'Scatter distance', times],
+  scatterSpin: [1, 0, 3, 0.05, 'Scatter spin', times],
+  // smoke / ash exit: how high the letters rise, how blurred they get, how far apart they start
+  ashDrift: [1, 0, 3, 0.05, 'Smoke rise', times],
+  ashBlur: [1, 0, 3, 0.05, 'Smoke blur', times],
+  ashStagger: [1, 0, 2, 0.05, 'Ash stagger', times],
+  // cut-paper strips: how tilted, mixed fonts on or off, how hard they jump on the beat
+  paperTilt: [1, 0, 3, 0.05, 'Strip tilt', times],
+  paperFonts: [0, 0, 1, 1, 'Mixed fonts', (v) => (Math.round(v) ? 'On' : 'Off')],
+  paperJump: [1, 0, 3, 0.05, 'Jump on the beat', pct],
 };
 // settings that pick one of a few choices (a slider with named stops): saved as whole numbers
-const STEP_FIELDS = ['wipeDir', 'trackDir', 'flashLook'];
+const STEP_FIELDS = ['wipeDir', 'trackDir', 'flashLook', 'letterMode', 'tickerLock', 'paperFonts'];
 export const SHAKE_DIRS = [['both', 'All ways'], ['x', 'Side to side'], ['y', 'Up and down']];
 
 /** A setting's value: the line's or style's own, else its default. */
@@ -137,6 +157,10 @@ export function fxGroups(style) {
     g.push('flash');
   }
   if (display === 'line' && style.echo) g.push('echo');
+  // wave 2 (lyricanim.js, exits.js): the entrances by id, the ticker display, the scatter and ash exits
+  if (display === 'line' && ['letters', 'buildhold', 'paper'].includes(anim)) g.push(anim);
+  if (display === 'ticker') g.push('ticker');
+  if (display === 'line' && ['scatter', 'ash'].includes(style.outAnimation)) g.push(style.outAnimation);
   if (display === 'poster') g.push('slam');
   if (display === 'tunnel') g.push('tunnel');
   g.push('shake');
@@ -157,8 +181,14 @@ export const GROUP_FIELDS = {
   tracking: ['trackDir', 'trackAmt'],
   flash: ['flashAmt', 'flashLook'],
   echo: ['echoAmt', 'echoSize', 'echoDist'],
+  letters: ['letterMode', 'letterStagger'],
+  buildhold: ['holdSize'],
+  ticker: ['tickerLock', 'tickerSpeed', 'tickerGap'],
+  scatter: ['scatterDist', 'scatterSpin'],
+  ash: ['ashDrift', 'ashBlur', 'ashStagger'],
+  paper: ['paperTilt', 'paperFonts', 'paperJump'],
 };
-export const GROUP_LABEL = { pulse: 'Pulse on the beat', glitch: 'Glitch', neon: 'Neon flicker', wave: 'Wave', bounce: 'Drop & bounce', slam: 'Poster slam', tunnel: 'Tunnel', shake: 'Shake', wipe: 'Wipe reveal', tracking: 'Tracking', flash: 'Flash hit', echo: 'Ghost echo' };
+export const GROUP_LABEL = { pulse: 'Pulse on the beat', glitch: 'Glitch', neon: 'Neon flicker', wave: 'Wave', bounce: 'Drop & bounce', slam: 'Poster slam', tunnel: 'Tunnel', shake: 'Shake', wipe: 'Wipe reveal', tracking: 'Tracking', flash: 'Flash hit', echo: 'Ghost echo', letters: 'Letter stagger', buildhold: 'Build then hold', ticker: 'Ticker', scatter: 'Scatter exit', ash: 'Smoke / ash exit', paper: 'Paper strips' };
 
 /** Does the lyric beat need its own maths (own tempo, division or length), or is it the frame's beat? */
 export const ownBeat = (style, fx) => !!(style && style.tempo && style.tempo.bpm > 0) || fxv(fx, 'div') !== 1 || fxv(fx, 'len') !== 1;

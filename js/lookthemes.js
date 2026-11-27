@@ -82,6 +82,11 @@ export function motionLabel(t) {
   if (a === 'bounce') bits.push('Drop');
   if (a === 'wipe') bits.push('Wipe');
   if (a === 'tracking') bits.push('Tracking');
+  if (a === 'letters') bits.push('Letter stagger');
+  if (a === 'buildhold') bits.push('Build & hold');
+  if (a === 'paper') bits.push('Paper strips');
+  if (t.fields.outAnimation === 'scatter') bits.push('Scatter exit');
+  if (t.fields.outAnimation === 'ash') bits.push('Ash exit');
   if (t.fields.hit) bits.push('Flash hit');
   if (t.fields.echo) bits.push('Ghost echo');
   return bits.length ? bits.join(' · ') : 'Still';

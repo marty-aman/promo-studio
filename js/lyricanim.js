@@ -1,11 +1,13 @@
-// The lyric animations added in wave 1 (key-word emphasis, flash hit, wipe reveal, tracking, ghost echo, duet side)
-// and the load-time cleaner for animation ids. Pure functions only (the renderer draws with them), so they are
+// The lyric animations added in wave 1 (key-word emphasis, flash hit, wipe reveal, tracking, ghost echo, duet side),
+// wave 2 (per-letter stagger, build then hold, cut-paper strips, the horizontal ticker) and the load-time cleaner for
+// animation ids (the scatter and ash exits are in exits.js). Pure functions only (the renderer draws with them), so they are
 // unit tested. Everything here is off unless a line or the lyric style asks for it, so old projects draw as before.
 // These run in the One line at a time display only (the sheet, poster and tunnel displays draw their own way).
 import { EXITS } from './exits.js';
+import { noise } from './core.js';
 
 /** Every entrance id the text animations know (renderer.js TEXT_ANIMATIONS; a test keeps the two the same). */
-export const ENTRANCE_IDS = ['pop', 'fade', 'slide', 'rise', 'bounce', 'zoom', 'blur', 'spin', 'flip', 'typewriter', 'karaoke', 'words', 'wave', 'neon', 'glitch', 'beat', 'wipe', 'tracking', 'none'];
+export const ENTRANCE_IDS = ['pop', 'fade', 'slide', 'rise', 'bounce', 'zoom', 'blur', 'spin', 'flip', 'typewriter', 'karaoke', 'words', 'wave', 'neon', 'glitch', 'beat', 'wipe', 'tracking', 'letters', 'buildhold', 'paper', 'none'];
 
 /** Flash hit: when a line flashes white (or inverted) for 3 frames. Saved as style.hit. */
 export const HITS = [
@@ -180,6 +182,140 @@ export function cleanEmph(e) {
   if (e.slam === true) out.slam = true;
   return words.length || out.size || out.color || out.slam ? out : undefined;
 }
+
+// ---- wave 2: per-letter stagger (entrance 'letters')
+
+export const LETTER_MODES = ['Rise', 'Drop', 'Fade'];
+const LETTER_SECONDS = 0.3; // how long one letter takes to arrive
+
+/** Seconds between one letter and the next: 0.05 s, squeezed so a long line still lands within 0.9 s (×amt). */
+export const letterStep = (n, amt = 1) => Math.min(0.05, 0.9 / Math.max(1, n)) * amt;
+
+/**
+ * One letter `since` seconds after its own start (negative: not there yet, null). mode 0 rise, 1 drop, 2 fade.
+ * Returns { alpha, dy, scale }, dy in ems (multiply by the font size; positive is down).
+ */
+export function letterPose(mode, since) {
+  if (!(since >= 0)) return null;
+  const e = outCubic(clamp01(since / LETTER_SECONDS));
+  switch (Math.round(mode)) {
+    case 1:
+      return { alpha: clamp01(since / 0.1), dy: -(1 - e) * 0.8, scale: 1 };
+    case 2:
+      return { alpha: e, dy: 0, scale: 0.85 + 0.15 * e };
+    default:
+      return { alpha: clamp01(since / 0.15), dy: (1 - e) * 0.6, scale: 1 };
+  }
+}
+
+// ---- build then hold (entrance 'buildhold')
+
+/**
+ * The key words a Build then hold line draws with: the picked key words (if any) plus the last word, in the
+ * "Last word size" and the accent colour. n = how many words the line has. Same shape as emphOf's result.
+ */
+export function holdEmph(emph, n, size, color) {
+  const set = new Set(emph ? emph.set : []);
+  if (n > 0) set.add(n - 1);
+  return { set, size, color: emph ? emph.color : color, slam: false };
+}
+
+/**
+ * A word `since` seconds after it is sung (saved word times, else the even spread). Earlier words fade in with a
+ * small rise; the last word slams in (slamScale) and then holds. Returns { alpha, dy (ems), slam (scale) }.
+ */
+export function buildHoldPose(since, last) {
+  if (last) return { alpha: clamp01(since / 0.06), dy: 0, slam: slamScale(since) };
+  return { alpha: clamp01(since / 0.12), dy: (1 - outCubic(clamp01(since / 0.25))) * 0.22, slam: 1 };
+}
+
+// ---- cut-paper strips (entrance 'paper')
+
+/** Fonts a strip can take when "Mixed fonts" is on (all are in the app's preloaded list). */
+export const PAPER_FONTS = ['Bebas Neue', 'Courier New', 'Impact', 'Playfair Display', 'Permanent Marker', 'Roboto Slab'];
+
+/** A number that stays with a word (its text and place in the line), so its tilt, torn edge and font never change. */
+export function paperSeed(text, idx) {
+  let h = idx * 37;
+  const s = String(text);
+  for (let i = 0; i < s.length; i++) h += s.charCodeAt(i) * (i + 1);
+  return h;
+}
+export const paperFont = (seed) => PAPER_FONTS[Math.floor(noise(seed * 0.91 + 4) * PAPER_FONTS.length) % PAPER_FONTS.length];
+/** How much lighter or darker this strip's paper is than the base colour (-0.1..0.1). */
+export const paperTone = (seed) => (noise(seed * 1.3 + 6) - 0.5) * 0.2;
+
+/**
+ * One strip: where it sits and how it moves. seed: paperSeed. tilt, jump: the settings (×1 = as designed).
+ * beat: the lyric beat (0..1). since: seconds since this word's strip landed (the words land 0.07 s apart).
+ * Returns { rot (radians), dy (ems, up is negative), scale, alpha }. A strip slaps down (from 1.35× and turned) and
+ * then jumps a little on each beat, odd and even strips in opposite directions.
+ */
+export function paperPose({ seed, idx, tilt = 1, jump = 1, beat = 0, since = 1 }) {
+  const side = idx % 2 ? 1 : -1;
+  const e = outCubic(clamp01(since / 0.18));
+  const base = (noise(seed * 0.37 + 1) - 0.5) * 0.2 * tilt;
+  return {
+    rot: base + side * -0.04 * jump * beat + (1 - e) * 0.3 * side,
+    dy: -jump * beat * (0.1 + 0.06 * (idx % 2)),
+    scale: 1.35 - 0.35 * e,
+    alpha: clamp01(since / 0.06),
+  };
+}
+
+/** The four corners of a strip of w × h px, each moved a little (a torn, cut edge). Same strip, same corners. */
+export function paperCorners(seed, w, h, px) {
+  const j = (k) => (noise(seed * 0.73 + k * 5.1) - 0.5) * 0.1 * px;
+  return [
+    [-w / 2 + j(1), -h / 2 + j(2)],
+    [w / 2 + j(3), -h / 2 + j(4)],
+    [w / 2 + j(5), h / 2 + j(6)],
+    [-w / 2 + j(7), h / 2 + j(8)],
+  ];
+}
+
+// ---- horizontal ticker (display 'ticker')
+
+/** Width of each line of the band and the gap between lines → where each line begins, and the whole length. */
+export function tickerLayout(widths, gap) {
+  const cum = [0];
+  widths.forEach((w, i) => cum.push(cum[i] + w + gap));
+  return { cum, total: cum[cum.length - 1] - gap };
+}
+
+/**
+ * How far the band has crawled (px) when it has moved k lines. One line per step: line j's left edge is at the right
+ * edge of the frame when k = j and has finished entering one step later (the lines are of different lengths, so the
+ * crawl speeds up and slows down with them, which is what "one line per bar" means). After the last line it carries on
+ * at the last line's pace.
+ */
+export function tickerOffset(k, widths, gap) {
+  const n = widths.length;
+  if (!n || !(k > 0)) return 0;
+  const { cum } = tickerLayout(widths, gap);
+  const j = Math.floor(k);
+  if (j >= n) return cum[n] + (k - n) * (widths[n - 1] + gap);
+  return cum[j] + (k - j) * (widths[j] + gap);
+}
+
+/** The bar (seconds) and the first beat (song time) of a tempo grid; null grid = 120 BPM from 0. */
+export function tickerBar(grid) {
+  const beats = grid && grid.beats;
+  const beat = grid && grid.period > 0 ? grid.period : beats && beats.length > 1 ? beats[1] - beats[0] : 0.5;
+  const first = grid && Number.isFinite(grid.first) ? grid.first : beats && beats.length ? beats[0] : 0;
+  return { bar: Math.max(0.2, beat * 4), first };
+}
+/**
+ * The ticker's clock for "locked to the tempo": how many lines have crawled at song time ts, one per bar (×speed),
+ * counted from the bar at or before the first line. t0 is that bar's time.
+ */
+export function tickerLines(ts, firstStart, grid, speed = 1) {
+  const { bar, first } = tickerBar(grid);
+  const t0 = first + Math.floor((firstStart - first) / bar) * bar;
+  return { k: ((ts - t0) / bar) * speed, t0 };
+}
+/** By hand: the crawl in px after `since` seconds, at `speed` (×1 = a quarter of the frame's width a second). */
+export const tickerHandOffset = (since, W, speed = 1) => Math.max(0, since) * W * 0.25 * speed;
 
 // ---- load-time cleaner
 

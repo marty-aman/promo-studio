@@ -1914,6 +1914,19 @@ body.touch .tl-legend input.lg-color { width: 32px; min-width: 32px; height: 32p
 .lt-card:is(:hover, :focus-visible, .on) .lt-m-wipe { animation: lt-wipe 1.4s ease-out infinite; }
 .lt-card:is(:hover, :focus-visible, .on) .lt-m-track { animation: lt-track 1.6s ease-out infinite; }
 .lt-card:is(:hover, :focus-visible, .on) .lt-m-hit { animation: lt-hit .5s steps(1, end) infinite; }
+/* the greyed-out Pulse on the beat group of the effect settings (panel-lyricfx.js) */
+.fx-off > :not(h5, p, .row) { opacity: .5; }
+/* wave 2 (lyricanim.js, exits.js): letter stagger, build then hold, paper strips, scatter and ash exits */
+.lt-card:is(:hover, :focus-visible, .on) .lt-m-letters { animation: lt-letters 1.4s ease-out infinite; }
+.lt-card:is(:hover, :focus-visible, .on) .lt-m-build { animation: lt-build 1.4s ease-out infinite; }
+.lt-card:is(:hover, :focus-visible, .on) .lt-m-paper { animation: lt-paper .5s ease-out infinite; }
+.lt-card:is(:hover, :focus-visible, .on) .lt-m-scatter { animation: lt-scatter 1.6s ease-in infinite; }
+.lt-card:is(:hover, :focus-visible, .on) .lt-m-ash { animation: lt-ash 1.6s ease-in infinite; }
+@keyframes lt-letters { 0% { translate: 0 .5em; letter-spacing: .3em; opacity: 0; } 55%, 100% { translate: 0 0; letter-spacing: 0; opacity: 1; } }
+@keyframes lt-build { 0% { scale: 1.6; opacity: 0; } 25%, 100% { scale: 1; opacity: 1; } }
+@keyframes lt-paper { 0% { rotate: -5deg; translate: 0 -3px; } 40%, 100% { rotate: 2deg; translate: 0 0; } }
+@keyframes lt-scatter { 0%, 45% { translate: 0 0; rotate: 0deg; opacity: 1; } 100% { translate: 1.4em -.8em; rotate: 40deg; opacity: 0; } }
+@keyframes lt-ash { 0%, 40% { translate: 0 0; filter: none; opacity: 1; } 100% { translate: 0 -.6em; filter: blur(3px); opacity: 0; } }
 @keyframes lt-wipe { 0% { clip-path: inset(0 100% 0 0); } 45%, 100% { clip-path: inset(0 0 0 0); } }
 @keyframes lt-track { 0% { letter-spacing: .5em; opacity: 0; } 60%, 100% { letter-spacing: 0; opacity: 1; } }
 @keyframes lt-hit { 0%, 12% { filter: brightness(3) saturate(0); } 13%, 100% { filter: none; } }

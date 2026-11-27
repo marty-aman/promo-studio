@@ -4,12 +4,14 @@ import { wordTimings, savedWordTimes } from './core.js';
 import { glowPass } from './canvasfx.js';
 import { lineStyle } from './linestyle.js';
 import { fxv } from './lyricfx.js';
+import { tickerLayout, tickerOffset, tickerLines, tickerHandOffset } from './lyricanim.js';
 
 export const LYRIC_DISPLAYS = [
   ['line', 'One line at a time', 'Each line on its own with the animation you pick'],
   ['sheet', 'Scrolling lyric sheet', 'Current line big and filling in, the lines around it dimmed'],
   ['poster', 'Kinetic poster', 'Words slam in at different sizes and angles'],
   ['tunnel', '3D word tunnel', 'Words fly at the camera out of a neon tunnel'],
+  ['ticker', 'Horizontal ticker', 'One band of lyrics crawling sideways in the lower third'],
 ];
 
 /** Lyric style settings that suit each display when you switch to it. */
@@ -18,6 +20,7 @@ export const DISPLAY_DEFAULTS = {
   sheet: { y: 50, size: 7.5, align: 'left', maxWidth: 84, uppercase: false },
   poster: { y: 46, size: 9, align: 'center', maxWidth: 84, uppercase: true },
   tunnel: { y: 46, size: 9, align: 'center', uppercase: true },
+  ticker: { y: 74, size: 5.5, align: 'left', uppercase: true, boxColor: '#000000', boxOpacity: 0.6 },
 };
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -450,10 +453,107 @@ function drawTunnel(ctx, W, H, lines, s, ts, beat, styleOf = () => s) {
   ctx.restore();
 }
 
-const DRAW = { sheet: drawSheet, poster: drawPoster, tunnel: drawTunnel };
+// ------------------------------------------------------------ D: horizontal ticker
+
+const tickerWidths = new Map();
+/** The pixel width of a line of the band in its font (cached: measuring every line every frame is wasted work). */
+function tickerWidth(ctx, font, text) {
+  const key = `${font}|${text}`;
+  let w = tickerWidths.get(key);
+  if (w === undefined) {
+    if (tickerWidths.size > 600) tickerWidths.clear();
+    w = ctx.measureText(text).width;
+    tickerWidths.set(key, w);
+  }
+  return w;
+}
+
+/**
+ * All the lyrics in one band, lines side by side with a small diamond between, crawling right to left across the
+ * frame (a news ticker). The band's dark strip uses the lyric style's box colour and opacity. The line being sung is
+ * in the highlight colour. The crawl speed is locked to the tempo (one line per bar, `extra.grid` = the lyric tempo
+ * grid) or set by hand; either way it is a function of song time only, so the preview and every export agree.
+ * shortcut: the band does not follow the sung times (a line is not under the same spot when it is sung), and a very
+ * long line crawls fast when locked to the tempo; upgrade by pinning each line to its start time if wanted.
+ */
+function drawTicker(ctx, W, H, lines, s, ts, beat, styleOf, extra = {}) {
+  const size = (W * s.size) / 100;
+  const gap = size * 1.8 * fxv(s.fx, 'tickerGap');
+  const y = (H * s.y) / 100;
+  const widths = [];
+  const looks = lines.map((l) => styleOf(l));
+  lines.forEach((l, i) => {
+    const f = fontOf(size, looks[i].font);
+    ctx.font = f;
+    widths.push(tickerWidth(ctx, f, caseOf(looks[i], l.text)));
+  });
+  const { total } = tickerLayout(widths, gap);
+  const speed = fxv(s.fx, 'tickerSpeed');
+  const first = lines[0].start;
+  let offset;
+  let t0 = first;
+  if (Math.round(fxv(s.fx, 'tickerLock'))) {
+    const c = tickerLines(ts, first, extra.grid || null, speed);
+    t0 = c.t0;
+    offset = tickerOffset(c.k, widths, gap);
+  } else {
+    offset = tickerHandOffset(ts - first, W, speed);
+  }
+  if (!(ts >= t0) || offset <= 0) return;
+  const x0 = W - offset;
+  if (x0 + total < 0) return;
+  ctx.save();
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.textAlign = 'left';
+  // the band's strip, fading in with the first line and out when the last one has gone by
+  ctx.globalAlpha = clamp(offset / (W * 0.15), 0, 1) * clamp((x0 + total) / (W * 0.15), 0, 1);
+  ctx.fillStyle = rgba(s.boxColor, s.boxOpacity ?? 0.6);
+  ctx.fillRect(0, y - size * 1.05, W, size * 2.1);
+  ctx.beginPath();
+  ctx.rect(0, y - size * 1.05, W, size * 2.1);
+  ctx.clip();
+  let x = x0;
+  lines.forEach((l, i) => {
+    const w = widths[i];
+    if (x < W && x + w > 0) {
+      const ls = looks[i];
+      ctx.font = fontOf(size, ls.font);
+      const text = caseOf(ls, l.text);
+      if ((ls.outlineWidth || 0) > 0) {
+        ctx.strokeStyle = ls.outline;
+        ctx.lineWidth = size * ls.outlineWidth * 0.12;
+        ctx.strokeText(text, x, y);
+      } else if (ls.shadow !== false) {
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.lineWidth = size * 0.1;
+        ctx.strokeText(text, x, y);
+      }
+      ctx.fillStyle = ts >= l.start && ts <= l.end ? ls.highlight : ls.color;
+      ctx.fillText(text, x, y);
+    }
+    // the diamond between this line and the next
+    const dx = x + w + gap / 2;
+    if (i < lines.length - 1 && dx > -size && dx < W + size) {
+      const r = size * 0.16;
+      ctx.fillStyle = s.highlight;
+      ctx.beginPath();
+      ctx.moveTo(dx, y - r);
+      ctx.lineTo(dx + r, y);
+      ctx.lineTo(dx, y + r);
+      ctx.lineTo(dx - r, y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    x += w + gap;
+  });
+  ctx.restore();
+}
+
+const DRAW = { sheet: drawSheet, poster: drawPoster, tunnel: drawTunnel, ticker: drawTicker };
 
 /** Draw the lyrics with a whole-song display. `ts` is song time. Returns false for the one-line display. */
-export function drawLyricDisplay(ctx, W, H, lyrics, s, ts, beat = 0, theme = null) {
+export function drawLyricDisplay(ctx, W, H, lyrics, s, ts, beat = 0, theme = null, extra = {}) {
   const fn = DRAW[s.display];
   if (!fn) return false;
   const lines = sorted(lyrics || []);
@@ -462,6 +562,6 @@ export function drawLyricDisplay(ctx, W, H, lyrics, s, ts, beat = 0, theme = nul
     const ls = lineStyle(s, line, theme);
     return ls === s ? s : { ...s, font: ls.font, color: ls.color, highlight: ls.highlight, outline: ls.outline, outlineWidth: ls.outlineWidth, uppercase: ls.uppercase, size: ls.size };
   };
-  if (lines.length) fn(ctx, W, H, lines, s, ts, beat, styleOf);
+  if (lines.length) fn(ctx, W, H, lines, s, ts, beat, styleOf, extra);
   return true;
 }

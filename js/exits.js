@@ -18,6 +18,8 @@ export const EXITS = [
   ['drop', 'Drop away'],
   ['glitch', 'Glitch out'],
   ['flicker', 'Flicker off'],
+  ['scatter', 'Scatter apart'],
+  ['ash', 'Smoke / ash dissolve'],
   ['cut', 'Cut (no exit)'],
 ];
 /** Layer entrances, named for what you see (the exit played backwards). */
@@ -34,6 +36,8 @@ export const ENTRANCES = [
   ['spin', 'Spin in'],
   ['glitch', 'Glitch in'],
   ['flicker', 'Flicker on'],
+  ['scatter', 'Fly in from all sides'],
+  ['ash', 'Drift in from smoke'],
   ['cut', 'Cut (no entrance)'],
 ];
 
@@ -110,11 +114,71 @@ export function exitTransform(type, q0) {
       r.alpha = q >= 1 ? 0 : hash(step + 11) < q ? 0.1 : 1 - q * 0.3;
       break;
     }
+    case 'scatter': // the whole block tumbles off to the top left, swelling (a clip or layer; text scatters word by word)
+      r.fx = -0.32 * easeIn(q);
+      r.fy = -0.2 * easeIn(q);
+      r.rot = -0.55 * easeIn(q);
+      r.scale = 1 + 0.7 * easeIn(q);
+      r.alpha = 1 - clamp01((q - 0.25) / 0.75);
+      break;
+    case 'ash': // the whole block blurs, drifts up and fades (text does it letter by letter)
+      r.fy = -0.09 * (1 - (1 - q) * (1 - q));
+      r.blur = 0.03 * q;
+      r.scale = 1 + 0.05 * q;
+      r.alpha = 1 - smooth(q);
+      break;
     case 'fade':
     default:
       r.alpha = 1 - q;
   }
   return r;
+}
+
+const STILL_PIECE = Object.freeze({ tx: 0, ty: 0, rot: 0, scale: 1, alpha: 1 });
+/**
+ * Scatter, one word: q = how far through the exit (0..1); (dx, dy) = where the word's centre sits against the block's
+ * centre, in px; far = how far a word flies at most, in px (the frame's width or so). Words start flying one after
+ * another (a delay of up to 30% of the exit), go outward from the centre with a little spread and spin, swell and
+ * fade out. Returns { tx, ty (px), rot (radians), scale, alpha }. Pure: the same inputs give the same pose.
+ * i is the word's number (it picks its spin and delay); dist and spin are the effect settings (×1 = as designed).
+ */
+export function scatterPiece(i, q0, dx, dy, far, dist = 1, spin = 1) {
+  const q = clamp01(q0);
+  if (q <= 0) return STILL_PIECE;
+  const delay = hash(i * 2.3 + 5) * 0.3;
+  const k = clamp01((q - delay) / (1 - delay));
+  if (k <= 0) return STILL_PIECE;
+  const ang = Math.hypot(dx, dy) > far * 0.04 ? Math.atan2(dy, dx) + (hash(i * 1.7 + 1) - 0.5) * 0.6 : hash(i * 3.1 + 2) * Math.PI * 2;
+  const d = far * 0.9 * dist * easeIn(k);
+  return {
+    tx: Math.cos(ang) * d,
+    ty: Math.sin(ang) * d,
+    rot: (hash(i * 4.3 + 9) - 0.5) * 4.4 * spin * easeIn(k),
+    scale: 1 + 0.5 * k,
+    alpha: 1 - clamp01((k - 0.45) / 0.55),
+  };
+}
+
+const STILL_LETTER = Object.freeze({ alpha: 1, dx: 0, dy: 0, scale: 1, blur: 0 });
+/**
+ * Ash dissolve, one letter: q = how far through the exit, n = the letter's number in the line, frame = whole frames
+ * (at 30 a second) of the line's life, so the sway is the same in the preview and in an export. Letters start at
+ * different moments (a stagger of up to 55% of the exit, ×stagger), then blur, drift up and fade. Returns
+ * { alpha, dx, dy, scale, blur }, the offsets and blur in ems (multiply by the font size). No Math.random.
+ */
+export function ashLetter(n, q0, frame, drift = 1, blurAmt = 1, stagger = 1) {
+  const q = clamp01(q0);
+  if (q <= 0) return STILL_LETTER;
+  const delay = Math.min(0.8, hash(n * 1.9 + 3) * 0.55 * stagger);
+  const k = clamp01((q - delay) / (1 - delay));
+  if (k <= 0) return STILL_LETTER;
+  return {
+    alpha: 1 - smooth(k),
+    dx: ((hash(n * 7.7 + 1) - 0.5) * 0.5 + Math.sin(frame * 0.12 + n) * 0.06) * k,
+    dy: -0.9 * drift * (1 - (1 - k) * (1 - k)),
+    scale: 1 + 0.12 * k,
+    blur: 0.2 * blurAmt * k,
+  };
 }
 export const enterTransform = (type, p) => exitTransform(type, 1 - clamp01(p));
 

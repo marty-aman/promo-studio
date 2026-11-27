@@ -103,7 +103,7 @@ test('poster layout fills the width and is the same every frame', () => {
   assert.ok(a.rows.some((r) => r.words.length === 1 && r.words[0].text === 'TONIGHT' && r.words[0].accent));
   for (const r of a.rows) assert.ok(r.width <= 1080 * 0.84 + 0.5, `row ${r.width}`);
   assert.ok(a.height <= 1920 * 0.5 + 0.5);
-  assert.deepEqual(LYRIC_DISPLAYS.map((x) => x[0]), ['line', 'sheet', 'poster', 'tunnel']);
+  assert.deepEqual(LYRIC_DISPLAYS.map((x) => x[0]), ['line', 'sheet', 'poster', 'tunnel', 'ticker']);
   for (const [id] of LYRIC_DISPLAYS) assert.ok(DISPLAY_DEFAULTS[id], id);
 });
 
