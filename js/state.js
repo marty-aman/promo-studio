@@ -93,6 +93,7 @@ export function newProject() {
     audioTracks: [],
     lyrics: [],
     lyricStyle: defaultLyricStyle(),
+    lookColors: {}, // timeline colour picked for a lyric look (lookcolors.js): { [lookId]: '#rrggbb' }
     texts: [],
     endCard: defaultEndCard(),
     look: {
@@ -286,6 +287,7 @@ export function normalizeProject(p) {
     layers,
     exportRange: cleanRange(p),
     layerVis: p.layerVis || {},
+    lookColors: p.lookColors && typeof p.lookColors === 'object' ? p.lookColors : {},
     lyricStyle: { ...base.lyricStyle, ...p.lyricStyle },
     endCard: { ...base.endCard, ...p.endCard },
     look: {

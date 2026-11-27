@@ -11,6 +11,7 @@ import { markTimed } from './manager/lyrictiming.js';
 import { qualityMarks } from './panel-quality.js';
 import { pinchZoom, pinchScroll, edgeZone } from './mobilelogic.js';
 import { ZOOM_MAX, TAIL_SEC, MAX_LENGTH, zoomMin, fitZoom, rulerSteps, rulerLabel, showBeats, LABEL_MIN_PX, THUMB_MIN_PX, WAVE_MAX_PX } from './tlzoom.js';
+import { looksById } from './lookcolors.js';
 import { keyOf, inGroup, toggleIn, spans, planMove, applyMove } from './multimove.js';
 
 const HEAD_W = 112;
@@ -28,6 +29,29 @@ export function createTimeline({ root, store, engine, ui }) {
   let preview = null; // transient visual offset for clip reordering
   let groupKeys = null; // keys (multimove keyOf) of the blocks in a multi-selection, while there is one
   let groupPreview = null; // { plan } while a group is dragged: drawn shifted, written to the edit on release
+
+
+  // Key for the lyric looks: a swatch per look (click selects its lines, the colour box changes it).
+  const legend = h('div', { class: 'tl-legend', hidden: true, 'aria-label': 'Lyric looks on the timeline' });
+  root.insertBefore(legend, body);
+  function renderLegend(p) {
+    const { looks, byLine } = looksById(p.lyrics, p.lookColors);
+    legend.hidden = !looks.length || p.layerVis?.lyrics === false;
+    root.classList.toggle('has-legend', !legend.hidden);
+    legend.replaceChildren();
+    if (legend.hidden) return;
+    legend.append(h('span', { class: 'tl-legend-title' }, 'Lyric looks'), h('span', { class: 'lg-item', title: 'Lines that use the shared style from the Lyrics tab' }, h('i', { class: 'lg-sw', style: { background: '#facc1566', borderColor: '#facc15' } }), 'Shared'));
+    for (const k of looks) {
+      const ids = [...byLine].filter(([, v]) => v.id === k.id).map(([id]) => id);
+      legend.append(
+        h('span', { class: 'lg-item', dataset: { look: k.id } },
+          h('button', { type: 'button', class: `lg-pick lk-p${k.pat}`, title: `Select the ${k.count} line${k.count === 1 ? '' : 's'} with this look`, onclick: () => ui.setGroup(ids.map((id) => ({ type: 'lyric', id }))) },
+            h('i', { class: 'lg-sw', style: { background: `${k.color}66`, borderColor: k.color } }, k.letter), `${k.name} (${k.count})`),
+          h('input', { type: 'color', class: 'lg-color', value: k.color, title: `Timeline colour for ${k.name}`, 'aria-label': `Timeline colour for ${k.name}`, onchange: (e) => store.update((d) => (d.lookColors = { ...(d.lookColors || {}), [k.id]: e.target.value })) }),
+        ),
+      );
+    }
+  }
 
   const pps = () => ui.pxPerSec;
   const x2t = (clientX) => (clientX - content.getBoundingClientRect().left) / pps();
@@ -200,6 +224,7 @@ export function createTimeline({ root, store, engine, ui }) {
     content.style.width = `${width}px`;
     setWindow();
     content.replaceChildren();
+    renderLegend(p);
     heads.replaceChildren(h('div', { class: 'tl-head ruler-head' }, formatTime(engine.t)));
     const sel = ui.selection;
     const grp = group();
@@ -384,21 +409,24 @@ export function createTimeline({ root, store, engine, ui }) {
     }, { vis: 'text' });
 
     // lyrics
+    const looked = looksById(p.lyrics, p.lookColors);
     addRow('Lyrics', 'lyrics', 40, (row) => {
       if (!p.lyrics.length) row.append(h('div', { class: 'tl-empty' }, 'Paste lyrics in the Lyrics tab'));
       for (const l of p.lyrics) {
         const a = songToTimeline(l.start, p.song);
         const b = songToTimeline(l.end, p.song);
         if (b < 0 || a > total + 4) continue;
+        const lk = looked.byLine.get(l.id);
         put(row,
           block({
-            cls: `lyr${l.style ? ' styled' : ''}`,
+            cls: `lyr${l.style ? ' styled' : ''}${lk ? ` looked lk-p${lk.pat}` : ''}`,
             left: a * s,
             width: (b - a) * s,
-            label: l.style ? `✦ ${l.text}` : l.text,
+            label: lk ? `${lk.letter} · ${l.text}` : l.style ? `✦ ${l.text}` : l.text,
             selected: sel && sel.type === 'lyric' && sel.id === l.id,
             data: { kind: 'lyric', id: l.id },
             off: !!l.disabled,
+            style: lk ? { backgroundColor: `${lk.color}4d`, borderColor: lk.color } : {},
           }),
         );
       }
