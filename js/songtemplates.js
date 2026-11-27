@@ -79,6 +79,35 @@ export const SONG_TEMPLATES = [
     needs: 'cover',
     lyric: true,
   },
+  // batch 2
+  {
+    id: 'st-screamclean',
+    name: 'Scream/Clean Split',
+    blurb: 'Screamed lines (choruses and breakdowns) in glitching red capitals on the left, clean lines (verses, intros, outros) in smooth karaoke on the right, each side narrowed to 60% of the frame, over your picture dimmed. The Section looks switch below adds whispers and the breakdown look. Stand-in: lines are told apart by their section (with no sections they alternate two by two), since a screamed line is not detected from the audio.',
+    needs: 'lyrics',
+    lyric: true,
+  },
+  {
+    id: 'st-tourticker',
+    name: 'Tour Ticker',
+    blurb: 'The lyrics as one tour-date style band: red strip, bone-white condensed capitals with diamonds between lines, one line per bar, crawling right to left over live footage and spectrum bars. The band holds the part’s lines only. Stand-in: it is paced by the tempo, not tied to when each line is sung.',
+    needs: 'lyrics',
+    lyric: true,
+  },
+  {
+    id: 'st-ashdissolve',
+    name: 'Ash Dissolve',
+    blurb: 'Slow serif lyrics that open up letter by letter and, when a line ends, turn to ash: each letter blurs, drifts up and fades. Over your picture dimmed, grey and dark, with a slow sway. Starts on the outro, else the intro, else the first verse. Stand-in: the smoke scene is the ash-grey graded picture (black without one).',
+    needs: 'lyrics',
+    lyric: true,
+  },
+  {
+    id: 'st-ransom',
+    name: 'Ransom Note Zine',
+    blurb: 'Every word on its own tilted paper strip in mixed cut-out fonts, slapped down on a solid deep red page with grain and scanlines; strips jump on the beat and chorus lines are bigger. Stand-ins: the concrete wall is solid red, and strips are per word rather than per letter.',
+    needs: 'lyrics',
+    lyric: true,
+  },
 ];
 const LYRIC_IDS = new Set(SONG_TEMPLATES.filter((t) => t.lyric).map((t) => t.id));
 
@@ -512,7 +541,28 @@ const anyLyrics = (ctx) => !!(ctx.hasLyrics || (ctx.song.lyricTiming && lyricsFr
 function ownWindow(id, ctx) {
   const dur = ctx.audio.duration || 0;
   if (id === 'st-coversheet') return { start: 0, len: r3(Math.max(5, dur || 30)), label: 'Entire song', text: `Entire song (${fmtTime(dur || 30)})`, chorus: false };
-  if (id === 'st-bloodslam' || id === 'st-glowslam') {
+  if (id === 'st-ashdissolve') {
+    const spans = sectionSpans(ctx.song && ctx.song.sections, dur);
+    const pick = ['outro', 'intro', 'verse'].map((k) => spans.find((x) => sectionKind(x.label) === k)).find(Boolean);
+    if (pick) {
+      const len = r3(Math.max(5, Math.min(25, (pick.end != null ? pick.end : dur || pick.start + 20) - pick.start)));
+      const start = Math.max(0, pick.start);
+      return { start: r3(start), len: r3(Math.min(len, dur ? Math.max(5, dur - start) : len)), label: pick.label, text: `${pick.label} ${fmtTime(start)}–${fmtTime(start + len)} (${Math.round(len)} s)`, chorus: false };
+    }
+  }
+  if (id === 'st-screamclean') {
+    // a verse into the chorus, so both kinds of line are heard
+    const sec = firstChorus(ctx.song, dur);
+    if (sec) {
+      const spans = sectionSpans(ctx.song.sections, dur);
+      const prev = [...spans].reverse().find((x) => x.start < sec.start - 0.5);
+      const start = Math.max(0, prev && sec.start - prev.start <= 30 ? prev.start : sec.start - 10);
+      const end = Math.min(dur || Infinity, sec.end != null ? sec.end : sec.start + 20);
+      const len = r3(Math.max(10, Math.min(30, end - start)));
+      return { start: r3(start), len, label: `${prev ? prev.label : 'Lead-in'} to ${sec.label}`, text: `${prev ? prev.label : 'The lead-in'} into ${sec.label} ${fmtTime(start)}–${fmtTime(start + len)} (${Math.round(len)} s)`, chorus: false };
+    }
+  }
+  if (id === 'st-bloodslam' || id === 'st-glowslam' || id === 'st-tourticker' || id === 'st-ransom') {
     const sec = firstChorus(ctx.song, dur);
     if (sec) {
       const w = chorusWindow(sec, dur);
@@ -523,7 +573,7 @@ function ownWindow(id, ctx) {
   const L = Math.min(want, Math.max(5, Math.floor(dur || want)));
   const start = ctx.audio.envelope ? findHook(ctx.audio.envelope, ctx.audio.envRate || 100, L, dur) : 0;
   const hook = `the loudest ${L} s from ${fmtTime(start)}`;
-  return { start: r3(start), len: L, label: 'Hook', text: id === 'st-stage' ? `The hook: ${hook}` : `No Chorus section yet, so ${hook} (detect the sections on the song’s Sections tab for the chorus)`, chorus: false };
+  return { start: r3(start), len: L, label: 'Hook', text: id === 'st-stage' ? `The hook: ${hook}` : id === 'st-ashdissolve' ? `No intro, outro or verse section yet, so ${hook} (detect the sections on the song’s Sections tab)` : `No Chorus section yet, so ${hook} (detect the sections on the song’s Sections tab for the chorus)`, chorus: false };
 }
 
 /** Lines (song time) with saved word times among `lines` in the ranges: { timed, total }. */
@@ -555,7 +605,15 @@ function lyricReady(id, ctx) {
     uses.push('The cover art, blurred into its colours');
   } else {
     const pic = (ctx.footage || []).length ? 'your footage' : ctx.video ? 'the music video' : ctx.coverRec ? 'the cover' : '';
-    uses.push(id === 'st-bloodslam' ? `Black, deep red and ash backdrops by section${pic ? `, with ${pic} dimmed under them` : ''}` : `Glow visualizer${pic ? ` over ${pic}, dimmed` : ' on black'}`);
+    const noSections = !partSections(ctx.song, ctx.audio.duration || 0).length;
+    uses.push(
+      id === 'st-bloodslam' ? `Black, deep red and ash backdrops by section${pic ? `, with ${pic} dimmed under them` : ''}`
+        : id === 'st-screamclean' ? `Scream lines on the left, clean lines on the right${pic ? `, over ${pic} dimmed` : ' on black'}${noSections ? '. No sections yet, so the lines alternate two by two (detect the sections to scream the choruses)' : ''}`
+        : id === 'st-tourticker' ? `A red tour-date band crawling one line per bar${pic ? ` over ${pic}` : ' on black'}, with spectrum bars`
+        : id === 'st-ashdissolve' ? `Letters that turn to ash as each line ends${pic ? `, over ${pic} dimmed and grey` : ' on black'}`
+        : id === 'st-ransom' ? 'Paper strips on a solid deep red page'
+        : `Glow visualizer${pic ? ` over ${pic}, dimmed` : ' on black'}`,
+    );
   }
   uses.push(lyricsUse(ctx));
   const out = { ok: true, uses, missing: '' };
@@ -595,8 +653,11 @@ function clearTemplateMarks(d) {
     const a = l.emph && autoEmph(l);
     if (a && sameJson(l.emph, a)) delete l.emph;
   }
-  const flashed = d.lyrics.filter((l) => l.style && sameJson(l.style, { hit: 'line' })).map((l) => l.id);
-  if (flashed.length) changeLook(d, flashed[0], () => undefined, { ids: flashed });
+  // lines wearing exactly a template's own look: the chorus flash, Scream/Clean's two sides, the zine's big chorus strips
+  for (const st of [{ hit: 'line' }, SPLIT_LOOKS.scream, SPLIT_LOOKS.clean, ZINE_BIG]) {
+    const ids = d.lyrics.filter((l) => l.style && sameJson(l.style, st)).map((l) => l.id);
+    if (ids.length) changeLook(d, ids[0], () => undefined, { ids });
+  }
 }
 
 /**
@@ -689,6 +750,23 @@ function glowViz(d, color) {
   d.layers.push({ ...defaultVizLayer(), id: uid('lyr'), type: 'viz', name: 'Glow visualizer', visible: true, fromTemplate: true, style: 'glow', blend: 'screen', color, color2: '#ffffff', intensity: 0.75 });
 }
 
+/** Scream/Clean Split: each kind of line's own look (side, preset, flash and shake for the screamed ones). */
+export const SPLIT_LOOKS = {
+  scream: { preset: 'scream', side: 'left', hit: 'line', fx: { shake: 0.35, shakeSpeed: 1.2, shakeBeat: true, glitchAmt: 1.3 } },
+  clean: { preset: 'clean', side: 'right' },
+};
+/** Sections whose lines are screamed (the rest are sung clean). */
+const SCREAMED = new Set(['chorus', 'breakdown']);
+/** Is a line in the section `label` screamed or clean? With no section: null. */
+export const vocalOf = (label) => (label == null ? null : SCREAMED.has(sectionKind(label)) ? 'scream' : 'clean');
+
+/** Ransom Note Zine: the page, and the bigger look of chorus lines. */
+export const ZINE_RED = '#7a0010';
+const ZINE_BIG = { size: 11 };
+
+/** The picture under a lyric template: your footage, else the music video, else the cover (else none). */
+const underPicture = (ctx) => ((ctx.footage || []).length ? 'footage' : ctx.video ? 'video' : ctx.coverRec ? 'cover' : null);
+
 /** Build one of the lyric-video templates (see SONG_TEMPLATES). Returns the facts for the toast. */
 function applyLyricTemplate(d, id, ctx, part, facts) {
   const own = part ? null : ownWindow(id, ctx);
@@ -696,6 +774,7 @@ function applyLyricTemplate(d, id, ctx, part, facts) {
   const look = ctx.look || (SONG_TEMPLATES.find((t) => t.id === id).looks || [[null]])[0][0];
   hideParts(d);
   d.layers = (d.layers || []).filter((l) => !(l.type === 'viz' && l.fromTemplate));
+  if (d.background === ZINE_RED) d.background = '#000000'; // the zine's page, from an earlier apply
   if (!d.song || d.song.mediaId !== ctx.audio.id) d.song = { mediaId: ctx.audio.id, offset: 0, volume: 1, fadeIn: 0.3, fadeOut: 1.2 };
   Object.assign(d.song, { offset: part ? part.parts[0].from : own.start, fadeIn: 0.3 });
   if (ctx.beats) d.beats = ctx.beats;
@@ -753,6 +832,62 @@ function applyLyricTemplate(d, id, ctx, part, facts) {
     Object.assign(d.endCard, { animation: 'zoom', background: 'blur', accent, font: 'Montserrat' });
     facts.push(neon ? 'Neon look' : 'Hellfire look', w.split ? `${w.split} line${w.split === 1 ? '' : 's'} shown one word at a time (Undo to get the lines back)` : 'One word at a time');
     if (w.split && w.timed < w.split) facts.push(`${w.timed ? `${w.split - w.timed} of them have` : 'The song has'} no saved word times, so the words share their line evenly: undo, Auto-sync the lyrics on the Lyrics tab, then apply again for words on the beat`);
+  } else if (id === 'st-screamclean') {
+    const pic = underPicture(ctx);
+    d.clips = (pic && pictureFor(pic, lay, ctx)) || [];
+    for (const c of d.clips) Object.assign(c, { filter: { preset: 'none', adjust: { brightness: 0.4, saturate: 0.55 } }, grade: GR('moody'), effects: { beatPulse: 0.3 } });
+    // shared style = the clean look; the red accent is what the screamed preset takes its colour from
+    lyricLook(d, themeById('cleanwhite'), { font: 'Montserrat', size: 9, color: '#f2ede4', highlight: '#e0182d', maxWidth: 84, y: 50 }, { shake: 0, shakeBeat: false });
+    Object.assign(d.look, { vignette: 0.5, grain: 0.25, beatFlash: 0.1 });
+    // each line in the part: screamed (left) or clean (right) by its section; lines with a look of your own stay as they are
+    const mine = linesInParts(d.lyrics, ranges).filter((l) => !(l.style && Object.keys(l.style).length));
+    const kinds = { scream: [], clean: [] };
+    mine.forEach((l, i) => {
+      const sec = sectionAt(sections, (l.start + l.end) / 2);
+      kinds[(sections.length ? vocalOf(sec ? sec.label : null) : null) || (Math.floor(i / 2) % 2 ? 'clean' : 'scream')].push(l.id);
+    });
+    for (const k of ['scream', 'clean']) if (kinds[k].length) changeLook(d, kinds[k][0], () => structuredClone(SPLIT_LOOKS[k]), { ids: kinds[k] });
+    Object.assign(d.endCard, { animation: 'glitch', background: 'color', bgColor: '#0d0d0d', accent: '#e0182d', textColor: '#f2ede4', font: 'Bebas Neue' });
+    facts.push(`${kinds.scream.length} screamed line${kinds.scream.length === 1 ? '' : 's'} on the left, ${kinds.clean.length} clean on the right${sections.length ? ' (by section)' : ' (no sections: alternating two by two)'}`);
+    if (mine.length < linesInParts(d.lyrics, ranges).length) facts.push('Lines with a look of your own kept it');
+  } else if (id === 'st-tourticker') {
+    const pic = underPicture(ctx);
+    d.clips = (pic && pictureFor(pic, lay, ctx)) || [];
+    for (const c of d.clips) Object.assign(c, { filter: { preset: 'none', adjust: { brightness: 0.85 } }, grade: null, effects: {} });
+    // the band holds the lines of the part only: it crawls through every line the edit has, from the first
+    const all = d.lyrics.length;
+    d.lyrics = linesInParts(d.lyrics, ranges);
+    lyricLook(d, null, { ...DISPLAY_DEFAULTS.ticker, display: 'ticker', font: 'Bebas Neue', size: 6.5, color: '#f2ede4', highlight: '#ffd400', outlineWidth: 0, shadow: false, uppercase: true, animation: 'none', outAnimation: '', box: false, boxColor: '#b3001b', boxOpacity: 0.92, align: 'left', maxWidth: 84, y: 74 }, { tickerLock: 1, tickerSpeed: 1, tickerGap: 1.1, shake: 0 });
+    glowViz(d, '#ff2a2a');
+    const bars = d.layers[d.layers.length - 1];
+    Object.assign(bars, { name: 'Spectrum bars', style: 'bars', blend: 'screen', y: 90, size: 80, intensity: 0.8, color2: '#ffd400' });
+    d.texts = [{ id: uid('txt'), text: [ctx.band, ctx.song.title].filter(Boolean).join(' · ').toUpperCase(), start: 0.3, end: Math.max(1, d.duration - (d.endCard.enabled ? d.endCard.duration : 0)), x: 50, y: 12, size: 4.2, font: 'Bebas Neue', color: '#f2ede4', outline: '#000000', box: false, animation: 'fade' }].filter((x) => x.text);
+    Object.assign(d.look, { vignette: 0.35, grain: 0.15, beatFlash: 0 });
+    Object.assign(d.endCard, { animation: 'rise', background: 'blur', accent: '#e0182d', textColor: '#f2ede4', font: 'Bebas Neue' });
+    facts.push(`${d.lyrics.length} line${d.lyrics.length === 1 ? '' : 's'} in the band, one per bar${all > d.lyrics.length ? ` (${all - d.lyrics.length} outside this part left out: Undo brings them back)` : ''}`, 'Spectrum bars under the band');
+  } else if (id === 'st-ashdissolve') {
+    const pic = underPicture(ctx);
+    const ash = BLOOD_BACKDROPS.ash;
+    d.clips = (pic && pictureFor(pic, lay, ctx)) || [];
+    for (const c of d.clips) Object.assign(c, { filter: { preset: 'none', adjust: { brightness: 0.34, saturate: 0, contrast: 0.85 } }, grade: structuredClone(ash.grade), effects: {} });
+    lyricLook(d, themeById('funeral'), { font: 'Playfair Display', size: 7.5, uppercase: false, animation: 'tracking', outAnimation: 'ash', outDuration: 1, maxWidth: 80, y: 50 }, { trackAmt: 0.8, ashDrift: 1.2, ashBlur: 1.1, ashStagger: 1, shake: 0.08, shakeSpeed: 0.25, shakeDir: 'y' });
+    Object.assign(d.look, { vignette: 0.65, grain: 0.35 });
+    Object.assign(d.endCard, { animation: 'rise', background: 'color', bgColor: '#0b0b0d', accent: '#c08a3e', textColor: '#d9c9a8', font: 'Playfair Display' });
+    facts.push(d.clips.length ? 'The picture dimmed, grey and dark' : 'Black backdrop (add footage, the music video or cover art to the song for a picture)', 'Each line turns to ash as it ends');
+  } else if (id === 'st-ransom') {
+    d.clips = [];
+    d.background = ZINE_RED;
+    lyricLook(d, null, { font: 'Bebas Neue', size: 8, color: '#f4efe3', highlight: '#f4efe3', outline: '#000000', outlineWidth: 0, shadow: false, uppercase: true, animation: 'paper', outAnimation: '', box: false, maxWidth: 84, y: 50 }, { paperTilt: 1.2, paperFonts: 1, paperJump: 1.2, shake: 0 });
+    Object.assign(d.look, { vignette: 0.45, grain: 0.5, scanlines: 0.25, beatFlash: 0 });
+    // chorus lines get bigger strips
+    const bigIds = linesInParts(d.lyrics, ranges).filter((l) => {
+      if (l.style && Object.keys(l.style).length) return false;
+      const sec = sectionAt(sections, (l.start + l.end) / 2);
+      return sec ? sectionKind(sec.label) === 'chorus' : own && own.chorus;
+    }).map((l) => l.id);
+    if (bigIds.length) changeLook(d, bigIds[0], () => structuredClone(ZINE_BIG), { ids: bigIds });
+    Object.assign(d.endCard, { animation: 'glitch', background: 'color', bgColor: ZINE_RED, accent: '#f4efe3', textColor: '#f4efe3', font: 'Bebas Neue' });
+    facts.push('A solid deep red page with grain and scanlines', `Paper strips jump on the beat${bigIds.length ? `, ${bigIds.length} chorus line${bigIds.length === 1 ? '' : 's'} bigger` : ''}`);
   } else if (id === 'st-stage') {
     const frost = look === 'frostbite';
     d.clips = pictureFor(ctx.video ? 'video' : 'footage', lay, ctx) || [];
@@ -778,7 +913,7 @@ function applyLyricTemplate(d, id, ctx, part, facts) {
   // keep the lyrics in the platform's clear area
   if (d.layout) applyLayout(d, d.layout);
   if (id === 'st-coversheet') (lyricsIntoLayout(d), (d.lyricStyle.y = yIn(d, 0.5)));
-  else d.lyricStyle.y = d.layout ? yIn(d, id === 'st-stage' ? 0.88 : 0.5) : d.lyricStyle.y;
+  else d.lyricStyle.y = d.layout ? yIn(d, id === 'st-stage' ? 0.88 : id === 'st-tourticker' ? 0.8 : 0.5) : d.lyricStyle.y;
   d.template = id;
   facts.push(`Ends on the end card for “${ctx.song.title}”${ctx.cover ? ' with its cover' : ''}`);
   return facts;
