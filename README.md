@@ -1606,3 +1606,21 @@ Four more cards under Start → Templates → From your song's files. Like batch
 - **Tour Ticker**: the ticker display (one band, right to left, one line per bar) in a red strip with bone-white Bebas capitals, over your footage, music video or cover, with spectrum bars and a small band · title line at the top. Starts on the first chorus. *Limits:* the band is paced by the tempo, not by when each line is sung; it holds only the lines of the part (the other lines of the edit are removed, Undo brings them back), so a later change of the Song part does not bring them back by itself.
 - **Ash Dissolve**: Funeral Doom serif that opens with tracking and leaves with the ash exit (letters blur, drift up and fade), over the picture dimmed, grey and dark, with a slow sway. Starts on the outro, else the intro, else the first verse, else the loudest 20 s. *Stand-in:* the smoke scene is the ash-grey graded picture (black with no picture).
 - **Ransom Note Zine**: the cut-paper strip animation with mixed fonts, tilt and a jump on the beat, on a solid deep red page (the project background) with grain and scanlines; chorus lines are bigger. Starts on the first chorus. *Stand-ins:* the concrete wall is the solid red page, and strips are per word, not per letter. A glitch frame every four bars is not built. Applying another template puts the black page back.
+
+### Per-word lyric effects
+
+Any word in a lyric line can have its own shake, pulse, glitch, size and colour. Open a line's settings, go to
+**Key words & side**, set **Tapping a word** to **Tune its effects**, and tap a word chip. The sliders show the
+line's own values until you change them. A change applies to that word only: a word with its own shake moves while
+the rest of the line keeps still (or keeps the line's shake), and a word's pulse scales it around its own centre on
+the line's beat grid. A small dot marks words that have their own settings. **Reset this word** puts the word back,
+and one Ctrl+Z undoes each change.
+
+- The order of priority is word, then line, then look, then the shared style. Missing values follow the line.
+- Saved as `line.wordFx = [{ i, w, shake?, pulse?, glitch?, size?, color? }]`. It keeps the word itself, so if you
+  edit the text, settings on words that changed stop applying and a note says so, the same way key words work.
+- These settings apply to the One line at a time display, with every entrance (karaoke and word by word included).
+  Preview, Fast export and Real-time export all draw with the same renderer. Lines without word settings render
+  byte-identical to before.
+- Code: `js/lyricfx.js` (`cleanWordFx`, `setWordFx`, `resolveWordFx`, `wordShake`, `wordPulseScale`), the word loop
+  in `js/renderer.js`, and the editor in `js/panel-lineanim.js`. Tests are in `test/wordfx.test.js`.
