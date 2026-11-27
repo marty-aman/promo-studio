@@ -1093,6 +1093,16 @@ effects the chosen style uses:
 - Every setting is a multiplier of the old constant (×1 by default), so projects saved before render exactly as they
   did. Stored as `lyricStyle.fx`, `lyricStyle.tempo` and a line's `fx`; cleaned on load (`cleanLyricFx`). The maths is
   in `js/lyricfx.js`, the controls in `js/panel-lyricfx.js`.
+- **Look themes carry effect settings.** Each of the 11 look themes (This line's look → Look themes) also sets how its
+  lyrics move: the dark metal ones shake (Blood & Ash, Black Mass, Hellfire and Rust & Steel on the beat; Hellfire
+  also has a bigger, shorter beat pulse; Funeral Doom sways slowly, Frostbite shivers, Toxic Sludge waves slower and
+  higher), the clean ones stay still and the neon ones flicker on longer and hum brighter. A theme never sets a tempo:
+  the pulse keeps following the project tempo (or the lyrics' own). Picking a theme puts its settings on the look
+  (`line.style.fx`, so every line with that look gets them) or, for the shared style, on `lyricStyle.fx` (lines with
+  their own look keep moving as before). A line's own settings sit on top (**Use the look's effect settings** drops
+  them); one that differs from the theme marks its card **edited**, and picking the theme again puts the theme's
+  settings back. Each card names its motion (e.g. "Shake on the beat · Beat pulse") and the picked or hovered card
+  moves like it (still under reduced motion). Lines and looks without a theme render as before.
 
 ### Timeline zoom (Video Studio)
 

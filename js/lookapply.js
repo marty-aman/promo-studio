@@ -5,6 +5,7 @@
 import { uid } from './core.js';
 import { LINE_FIELDS, lineStyle, hasLineStyle } from './linestyle.js';
 import { lookId, assignLooks, CUSTOM_COLORS } from './lookcolors.js';
+import { FX_FIELDS } from './lyricfx.js';
 
 // what a missing field means when drawing (the renderer reads these with || / ??)
 const FIELD_DEFAULTS = { outAnimation: '', outDuration: 0.35 };
@@ -17,11 +18,25 @@ export function lookMembers(lines, lineId) {
   return lines.filter((l) => lookId(l) === id).map((l) => l.id);
 }
 
-/** A line style with a theme: keeps the keys that are not style fields (lookKey), drops the preset. */
+/**
+ * A line style with a theme: keeps the keys that are not style fields (lookKey), drops the preset, and takes the
+ * theme's effect settings as the look's own (style.fx; none when the theme has none).
+ */
 export function withTheme(style, theme) {
-  const keep = Object.fromEntries(Object.entries(style || {}).filter(([k]) => k !== 'preset' && !LINE_FIELDS.includes(k)));
-  return { ...keep, ...structuredClone(theme.fields) };
+  const keep = Object.fromEntries(Object.entries(style || {}).filter(([k]) => k !== 'preset' && k !== 'fx' && !LINE_FIELDS.includes(k)));
+  return { ...keep, ...structuredClone(theme.fields), ...(theme.fx ? { fx: structuredClone(theme.fx) } : {}) };
 }
+
+/** Drop from a line's own effect settings (line.fx) the ones the theme sets, so the theme shows; the rest stay. */
+function yieldFx(line, theme) {
+  if (!line.fx || !theme.fx) return;
+  const fx = Object.fromEntries(Object.entries(line.fx).filter(([k]) => !(k in theme.fx)));
+  if (Object.keys(fx).length) line.fx = fx;
+  else delete line.fx;
+}
+
+// what a missing effect setting means when drawing (lyricfx.js fxv, the shake's direction and beat)
+const fxDefault = (k) => (k in FX_FIELDS ? FX_FIELDS[k][0] : k === 'shakeDir' ? 'both' : false);
 
 const colorsOf = (d) => new Map(assignLooks(d.lyrics, d.lookColors).map((k) => [k.id, k.color]));
 
@@ -87,10 +102,11 @@ export function applyTheme(d, lineId, theme, { only = false } = {}) {
   const me = d.lyrics.find((l) => l.id === lineId);
   if (!me) return 0;
   if (!hasLineStyle(me) && !only) return applySharedTheme(d, theme);
-  const n = changeLook(d, lineId, (st) => withTheme(st, theme), { only });
-  // shortcut: themes carry no effect settings yet; when they do (lyric fx), the look's lines take them too
-  if (theme.fx) for (const l of d.lyrics) if (l.id === lineId || (!only && lookId(l) === lookId(me))) l.fx = structuredClone(theme.fx);
-  return n;
+  // the theme's effect settings go on the look (style.fx); a line's own older ones give way where the theme sets them
+  return changeLook(d, lineId, (st, l) => {
+    yieldFx(l, theme);
+    return withTheme(st, theme);
+  }, { only });
 }
 
 /**
@@ -101,7 +117,9 @@ export function applyTheme(d, lineId, theme, { only = false } = {}) {
 export function applySharedTheme(d, theme) {
   const old = d.lyricStyle;
   const next = { ...old, ...structuredClone(theme.fields) };
+  // the theme's effect settings; the pulse tempo (lyricStyle.tempo) stays as it is
   if (theme.fx) next.fx = structuredClone(theme.fx);
+  else delete next.fx;
   const before = colorsOf(d);
   const changed = new Map();
   for (const l of d.lyrics) {
@@ -109,11 +127,19 @@ export function applySharedTheme(d, theme) {
     const was = lineStyle(old, l, d.theme);
     const will = lineStyle(next, l, d.theme);
     const keep = LINE_FIELDS.filter((k) => JSON.stringify(was[k] ?? FIELD_DEFAULTS[k]) !== JSON.stringify(will[k] ?? FIELD_DEFAULTS[k]));
-    if (!keep.length) continue;
+    // effect settings the line took from the shared style and the theme changes: kept on the look (style.fx).
+    // Compared without line.fx, which sits on top of both and does not change.
+    const wasFx = { ...(old.fx || {}), ...((l.style && l.style.fx) || {}) };
+    const willFx = { ...(next.fx || {}), ...((l.style && l.style.fx) || {}) };
+    const keepFx = [...new Set([...Object.keys(wasFx), ...Object.keys(willFx)])].filter((k) => (wasFx[k] ?? fxDefault(k)) !== (willFx[k] ?? fxDefault(k)));
+    if (!keep.length && !keepFx.length) continue;
     changed.set(l.id, lookId(l));
     l.style = { ...l.style, ...Object.fromEntries(keep.map((k) => [k, was[k] ?? FIELD_DEFAULTS[k]])) };
+    if (keepFx.length) l.style.fx = { ...(l.style.fx || {}), ...Object.fromEntries(keepFx.map((k) => [k, wasFx[k] ?? fxDefault(k)])) };
   }
   d.lyricStyle = next;
+  // shared-style lines: their own older effect settings give way where the theme sets them
+  for (const l of d.lyrics) if (!hasLineStyle(l)) yieldFx(l, theme);
   settleColors(d, changed, before, 'keep');
   return d.lyrics.filter((l) => !hasLineStyle(l)).length;
 }
