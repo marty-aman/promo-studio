@@ -63,7 +63,9 @@ export function themeState(lyricStyle, line = null) {
   const theme = themeOf(own || lyricStyle);
   if (!theme) return null;
   const drawn = line ? lineStyle(lyricStyle, line) : lyricStyle;
-  return { theme, edited: !sameFx(drawn.fx, theme.fx) };
+  // a setting the look's own effect settings add that the theme leaves at its default (say "Pulse every 2 beats")
+  const extra = !!own && !!own.fx && Object.entries(own.fx).some(([k, v]) => !(k in (theme.fx || {})) && v !== (k in FX_FIELDS ? FX_FIELDS[k][0] : k === 'shakeDir' ? 'both' : false));
+  return { theme, edited: extra || !sameFx(drawn.fx, theme.fx) };
 }
 
 /** A few words on how a theme moves (the swatch card's label): 'Shake on the beat · Pulse', or 'Still'. */

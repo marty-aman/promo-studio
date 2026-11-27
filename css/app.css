@@ -1905,3 +1905,6 @@ body.touch .lt-card { min-height: 64px; }
 body.touch .lt-only { min-height: 44px; }
 body.touch .lt-motion { white-space: normal; line-height: 1.2; }
 body.touch .tl-legend select.lg-theme { height: 32px; }
+.tl-legend .lg-fx { flex: none; height: 22px; min-height: 0; padding: 0 6px; font-size: 11px; }
+body.touch .tl-legend .lg-fx { height: 32px; padding: 0 10px; }
+.lfx-scope { margin-top: -2px; }

@@ -634,7 +634,7 @@ function inspSignature() {
     (s.type === 'lyric' && p.lyrics.some((c) => c.id === s.id) && (() => {
       const l = p.lyrics.find((c) => c.id === s.id);
       // the line's effect settings show the effects its look uses
-      const fxSig = `${p.lyricStyle.display}:${(l.style && l.style.animation) || p.lyricStyle.animation}:${!!((l.fx && l.fx.shakeBeat) ?? (p.lyricStyle.fx && p.lyricStyle.fx.shakeBeat))}`;
+      const fxSig = `${p.lyricStyle.display}:${(l.style && l.style.animation) || p.lyricStyle.animation}:${!!((l.fx && l.fx.shakeBeat) ?? (p.lyricStyle.fx && p.lyricStyle.fx.shakeBeat))}:${!!(l.style && l.style.fx && l.style.fx.shakeBeat)}`;
       return `${[...p.lyrics].sort((a, b) => a.start - b.start).findIndex((c) => c.id === s.id)}|${l.style ? `${l.style.preset || 'own'}:${!!l.style.box}` : '-'}|${p.lyrics.filter((c) => c.text.trim().toLowerCase() === l.text.trim().toLowerCase()).length}|${fxSig}`;
     })()) ||
     (s.type === 'text' && p.texts.some((c) => c.id === s.id)) ||
