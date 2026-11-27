@@ -1749,6 +1749,16 @@ ui.saveSongBpm = (bpm) => {
   });
   return true;
 };
+/** The word timing editor's waveform ('song' or a stem's media id), saved on the edit's song; false when there is none. */
+ui.saveSongWave = (v) => {
+  const ctx = ui.songContext();
+  if (!ctx || !ctx.song) return false;
+  manager.store.update((d) => {
+    const s = d.songs.find((x) => x.id === ctx.song.id);
+    if (s) s.waveSource = String(v || '');
+  });
+  return true;
+};
 /** Files uploaded in the studio for the current song: add them to its stems in Songs & releases too. */
 ui.addStemsToSong = (recs) => {
   const ctx = ui.songContext();

@@ -3,42 +3,14 @@
 // line of the saved timing, playing the song file in this tab. Every change is one save on the song.
 import { h, button } from '../dom.js';
 import { lyricsFromTiming, editTimingLine } from './lyrictiming.js';
-import { wordTimingEditor } from '../panel-wordtiming.js';
+import { wordTimingEditor, filePlayer } from '../panel-wordtiming.js';
+import { resolveWave, waveChoices } from '../wavesource.js';
 import { clearHandWords, wordsStale } from '../wordtiming.js';
 
 const ui = new Map(); // song id → { line, word, target }, kept between page rebuilds
-let audio = null; // { el, id, url } the song file playing for "Play this line"
-
-function songPlayer(ctx, id) {
-  if (!id || !ctx.studio.mediaBlob || !(ctx.studio.hasMedia ? ctx.studio.hasMedia(id) : true)) return null;
-  // the song file is read from storage once (it may not be open yet); Play waits for it the first time
-  let blob = null;
-  const ready = Promise.resolve(ctx.studio.mediaBlob(id)).then((b) => (blob = b));
-  const el = () => {
-    if (!blob) return null;
-    if (!audio || audio.id !== id) {
-      if (audio) (audio.el.pause(), URL.revokeObjectURL(audio.url));
-      const url = URL.createObjectURL(blob);
-      audio = { id, url, el: new Audio(url) };
-    }
-    return audio.el;
-  };
-  return {
-    play(from) {
-      const a = el();
-      if (!a) {
-        ready.then(() => blob && this.play(from));
-        return true;
-      }
-      a.currentTime = from;
-      a.play().catch(() => {});
-      return true;
-    },
-    stop: () => audio && audio.el.pause(),
-    now: () => (audio && audio.id === id ? audio.el.currentTime : null),
-    playing: () => !!(audio && audio.id === id && !audio.el.paused),
-  };
-}
+// "Play this line" plays the song file (or, with Hear this stem, the chosen stem) in this tab; the file is read
+// from storage the first time Play is pressed
+const playerFor = (ctx, id) => (id && ctx.studio.mediaBlob && (ctx.studio.hasMedia ? ctx.studio.hasMedia(id) : true) ? filePlayer(id, (x) => ctx.studio.mediaBlob(x)) : null);
 
 export function wordTimingBox(ctx, song, S) {
   const t = song.lyricTiming;
@@ -61,9 +33,21 @@ export function wordTimingBox(ctx, song, S) {
     st.open = true;
     ctx.refresh(); // draw the page again on the new line
   });
-  const stem = (song.files && song.files.stems ? song.files.stems : []).find((x) => x.role === 'vocals' && (ctx.studio.mediaInfo(x.mediaId) || {}).peaks);
-  const info = stem ? ctx.studio.mediaInfo(stem.mediaId) : song.audioId && ctx.studio.mediaInfo(song.audioId);
-  const peaks = info && info.peaks ? { data: info.peaks, perSec: info.peaksPerSec, label: stem ? 'Vocal stem' : 'Song' } : null;
+  // the waveform under the words: the song or a stem (saved on the song); the peaks come with the library record,
+  // so no file is read to draw them and switching back and forth is instant
+  const info = (id) => ctx.studio.mediaInfo(id);
+  const wave = resolveWave(song, info);
+  const rec = wave.id && info(wave.id);
+  const peaks = rec && rec.peaks ? { data: rec.peaks, perSec: rec.peaksPerSec, label: wave.label, id: wave.id } : null;
+  const isStem = wave.id && wave.id !== song.audioId;
+  const source = {
+    choices: waveChoices(song, info),
+    value: wave.value,
+    note: wave.note,
+    onPick: (v) => ctx.update(S((s) => (s.waveSource = v))),
+    hear: isStem && !!st.hear,
+    onHear: isStem ? (v) => ((st.hear = v), ctx.refresh()) : null,
+  };
   const line = lines[st.line];
   return h(
     'div',
@@ -80,7 +64,7 @@ export function wordTimingBox(ctx, song, S) {
     h('details', { class: 'mgr-wt-edit', open: st.open || null, ontoggle: (e) => (st.open = e.target.open) },
       h('summary', { class: 'small' }, 'Time the words of a line'),
       h('div', { class: 'row wt-pick' }, pick),
-      wordTimingEditor({ line, commit: (fn) => edit([st.line], fn), player: songPlayer(ctx, song.audioId), peaks, fps: 30, state: st }),
+      wordTimingEditor({ line, commit: (fn) => edit([st.line], fn), player: playerFor(ctx, source.hear ? wave.id : song.audioId), peaks, source, fps: 30, state: st }),
     ),
   );
 }
