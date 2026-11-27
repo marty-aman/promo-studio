@@ -1,6 +1,7 @@
 // The Manager workspace: its own left nav and pages, on its own store (with undo), saved in this
 // browser and backed up to a file. The video studio stays as it was; "Make a promo" hands a song over.
 import { h, icon, button, iconButton, toast, download, pickFiles, onDateCommit } from '../dom.js';
+import { askText } from '../asktext.js';
 import { createStore } from '../state.js';
 import { openDriveSetup } from '../gdrive.js';
 import { todayISO } from './model.js';
@@ -259,8 +260,8 @@ export function createManager({ root, studio }) {
     studio.artistsChanged && studio.artistsChanged();
     if (page) go(page, itemId, tab);
   };
-  const newArtist = () => {
-    const name = prompt('Artist or band name', '');
+  const newArtist = async () => {
+    const name = await askText('Artist or band name', '', { okText: 'Add' });
     if (!name || !name.trim()) return;
     const [next, id] = addArtist(current(), name.trim());
     ws = next;

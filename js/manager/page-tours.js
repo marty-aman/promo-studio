@@ -2,6 +2,7 @@
 // on OpenStreetMap or from where similar bands played (setlist.fm), the night's money, and the
 // drive from the last stop. A confirmed stop becomes a show with its to-do list.
 import { h, icon, button, iconButton, toast, keyBox } from '../dom.js';
+import { askText } from '../asktext.js';
 import { loadSettings, saveSettings } from '../state.js';
 import { niceDate } from './model.js';
 import { VENUE_STATUSES } from './planner.js';
@@ -25,8 +26,8 @@ export function buildTours(ctx) {
 
 function tourList(ctx) {
   const m = ctx.store.get();
-  const add = () => {
-    const name = prompt('Name the tour', `${m.band.name || 'Band'} ${new Date().getFullYear()} run`);
+  const add = async () => {
+    const name = await askText('Name the tour', `${m.band.name || 'Band'} ${new Date().getFullYear()} run`, { okText: 'Make it' });
     if (!name) return;
     const t = newTour(name.trim(), ctx.today());
     ctx.update((d) => d.tours.push(t));
@@ -294,8 +295,8 @@ function tourPage(ctx, tour) {
     ctx.update((d) => (d.tours = d.tours.filter((t) => t.id !== tour.id)));
     ctx.go('tours');
   };
-  const newOne = () => {
-    const name = prompt('Name the tour', `${m.band.name || 'Band'} ${new Date().getFullYear()} run`);
+  const newOne = async () => {
+    const name = await askText('Name the tour', `${m.band.name || 'Band'} ${new Date().getFullYear()} run`, { okText: 'Make it' });
     if (!name) return;
     const t = newTour(name.trim(), ctx.today());
     ctx.update((d) => d.tours.push(t));

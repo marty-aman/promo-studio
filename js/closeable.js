@@ -71,16 +71,16 @@ function typedIn(root, start) {
 /**
  * Make a modal dialog close the shared way. `close` removes it (the dialog's own close). Returns requestClose(),
  * which asks first when something typed would be lost; use it for the dialog's own x and Cancel buttons.
- * opts.confirmText overrides the question.
+ * opts.confirmText overrides the question; opts.askFirst = false closes without asking (a box that only asks for a name).
  */
-export function guardDialog(dlg, close, { confirmText = 'Close this window? What you typed here is not saved yet.' } = {}) {
+export function guardDialog(dlg, close, { confirmText = 'Close this window? What you typed here is not saved yet.', askFirst = true } = {}) {
   const opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
   const start = new Map(); // each text field's value when first focused
   dlg.addEventListener('focusin', (e) => {
     const t = e.target;
     if (t && /^(INPUT|TEXTAREA)$/.test(t.tagName) && !/^(checkbox|radio|range|button|submit|file|color)$/.test(t.type) && !start.has(t)) start.set(t, t.value);
   });
-  const dirty = () => typedIn(dlg, start);
+  const dirty = () => askFirst && typedIn(dlg, start);
   const finish = () => {
     close();
     restoreFocus(opener);

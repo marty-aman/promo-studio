@@ -3,6 +3,7 @@
 // two views: Browse (just the pictures) and Edit details (caption, photographer, tags, folder and
 // the press kit / profile / logo buttons for each photo). Only one page of photos is drawn at a time.
 import { h, icon, button, iconButton, toast, pickFiles, download } from '../dom.js';
+import { askText } from '../asktext.js';
 import { driveButton } from '../gdrive.js';
 import { relinkNotice } from '../relink.js';
 import { media, ensureLoaded } from '../media.js';
@@ -142,16 +143,16 @@ export function buildPhotos(ctx) {
   const chip = (label, on, fn) => button(label, () => (fn(), (ui.page = 1), rerender()), { variant: `chip${on ? ' on' : ''}` });
 
   // ---- folders
-  const newOne = () => {
-    const name = prompt(ui.folder ? `New folder inside “${folderName(ui.folder)}”` : 'New folder', '');
+  const newOne = async () => {
+    const name = await askText(ui.folder ? `New folder inside “${folderName(ui.folder)}”` : 'New folder', '', { okText: 'Make it' });
     if (!name || !name.trim()) return;
     const fo = newFolder(name, ui.folder);
     ctx.update((d) => (d.photoFolders ||= []).push(fo));
     if (ui.folder) ui.expanded.add(ui.folder);
     toast(`Made “${fo.name}”. Open it to add photos, or drag photos onto it.`);
   };
-  const rename = (fo) => {
-    const name = prompt('Rename the folder', fo.name);
+  const rename = async (fo) => {
+    const name = await askText('Rename the folder', fo.name, { max: 60 });
     if (name && name.trim()) ctx.update((d) => (d.photoFolders.find((x) => x.id === fo.id).name = name.trim().slice(0, 60)));
   };
   const remove = (fo) => {
@@ -280,9 +281,9 @@ export function buildPhotos(ctx) {
     redraw();
   };
   /** Ask for tags to add (and "-tag" to take off), then put them on `ids`. */
-  const tagMany = (ids, where) => {
+  const tagMany = async (ids, where) => {
     if (!ids.length) return toast('No photos there to tag.', 'error');
-    const text = prompt(`Tags for ${ids.length} photo${ids.length === 1 ? '' : 's'}${where ? ` ${where}` : ''}.\nSeparate with commas. Put a minus in front to take a tag off (e.g. live, 2026, -old).`, '');
+    const text = await askText(`Tags for ${ids.length} photo${ids.length === 1 ? '' : 's'}${where ? ` ${where}` : ''}`, '', { hint: 'Separate with commas. Put a minus in front to take a tag off (e.g. live, 2026, -old).', okText: 'Tag', max: 1000 });
     if (!text || !text.trim()) return;
     const { add, remove } = parseTagEdit(text);
     let n = 0;

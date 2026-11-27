@@ -6,6 +6,7 @@ import { h, icon, button, iconButton, toast } from './dom.js';
 import { findProjects, SORTS, storageLevel } from './projectlib.js';
 import { storageEstimate } from './projectstore.js';
 import { guardDialog } from './closeable.js';
+import { askText } from './asktext.js';
 
 const when = (t) => {
   const d = new Date(typeof t === 'number' ? t : Date.parse(t || ''));
@@ -51,10 +52,8 @@ export function openProjects(adapter) {
   });
   const openVersions = new Set();
 
-  const ask = (msg, value) => {
-    const v = prompt(msg, value);
-    return v == null ? null : v.trim().slice(0, 120);
-  };
+  // the name box (Electron has no prompt()); null when cancelled, the default name when left empty
+  const ask = (msg, value) => askText(msg, value);
 
   function currentBar() {
     const c = adapter.current;
@@ -67,14 +66,18 @@ export function openProjects(adapter) {
       h(
         'div',
         { class: 'row' },
-        cur.saved ? null : button('Save to Projects', async () => (await cur.save(ask('Name for this project', cur.name)), render()), { iconName: 'download', variant: 'sm primary', title: 'Keep this edit in Projects, with its versions' }),
+        cur.saved ? null : button('Save to Projects', async () => {
+          const n = await ask('Name for this project', cur.name || 'Untitled');
+          if (n != null) await cur.save(n);
+          render();
+        }, { iconName: 'download', variant: 'sm primary', title: 'Keep this edit in Projects, with its versions' }),
         cur.saved ? button('Save as…', async () => {
-          const n = ask('Save as a new project called', `${cur.name}`);
+          const n = await ask('Save as a new project called', `${cur.name}`);
           if (n) await cur.saveAs(n);
           render();
         }, { variant: 'sm', title: 'Keep the saved project as it was and go on editing a new one' }) : null,
         button('Save a copy', async () => {
-          const n = ask('Name for the copy', `${cur.name} copy`);
+          const n = await ask('Name for the copy', `${cur.name} copy`);
           if (n) await cur.saveCopy(n);
           render();
         }, { iconName: 'copy', variant: 'sm', title: 'Put a copy in Projects and go on editing this one' }),
@@ -125,7 +128,7 @@ export function openProjects(adapter) {
           'div',
           { class: 'projects-actions' },
           iconButton('type', `Rename ${e.name}`, async () => {
-            const n = ask('New name', e.name);
+            const n = await ask('New name', e.name);
             if (n && n !== e.name) {
               await adapter.rename(e.id, n);
               render();
