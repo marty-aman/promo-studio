@@ -49,6 +49,8 @@ import { captionPicker } from './panel-captions.js';
 import { lyricIdeasAssistant } from './ai/panel-assistant.js';
 import { fetchSpotifyInfo } from './spotify.js';
 import { LINE_PRESETS, lineStyle, hasLineStyle } from './linestyle.js';
+import { lookMembers, changeLook } from './lookapply.js';
+import { lookThemeBlock } from './panel-lookthemes.js';
 import { THEMES, themeById, applyTheme } from './themes.js';
 import { stemRoleLabel } from './manager/files.js';
 import { markTimed, timingSummary, SOURCE_LABELS } from './manager/lyrictiming.js';
@@ -3141,15 +3143,23 @@ export function createPanels({ store, engine, ui }) {
     const shared = () => store.get().lyricStyle;
     const cur = () => lineStyle(shared(), get() || line, store.get().theme);
     const st = line.style || {};
-    const edit = (key) => L((x, v) => {
-      x.style = { ...(x.style || {}), [key]: v };
-    });
+    // a change reaches every line with this look (lookapply.js); a slider drag keeps the lines it started with
+    let drag = null;
+    const groupIds = () => {
+      const now = Date.now();
+      if (!drag || now - drag.at > 700) drag = { ids: lookMembers(store.get().lyrics, line.id) };
+      drag.at = now;
+      return drag.ids;
+    };
+    const edit = (key) => (d, v) => changeLook(d, line.id, (s) => ({ ...(s || {}), [key]: v }), { ids: groupIds() });
+    // a preset on a shared-style line gives just that line the preset, as before; on a look, the whole look
+    const setPreset = (id) => store.update((d) => changeLook(d, line.id, (s) => ({ ...(s && s.lookKey ? { lookKey: s.lookKey } : {}), preset: id }), { only: !hasLineStyle(line) }));
     const chips = h(
       'div',
       { class: 'chips', role: 'radiogroup', 'aria-label': 'Look for this line' },
-      h('button', { type: 'button', role: 'radio', 'aria-checked': hasLineStyle(line) ? 'false' : 'true', class: `btn chip${hasLineStyle(line) ? '' : ' on'}`, onclick: () => store.update(L((x) => delete x.style)) }, 'Same as the others'),
+      h('button', { type: 'button', role: 'radio', 'aria-checked': hasLineStyle(line) ? 'false' : 'true', class: `btn chip${hasLineStyle(line) ? '' : ' on'}`, onclick: () => store.update((d) => changeLook(d, line.id, () => undefined)) }, 'Same as the others'),
       LINE_PRESETS.map(([id, label, hint]) =>
-        h('button', { type: 'button', role: 'radio', title: hint, 'aria-checked': st.preset === id ? 'true' : 'false', class: `btn chip${st.preset === id ? ' on' : ''}`, onclick: () => store.update(L((x) => (x.style = { preset: id }))) }, label)),
+        h('button', { type: 'button', role: 'radio', title: hint, 'aria-checked': st.preset === id ? 'true' : 'false', class: `btn chip${st.preset === id ? ' on' : ''}`, onclick: () => setPreset(id) }, label)),
     );
     const sameText = () => {
       const t = (get() || line).text.trim().toLowerCase();
@@ -3160,6 +3170,7 @@ export function createPanels({ store, engine, ui }) {
       'This line’s look',
       h('p', { class: 'muted tiny' }, 'Make one line stand out: a screamed line, a whisper, a gang-vocal shout. The other lines keep the style from the Lyrics tab.'),
       chips,
+      lookThemeBlock(b, store, line.id),
       hasLineStyle(line)
         ? h('div', {},
             fontField(b, 'Font', () => cur().font, edit('font')),
@@ -3170,7 +3181,7 @@ export function createPanels({ store, engine, ui }) {
             b.select('Exit', () => cur().outAnimation || '', edit('outAnimation'), TEXT_EXITS),
             h('div', { class: 'grid2' }, b.toggle('ALL CAPS', () => !!cur().uppercase, edit('uppercase')), b.toggle('Background box', () => !!cur().box, edit('box'))),
             cur().box ? b.color('Box color', () => cur().boxColor, edit('boxColor')) : null,
-            h('p', { class: 'muted tiny' }, store.get().lyricStyle.display && store.get().lyricStyle.display !== 'line' ? 'In the lyric sheet, poster and tunnel displays this line keeps its font, colours and case; size and animation follow the display.' : 'Changes here only affect this line.'),
+            h('p', { class: 'muted tiny' }, store.get().lyricStyle.display && store.get().lyricStyle.display !== 'line' ? 'In the lyric sheet, poster and tunnel displays this line keeps its font, colours and case; size and animation follow the display.' : 'Changes here reach every line with this look (see above).'),
           )
         : null,
       h('div', { class: 'row' },

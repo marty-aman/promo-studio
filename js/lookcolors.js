@@ -3,6 +3,7 @@
 // shared lyric style and keep the default yellow block. Each distinct look gets a colour, a letter and a pattern
 // so it also reads without colour. project.lookColors = { [lookId]: '#rrggbb' } holds the colours Marty picked.
 import { LINE_PRESETS, LINE_FIELDS, hasLineStyle } from './linestyle.js';
+import { themeOf } from './lookthemes.js';
 
 export const SHARED_COLOR = '#facc15';
 // A fixed colour per preset (so "Scream" is the same red in every project), then slots for custom looks.
@@ -24,13 +25,16 @@ const hash = (s) => {
 };
 const HEX = /^#[\da-f]{6}$/i;
 
-/** The look of a line: '' for the shared style, else 'p:<preset>' (just a preset) or 'c:<hash>' (own changes). */
+/**
+ * The look of a line: '' for the shared style, else 'p:<preset>' (just a preset) or 'c:<hash>' (own changes).
+ * style.lookKey (set by "Only this line", lookapply.js) keeps a line in a look of its own even while it looks the same.
+ */
 export function lookId(line) {
   if (!hasLineStyle(line)) return '';
-  const { preset, ...rest } = line.style;
+  const { preset, lookKey, ...rest } = line.style;
   const own = LINE_FIELDS.filter((k) => rest[k] !== undefined).map((k) => [k, rest[k]]);
-  if (preset && PRESET_LOOK[preset] && !own.length) return `p:${preset}`;
-  return `c:${hash(JSON.stringify([preset || '', own])).toString(36)}`;
+  if (preset && PRESET_LOOK[preset] && !own.length && !lookKey) return `p:${preset}`;
+  return `c:${hash(JSON.stringify(lookKey ? [preset || '', own, lookKey] : [preset || '', own])).toString(36)}`;
 }
 
 /**
@@ -41,12 +45,18 @@ export function lookId(line) {
 export function assignLooks(lines, overrides = {}) {
   const counts = new Map();
   const presetOf = new Map();
+  const themeName = new Map();
   for (const l of lines || []) {
     const id = lookId(l);
     if (!id) continue;
     counts.set(id, (counts.get(id) || 0) + 1);
-    if (!presetOf.has(id)) presetOf.set(id, l.style.preset || '');
+    if (!presetOf.has(id)) {
+      presetOf.set(id, l.style.preset || '');
+      const th = themeOf(l.style);
+      if (th) themeName.set(id, th.name);
+    }
   }
+  const named = new Map(); // theme name -> how many looks use it so far (a split-off copy reads "Blood & Ash 2")
   const ids = [...counts.keys()].sort((a, b) => (a[0] === b[0] ? (a < b ? -1 : 1) : a[0] === 'p' ? -1 : 1));
   const taken = new Set();
   let custom = 0;
@@ -61,7 +71,10 @@ export function assignLooks(lines, overrides = {}) {
       taken.add(slot);
       const pre = presetOf.get(id);
       const preName = pre && LINE_PRESETS.find((p) => p[0] === pre);
-      base = { color: CUSTOM_COLORS[slot], letter: String(((custom - 1) % 9) + 1), pat: (slot + (pre ? 1 : 0)) % PATTERNS, name: preName ? `${preName[1]} (edited)` : `Custom look ${custom}` };
+      const tn = themeName.get(id);
+      if (tn) named.set(tn, (named.get(tn) || 0) + 1);
+      const name = tn ? (named.get(tn) > 1 ? `${tn} ${named.get(tn)}` : tn) : preName ? `${preName[1]} (edited)` : `Custom look ${custom}`;
+      base = { color: CUSTOM_COLORS[slot], letter: String(((custom - 1) % 9) + 1), pat: (slot + (pre ? 1 : 0)) % PATTERNS, name };
     }
     const picked = overrides && HEX.test(overrides[id] || '') ? overrides[id] : null;
     return { id, ...base, color: picked || base.color, picked: !!picked, count: counts.get(id) };

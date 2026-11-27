@@ -12,6 +12,8 @@ import { qualityMarks } from './panel-quality.js';
 import { pinchZoom, pinchScroll, edgeZone } from './mobilelogic.js';
 import { ZOOM_MAX, TAIL_SEC, MAX_LENGTH, zoomMin, fitZoom, rulerSteps, rulerLabel, showBeats, LABEL_MIN_PX, THUMB_MIN_PX, WAVE_MAX_PX } from './tlzoom.js';
 import { looksById } from './lookcolors.js';
+import { LOOK_THEMES, themeOf } from './lookthemes.js';
+import { applyTheme as applyLookTheme, applySharedTheme } from './lookapply.js';
 import { keyOf, inGroup, toggleIn, spans, planMove, applyMove } from './multimove.js';
 
 const HEAD_W = 112;
@@ -34,13 +36,24 @@ export function createTimeline({ root, store, engine, ui }) {
   // Key for the lyric looks: a swatch per look (click selects its lines, the colour box changes it).
   const legend = h('div', { class: 'tl-legend', hidden: true, 'aria-label': 'Lyric looks on the timeline' });
   root.insertBefore(legend, body);
+  // a theme menu per look (lookthemes.js): picking one restyles every line with that look
+  const themeMenu = (label, on, pick) => {
+    const sel = h('select', { class: 'lg-theme', title: `Look theme for ${label}`, 'aria-label': `Look theme for ${label}` },
+      h('option', { value: '' }, on ? on.name : 'Theme…'),
+      LOOK_THEMES.filter((t) => t !== on).map((t) => h('option', { value: t.id }, t.name)));
+    sel.addEventListener('change', () => {
+      const t = LOOK_THEMES.find((x) => x.id === sel.value);
+      if (t) store.update((d) => pick(d, t));
+    });
+    return sel;
+  };
   function renderLegend(p) {
     const { looks, byLine } = looksById(p.lyrics, p.lookColors);
     legend.hidden = !looks.length || p.layerVis?.lyrics === false;
     root.classList.toggle('has-legend', !legend.hidden);
     legend.replaceChildren();
     if (legend.hidden) return;
-    legend.append(h('span', { class: 'tl-legend-title' }, 'Lyric looks'), h('span', { class: 'lg-item', title: 'Lines that use the shared style from the Lyrics tab' }, h('i', { class: 'lg-sw', style: { background: '#facc1566', borderColor: '#facc15' } }), 'Shared'));
+    legend.append(h('span', { class: 'tl-legend-title' }, 'Lyric looks'), h('span', { class: 'lg-item', title: 'Lines that use the shared style from the Lyrics tab' }, h('i', { class: 'lg-sw', style: { background: '#facc1566', borderColor: '#facc15' } }), 'Shared', themeMenu('the shared style', themeOf(p.lyricStyle), (d, t) => applySharedTheme(d, t))));
     for (const k of looks) {
       const ids = [...byLine].filter(([, v]) => v.id === k.id).map(([id]) => id);
       legend.append(
@@ -48,6 +61,7 @@ export function createTimeline({ root, store, engine, ui }) {
           h('button', { type: 'button', class: `lg-pick lk-p${k.pat}`, title: `Select the ${k.count} line${k.count === 1 ? '' : 's'} with this look`, onclick: () => ui.setGroup(ids.map((id) => ({ type: 'lyric', id }))) },
             h('i', { class: 'lg-sw', style: { background: `${k.color}66`, borderColor: k.color } }, k.letter), `${k.name} (${k.count})`),
           h('input', { type: 'color', class: 'lg-color', value: k.color, title: `Timeline colour for ${k.name}`, 'aria-label': `Timeline colour for ${k.name}`, onchange: (e) => store.update((d) => (d.lookColors = { ...(d.lookColors || {}), [k.id]: e.target.value })) }),
+          themeMenu(k.name, themeOf(p.lyrics.find((l) => l.id === ids[0]).style), (d, t) => applyLookTheme(d, ids[0], t)),
         ),
       );
     }
