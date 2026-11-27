@@ -3179,6 +3179,12 @@ export function createPanels({ store, engine, ui }) {
       h('p', { class: 'muted tiny' }, 'Make one line stand out: a screamed line, a whisper, a gang-vocal shout. The other lines keep the style from the Lyrics tab.'),
       chips,
       lookThemeBlock(b, store, line.id),
+      // the look's own effect settings (every line with it); a line with no look moves with the whole song's
+      (store.get().lyricStyle.display || 'line') !== 'line'
+        ? null
+        : hasLineStyle(line)
+          ? lyricFxGroup(b, { store, engine, ui }, { style: cur(), holder: (p) => (p.lyrics.find((y) => y.id === line.id) || {}).style, look: { id: line.id, ids: groupIds } })
+          : h('p', { class: 'muted tiny', 'data-k': 'lyricfx-look-none' }, 'This line uses the shared style, so its look moves with the whole song’s effect settings (Lyrics tab). Pick a look above to give its lines their own.'),
       hasLineStyle(line)
         ? h('div', {},
             fontField(b, 'Font', () => cur().font, edit('font')),

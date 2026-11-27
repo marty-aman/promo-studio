@@ -49,13 +49,27 @@ export function createTimeline({ root, store, engine, ui }) {
     });
     return sel;
   };
+  // "Effects": the look's Effect settings (in the selected line's settings, or the Lyrics tab for the shared style)
+  const showFx = (sel, where) => {
+    if (sel) ui.select(sel);
+    else ui.openTab('lyrics');
+    if (sel && ui.openSettings) ui.openSettings();
+    requestAnimationFrame(() => {
+      const g = document.querySelector(where);
+      if (!g) return;
+      g.scrollIntoView({ block: 'start' });
+      const first = g.querySelector('input, select, button');
+      if (first) first.focus({ preventScroll: true });
+    });
+  };
+  const fxButton = (label, n, sel, where) => h('button', { type: 'button', class: 'btn ghost sm lg-fx', title: `Shake, pulse and other effect settings for ${label} (${n} line${n === 1 ? '' : 's'})`, 'aria-label': `Effect settings for ${label}`, onclick: () => showFx(sel, where) }, 'Effects');
   function renderLegend(p) {
     const { looks, byLine } = looksById(p.lyrics, p.lookColors);
     legend.hidden = !looks.length || p.layerVis?.lyrics === false;
     root.classList.toggle('has-legend', !legend.hidden);
     legend.replaceChildren();
     if (legend.hidden) return;
-    legend.append(h('span', { class: 'tl-legend-title' }, 'Lyric looks'), h('span', { class: 'lg-item', title: 'Lines that use the shared style from the Lyrics tab' }, h('i', { class: 'lg-sw', style: { background: '#facc1566', borderColor: '#facc15' } }), 'Shared', themeMenu('the shared style', themeState(p.lyricStyle), (d, t) => applySharedTheme(d, t))));
+    legend.append(h('span', { class: 'tl-legend-title' }, 'Lyric looks'), h('span', { class: 'lg-item', title: 'Lines that use the shared style from the Lyrics tab' }, h('i', { class: 'lg-sw', style: { background: '#facc1566', borderColor: '#facc15' } }), 'Shared', themeMenu('the shared style', themeState(p.lyricStyle), (d, t) => applySharedTheme(d, t)), fxButton('the whole song', p.lyrics.length, null, '[data-k="lyricfx"]')));
     for (const k of looks) {
       const ids = [...byLine].filter(([, v]) => v.id === k.id).map(([id]) => id);
       legend.append(
@@ -64,6 +78,7 @@ export function createTimeline({ root, store, engine, ui }) {
             h('i', { class: 'lg-sw', style: { background: `${k.color}66`, borderColor: k.color } }, k.letter), `${k.name} (${k.count})`),
           h('input', { type: 'color', class: 'lg-color', value: k.color, title: `Timeline colour for ${k.name}`, 'aria-label': `Timeline colour for ${k.name}`, onchange: (e) => store.update((d) => (d.lookColors = { ...(d.lookColors || {}), [k.id]: e.target.value })) }),
           themeMenu(k.name, themeState(p.lyricStyle, { ...p.lyrics.find((l) => l.id === ids[0]), fx: undefined }), (d, t) => applyLookTheme(d, ids[0], t)),
+          fxButton(k.name, k.count, { type: 'lyric', id: ids[0] }, '[data-k="lyricfx-look"]'),
         ),
       );
     }

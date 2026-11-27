@@ -6,6 +6,7 @@ import { uid } from './core.js';
 import { LINE_FIELDS, lineStyle, hasLineStyle } from './linestyle.js';
 import { lookId, assignLooks, CUSTOM_COLORS } from './lookcolors.js';
 import { FX_FIELDS } from './lyricfx.js';
+import { themeOf, themeState } from './lookthemes.js';
 
 // what a missing field means when drawing (the renderer reads these with || / ??)
 const FIELD_DEFAULTS = { outAnimation: '', outDuration: 0.35 };
@@ -142,4 +143,70 @@ export function applySharedTheme(d, theme) {
   for (const l of d.lyrics) if (!hasLineStyle(l)) yieldFx(l, theme);
   settleColors(d, changed, before, 'keep');
   return d.lyrics.filter((l) => !hasLineStyle(l)).length;
+}
+
+// ---------------------------------------------------------------- a look's own effect settings (style.fx)
+// Drawn over the shared ones (lyricStyle.fx) and under a line's own (line.fx): see linestyle.js lineStyle.
+
+/** A look's effect settings as drawn without any line's own: the shared ones, then the look's (style.fx). */
+export const lookFxOf = (lyricStyle, style) => ({ ...((lyricStyle && lyricStyle.fx) || {}), ...((style && style.fx) || {}) });
+
+const sameObj = (a, b) => {
+  const x = a || {};
+  const y = b || {};
+  const ka = Object.keys(x);
+  return ka.length === Object.keys(y).length && ka.every((k) => x[k] === y[k]);
+};
+
+/**
+ * The look of `lineId`, for its Effect settings: { count, theme, edited, canReset }, or null when the line has no look
+ * of its own (its look is the shared style, whose effect settings are the whole song's). theme: the look theme it
+ * wears; edited: its effect settings differ from the theme's; canReset: Reset would change something.
+ */
+export function lookFxState(d, lineId) {
+  const me = d.lyrics.find((l) => l.id === lineId);
+  if (!hasLineStyle(me)) return null;
+  const ts = themeState(d.lyricStyle, { ...me, fx: undefined });
+  const theme = ts ? ts.theme : null;
+  return {
+    count: lookMembers(d.lyrics, lineId).length,
+    theme,
+    edited: !!(ts && ts.edited),
+    canReset: theme ? !sameObj(me.style.fx, theme.fx) : !!me.style.fx,
+  };
+}
+
+/**
+ * Set one effect setting on the look of `lineId`: style.fx of every line sharing it (`ids` as in changeLook), one
+ * undo step inside store.update. A look from a theme keeps it written out (a theme look's settings are all explicit,
+ * so the shared ones never reach it); any other look drops it again once it is back at the shared setting (or the
+ * default). A line with no look of its own is left alone. Returns the number of lines changed.
+ */
+export function setLookFx(d, lineId, key, v, { ids = null } = {}) {
+  const me = d.lyrics.find((l) => l.id === lineId);
+  if (!hasLineStyle(me)) return 0;
+  const under = d.lyricStyle.fx || {};
+  const def = key in under ? under[key] : fxDefault(key);
+  return changeLook(d, lineId, (st) => {
+    const next = { ...st };
+    const fx = { ...(st.fx || {}) };
+    if (!themeOf(st) && v === def) delete fx[key];
+    else fx[key] = v;
+    if (Object.keys(fx).length) next.fx = fx;
+    else delete next.fx;
+    return next;
+  }, { ids });
+}
+
+/** Reset the look's effect settings: to its theme's when it wears one, else none (the shared ones show). */
+export function resetLookFx(d, lineId) {
+  const me = d.lyrics.find((l) => l.id === lineId);
+  if (!hasLineStyle(me)) return 0;
+  return changeLook(d, lineId, (st) => {
+    const next = { ...st };
+    const th = themeOf(st);
+    if (th && th.fx) next.fx = structuredClone(th.fx);
+    else delete next.fx;
+    return next;
+  });
 }
