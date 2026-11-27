@@ -52,7 +52,8 @@ import { LINE_PRESETS, lineStyle, hasLineStyle } from './linestyle.js';
 import { THEMES, themeById, applyTheme } from './themes.js';
 import { stemRoleLabel } from './manager/files.js';
 import { markTimed, timingSummary, SOURCE_LABELS } from './manager/lyrictiming.js';
-import { wordTimingEditor } from './panel-wordtiming.js';
+import { wordTimingEditor, filePlayer } from './panel-wordtiming.js';
+import { resolveWave, waveChoices } from './wavesource.js';
 import { handTimedCount, wordsStale, clearHandWords } from './wordtiming.js';
 
 const themeState = { motion: false };
@@ -60,7 +61,7 @@ import { ensureLayerAnalyses, videoWaveform } from './media.js';
 import { syncPoint, autoLineUp, describeSyncPoint, inForSyncPoint } from './clipsync.js';
 import { savedOn, sameVideoSync } from './songsync.js';
 import { placeIn, placeOnPoint, pointToDirection, directionToPoint } from './clipplace.js';
-import { media, addMedia, removeMedia, tabTimeline } from './media.js';
+import { media, addMedia, removeMedia, tabTimeline, ensureLoaded } from './media.js';
 import { PROVIDERS, searchStock, downloadStock } from './stock.js';
 import { exportVideo, pickMimeType } from './engine.js';
 import { fastSupport } from './fastexport.js';
@@ -2013,10 +2014,28 @@ export function createPanels({ store, engine, ui }) {
           playing: () => engine.playing,
         }
       : null;
+    // the waveform under the words: the song or one of the song's stems, saved on your song (Songs & releases);
+    // the peaks come with the library record, so no file is opened to draw them
     const sc = ui.songContext ? ui.songContext() : null;
-    const vocal = sc && sc.stems.find((x) => x.role === 'vocals' && media.get(x.mediaId) && media.get(x.mediaId).peaks);
-    const rec = vocal ? media.get(vocal.mediaId) : song && media.get(song.mediaId);
-    const peaks = rec && rec.peaks ? { data: rec.peaks, perSec: rec.peaksPerSec, label: vocal ? 'Vocal stem' : 'Song' } : null;
+    const mSong = sc && sc.song;
+    const songId = song ? song.mediaId : null;
+    const wave = mSong ? resolveWave(mSong, (id) => media.peek(id), { songId }) : { id: songId, label: 'Song', note: '' };
+    const rec = wave.id && media.peek(wave.id);
+    const peaks = rec && rec.peaks ? { data: rec.peaks, perSec: rec.peaksPerSec, label: wave.label, id: wave.id } : null;
+    const isStem = !!(mSong && wave.id && wave.id !== songId);
+    const hear = isStem && !!wordUI.hear;
+    const source = mSong
+      ? {
+          choices: waveChoices(mSong, (id) => media.peek(id)),
+          value: wave.value,
+          note: wave.note,
+          onPick: (v) => ui.saveSongWave && ui.saveSongWave(v) && ui.refreshPanels(true),
+          hear,
+          onHear: isStem ? (v) => ((wordUI.hear = v), ui.refreshPanels(true)) : null,
+        }
+      : null;
+    // Hear this stem: the stem plays on its own in song time (opened the first time Play is pressed)
+    const linePlayer = hear ? filePlayer(wave.id, (id) => ensureLoaded(id).then((r) => (r && r.url) || null)) : player;
     const hand = handTimedCount(lines);
     const stale = lines.filter(wordsStale);
     const anim = p.lyricStyle.animation;
@@ -2026,7 +2045,7 @@ export function createPanels({ store, engine, ui }) {
       h('p', { class: 'muted tiny' }, 'When each word of a line lights up in the Word by word and Karaoke looks. Drag a word’s edge or the word itself; it saves on the song with the line times.'),
       shows ? null : h('p', { class: 'muted tiny' }, 'Your lyric look shows whole lines. Pick Word by word or Karaoke under Lyric style to see the words timed.'),
       h('div', { class: 'row wt-pick' }, iconButton('arrowLeft', 'Previous line', () => lines[i - 1] && selectLyric(lines[i - 1]), 'ghost'), pick, iconButton('arrowRight', 'Next line', () => lines[i + 1] && selectLyric(lines[i + 1]), 'ghost')),
-      wordTimingEditor({ line, commit: (fn) => edit([line.id], fn), player, peaks, fps: 30, state: wordUI }),
+      wordTimingEditor({ line, commit: (fn) => edit([line.id], fn), player: linePlayer, peaks, source, fps: 30, state: wordUI }),
       h('p', { class: 'small', 'data-k': 'wt-count' }, `Word timing: ${hand} line${hand === 1 ? '' : 's'} hand-timed`,
         hand ? [' ', button('Clear all', () => confirm(`Clear the word timing you set on ${hand} line${hand === 1 ? '' : 's'}? Lines with Auto-sync word times go back to them, the rest spread evenly.`) && edit(lines.filter((l) => l.wordsBy === 'hand').map((l) => l.id), clearHandWords), { variant: 'sm ghost' })] : null),
       stale.length

@@ -9,7 +9,9 @@
 //   line    { text, start, end, words?, wordsBy?, wordsAuto? } in song time
 //   commit  (mutateLine) => void — mutateLine(lineDraft) changes the line in place
 //   player  { play(from, to), stop(), now() → song time, playing() } or null (no preview)
-//   peaks   { data: Float32Array (min/max pairs), perSec, label } or null
+//   peaks   { data: Float32Array (min/max pairs), perSec, label, id } or null
+//   source  the "Waveform" select, or null: { choices (wavesource.js waveChoices), value, onPick(value), note,
+//           hear (bool), onHear(bool) or null when "Hear this stem" is not offered }
 //   state   an object kept by the caller between rebuilds ({ word, target })
 import { h, button, toast } from './dom.js';
 import { editableWords, constrainWords, moveEdge, moveWord, applyTaps, setHandWords, clearHandWords, spreadWords, wordWindow, wordAt } from './wordtiming.js';
@@ -31,7 +33,64 @@ function onTapKey(e) {
   }
 }
 
-export function wordTimingEditor({ line, commit, player = null, peaks = null, fps = 30, state = {} }) {
+let audio = null; // { el, id, url, own } the file filePlayer plays
+
+/**
+ * A player for "Play this line" and "Tap to time" that plays one library file on its own, in song time (a stem
+ * starts at the song's 0:00 like the song file). `load(id)` resolves a Blob or a URL (or null): the file is opened
+ * the first time Play is pressed, not before; Play waits for it that first time.
+ */
+export function filePlayer(id, load) {
+  if (!id || !load) return null;
+  let src = null;
+  let asked = null;
+  const ask = () => (asked ||= Promise.resolve(load(id)).then((b) => (src = b)).catch(() => null));
+  const el = () => {
+    if (!src) return null;
+    if (!audio || audio.id !== id) {
+      if (audio) (audio.el.pause(), audio.own && URL.revokeObjectURL(audio.url));
+      const own = typeof src !== 'string';
+      const url = own ? URL.createObjectURL(src) : src;
+      audio = { id, url, own, el: new Audio(url) };
+    }
+    return audio.el;
+  };
+  return {
+    play(from) {
+      const a = el();
+      if (!a) {
+        ask().then(() => src && this.play(from));
+        return true;
+      }
+      a.currentTime = from;
+      a.play().catch(() => {});
+      return true;
+    },
+    stop: () => audio && audio.el.pause(),
+    now: () => (audio && audio.id === id ? audio.el.currentTime : null),
+    playing: () => !!(audio && audio.id === id && !audio.el.paused),
+  };
+}
+
+/** The "Waveform" select (and "Hear this stem") over the word blocks. */
+function sourceRow(source) {
+  const sel = h('select', { 'aria-label': 'Waveform under the words', 'data-k': 'wt-wave-src' },
+    source.choices.map((g) => {
+      const opts = g.options.map((o) => h('option', { value: o.value, selected: o.value === source.value }, o.label));
+      return g.label ? h('optgroup', { label: g.label }, opts) : opts;
+    }));
+  sel.addEventListener('change', () => source.onPick(sel.value));
+  const hear = source.onHear
+    ? h('label', { class: 'wt-hear small', title: 'Play this line and Tap to time play this stem instead of the song' },
+        h('input', { type: 'checkbox', checked: !!source.hear, 'data-k': 'wt-hear', onchange: (e) => source.onHear(e.target.checked) }), ' Hear this stem')
+    : null;
+  return [
+    h('div', { class: 'row wt-src' }, h('label', { class: 'wt-src-l' }, h('span', { class: 'tiny muted' }, 'Waveform'), sel), hear),
+    source.note ? h('p', { class: 'muted tiny', 'data-k': 'wt-wave-note' }, source.note) : null,
+  ];
+}
+
+export function wordTimingEditor({ line, commit, player = null, peaks = null, source = null, fps = 30, state = {} }) {
   const win = wordWindow(line);
   const info = editableWords(line);
   let words = info.words;
@@ -49,7 +108,7 @@ export function wordTimingEditor({ line, commit, player = null, peaks = null, fp
 
   // ---------------------------------------------------------------- the mini timeline
   const track = h('div', { class: 'wt-track', tabindex: '0', role: 'group', 'aria-label': `Word times of “${line.text}”. Left and right arrows pick a word.` });
-  const wave = h('canvas', { class: 'wt-wave', 'aria-hidden': 'true' });
+  const wave = h('canvas', { class: 'wt-wave', 'aria-hidden': 'true', dataset: { src: (peaks && peaks.id) || '' } });
   const lineBox = h('div', { class: 'wt-line', style: { left: pct(line.start), width: `${((line.end - line.start) / span) * 100}%` }, 'aria-hidden': 'true' });
   const head = h('div', { class: 'wt-head', hidden: true, 'aria-hidden': 'true' });
   track.append(wave, lineBox);
@@ -291,6 +350,7 @@ export function wordTimingEditor({ line, commit, player = null, peaks = null, fp
     'div',
     { class: 'wt', 'data-k': 'word-timing' },
     status,
+    source ? sourceRow(source) : null,
     track,
     h('div', { class: 'wt-scale muted tiny', 'aria-hidden': 'true' }, h('span', {}, `${fmt(win.lo)} s`), peaks && peaks.label ? h('span', {}, peaks.label) : null, h('span', {}, `${fmt(win.hi)} s`)),
     label,

@@ -1836,3 +1836,8 @@ body.touch .off-bar .btn { min-height: 44px; }
 .tl-range-mark.out span { right: 2px; border-radius: 3px 0 0 3px; }
 .tl-range-dim { position: absolute; top: 24px; bottom: 0; background: rgba(0, 0, 0, 0.4); pointer-events: none; z-index: 3; }
 .range-fields input { width: 100%; font-variant-numeric: tabular-nums; }
+/* word timing: the Waveform select and Hear this stem */
+.wt-src { flex-wrap: wrap; gap: 6px 10px; align-items: flex-end; min-width: 0; margin-bottom: 4px; }
+.wt-src-l { display: flex; flex-direction: column; gap: 2px; flex: 1 1 160px; min-width: 0; }
+.wt-src-l select { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+.wt-hear { display: flex; align-items: center; gap: 4px; white-space: nowrap; }

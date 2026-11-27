@@ -120,6 +120,7 @@ export function newSong(title = 'New song') {
     releaseDate: '',
     lyrics: '',
     lyricTiming: null, // timed lyric lines saved from the Video Studio (see lyrictiming.js)
+    waveSource: '', // the word timing editor's waveform: 'song', a stem's media id, '' = default (see wavesource.js)
     notes: '',
     bpm: '',
     instrumental: false, // no vocals: no lyrics needed, and pitches and the press release say so
