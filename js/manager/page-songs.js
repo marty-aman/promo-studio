@@ -1,6 +1,7 @@
 // Songs: one page per song with tabs for the overview, lyrics, video shoot, release checklist, its
 // content plan, suggested playlists, the press release and playlist pitching. "Make a promo" hands the song to the video studio.
 import { h, icon, button, iconButton, toast, pickFiles, download } from '../dom.js';
+import { askText } from '../asktext.js';
 import { timingSummary, timingStale, keepTiming, setSongTiming, timingFromLRC, timingToLRC, timingToSRT, SOURCE_LABELS } from './lyrictiming.js';
 import { driveButton } from '../gdrive.js';
 import { managerAutoSync } from '../ai/panel-lyricsync.js';
@@ -263,10 +264,10 @@ function overviewTab(ctx, song, S) {
         const rels = m.releases || [];
         const rel = rels.find((x) => x.id === song.releaseId);
         const sel = h('select', { 'data-k': `relsel-${song.id}`, 'aria-label': 'EP or album' }, h('option', { value: '' }, 'A single (not on an EP or album)'), rels.map((x) => h('option', { value: x.id, selected: x.id === song.releaseId }, `${releaseTypeLabel(x.type)}: ${x.title}`)), h('option', { value: '__new_ep' }, '+ New EP…'), h('option', { value: '__new_album' }, '+ New album…'));
-        sel.addEventListener('change', () => {
+        sel.addEventListener('change', async () => {
           if (sel.value.startsWith('__new_')) {
             const type = sel.value === '__new_ep' ? 'ep' : 'album';
-            const title = prompt(`Name the ${type === 'ep' ? 'EP' : 'album'}`, '');
+            const title = await askText(`Name the ${type === 'ep' ? 'EP' : 'album'}`, '', { okText: 'Make it' });
             if (!title || !title.trim()) return ctx.setTab('overview');
             const r = { ...newRelease(type, title.trim()), releaseDate: song.releaseDate || '' };
             ctx.update((d) => {

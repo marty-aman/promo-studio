@@ -44,6 +44,8 @@ export function createVideoProjects(deps) {
     const now = new Date().toISOString();
     return { id: p.projectId, kind: 'video', name: p.name || 'Untitled', createdAt: (prev && prev.createdAt) || now, updatedAt: now, thumb: (thumb && thumbNow()) || (prev && prev.thumb) || '', info: videoInfo(p, songName(p)), data: JSON.parse(JSON.stringify(p)) };
   };
+  // one message for every refused save (toast() shows a repeat once, not twice)
+  const saveFailed = () => toast('Could not save to Projects: the browser’s storage may be full. The edit itself is still saved; download your projects to be safe.', 'error', 8000);
   /** Write the open edit to its saved project; a version too when one is due (or `force`). */
   async function writeOpen({ force = false } = {}) {
     clearTimeout(timer);
@@ -55,7 +57,7 @@ export function createVideoProjects(deps) {
     const version = dueVersion(lastVersion.has(p.projectId) ? [{ at: lastVersion.get(p.projectId) }] : null, now, force);
     const ok = await projectStore.put(entryFor(p, prev), { version });
     if (ok && version) lastVersion.set(p.projectId, now);
-    if (!ok && !failed) toast('Could not save to Projects: the browser’s storage may be full. The edit itself is still saved; download your projects to be safe.', 'error', 8000);
+    if (!ok && !failed) saveFailed();
     failed = !ok;
     return ok;
   }
@@ -103,6 +105,7 @@ export function createVideoProjects(deps) {
       link(makeProjectId(), name || store.get().name);
       const ok = await writeOpen({ force: true });
       if (ok) toast(`Saved “${store.get().name}” to Projects. Every change is kept from now on.`);
+      else saveFailed();
       return ok;
     },
     /** Save as: the saved project stays as it is; the open edit goes on as a new project. */
@@ -111,6 +114,7 @@ export function createVideoProjects(deps) {
       link(makeProjectId(), name);
       const ok = await writeOpen({ force: true });
       if (ok) toast(`Saved as “${name}”. The project you had is still in Projects.`);
+      else saveFailed();
       return ok;
     },
     /** Save a copy: a copy goes in Projects; you keep editing this one. */
@@ -118,6 +122,7 @@ export function createVideoProjects(deps) {
       const p = { ...JSON.parse(JSON.stringify(store.get())), projectId: makeProjectId(), name };
       const ok = await projectStore.put(entryFor(p), { version: true });
       if (ok) toast(`Saved a copy called “${name}”.`);
+      else saveFailed();
       return ok;
     },
     /** A project from Earlier projects (or anywhere) put in Projects without opening it. */

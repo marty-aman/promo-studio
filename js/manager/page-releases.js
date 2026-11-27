@@ -1,6 +1,7 @@
 // Releases: the open artist's EPs and albums (and singles you want to track as releases), each with
 // its cover, date, label and UPC and an ordered tracklist of the artist's songs.
 import { h, icon, button, iconButton, toast } from '../dom.js';
+import { askText } from '../asktext.js';
 import { newSong, niceDate } from './model.js';
 import { RELEASE_TYPES, releaseTypeLabel, tracklist, setRelease, moveTrack, deleteRelease, coverOf, fmtTime } from './releases.js';
 import { coverPicker } from './page-cover.js';
@@ -91,8 +92,8 @@ function releasePage(ctx, r) {
         return sel;
       })()
     : null;
-  const newTrack = () => {
-    const title = prompt('Song title', '');
+  const newTrack = async () => {
+    const title = await askText('Song title', '', { okText: 'Add' });
     if (!title || !title.trim()) return;
     const s = { ...newSong(title.trim()), releaseDate: r.releaseDate || '' };
     ctx.update((d) => {
