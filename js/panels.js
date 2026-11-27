@@ -74,7 +74,7 @@ import { speedRatio, codecLabel } from './exportplan.js';
 import { exportRangePanel } from './panel-exportrange.js';
 import { resolveRange, shiftCues } from './exportrange.js';
 import { exportAdvice, exportEnv, keepAwake } from './mobilelogic.js';
-import { SAFE_CHOICES } from './studioedit.js';
+import { SAFE_CHOICES, videoLayers, planMoveTo, applyLayerMove } from './studioedit.js';
 import { describeProject } from './projectfile.js';
 import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS, MASK_SHAPES, GRADE_PRESETS, renderFrame } from './renderer.js';
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
@@ -3272,6 +3272,24 @@ export function createPanels({ store, engine, ui }) {
     y: () => captionY(store.get().layout && store.get().layout !== 'full' ? AREAS_FOR(store.get().layout) : null),
   });
 
+  /** "Move to layer" for a clip on a video layer: every video layer, top first, and a new one (refused if it would land on a clip). */
+  function moveToLayerField(id, ovl) {
+    const V = videoLayers(store.get());
+    const sel = h('select', { class: 'move-layer', 'aria-label': 'Move to layer' },
+      [...V].reverse().map((L) => h('option', { value: L.id, selected: L.id === ovl.id }, L.name || 'Video layer')),
+      h('option', { value: 'new' }, 'New layer (on top)'));
+    sel.addEventListener('change', () => {
+      const plan = planMoveTo(store.get(), [id], sel.value);
+      if (plan.error) {
+        toast(plan.error);
+        sel.value = ovl.id;
+        return;
+      }
+      if (plan.moves.length) store.update((d) => applyLayerMove(d, plan));
+    });
+    return field('Move to layer', sel, 'Clips on higher layers draw over the ones below.');
+  }
+
   function buildInspector(b) {
     const sel = ui.selection;
     const p = store.get();
@@ -3312,6 +3330,7 @@ export function createPanels({ store, engine, ui }) {
         section(
           'Timing',
           ovl ? b.number('Starts at (s on the timeline)', () => G().start, c((x, v) => (x.start = Math.max(0, v))), { min: 0, step: 0.05 }) : null,
+          ovl ? moveToLayerField(sel.id, ovl) : null,
           b.number('Length (s)', () => findClip(store.get(), sel.id).clip?.duration, c((x, v) => (x.duration = Math.min(v, maxClipDuration(x, rec ? rec.duration : Infinity)))), { min: 0.2, step: 0.1 }),
           isVideo ? b.number('Starts from (s into the file)', () => findClip(store.get(), sel.id).clip?.in, c((x, v) => ((x.in = Math.min(v, Math.max(0, (rec?.duration || 0) - 0.2))), (x.duration = +Math.min(x.duration, maxClipDuration(x, rec ? rec.duration : Infinity)).toFixed(3)))), { min: 0, step: 0.1 }) : null,
           isVideo ? b.select('Speed', () => String(findClip(store.get(), sel.id).clip?.speed || 1), c((x, v) => {
