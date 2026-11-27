@@ -80,6 +80,7 @@ import { TRANSITIONS, TEXT_ANIMATIONS, END_ANIMATIONS, CLIP_EFFECTS, MIRRORS, MA
 import { PLATFORM_OVERLAYS, overlaySupported } from './overlays.js';
 import { LAYOUTS, TEMPLATES, applyLayout, applyTemplate, tabIntoLayout, lyricsIntoLayout, tabSources, templateNeeds } from './templates.js';
 import { SONG_TEMPLATES, songTemplateReady, applySongTemplate } from './songtemplates.js';
+import { lyricCardExtras, lyricTplOpts, sectionLooksSwitch } from './panel-lyrictemplates.js';
 import { applySongPart, describePart, partSections } from './songpart.js';
 import { speechCaptionsFor } from './ai/panel-speechcaptions.js';
 import { clipTarget } from './ai/captionsync.js';
@@ -872,7 +873,8 @@ export function createPanels({ store, engine, ui }) {
   /** "Part of the song": which part the templates below (and the Suggested edits) are built for. */
   function templatePartSection() {
     const el = ui.templatePartPicker ? ui.templatePartPicker() : null;
-    return el ? section('Part of the song', el) : null;
+    const looks = el && ui.songTemplateContext ? sectionLooksSwitch({ store, ctx: () => ui.songTemplateContext(), choice: () => (ui.templatePart ? ui.templatePart() : null), refresh: () => ui.refreshPanels(true) }) : null;
+    return el ? section('Part of the song', el, looks) : null;
   }
   const describeChoice = (c) => {
     const ctx = ui.songTemplateContext();
@@ -885,9 +887,9 @@ export function createPanels({ store, engine, ui }) {
   /** Rhythm game, music video + lyrics, raw footage + lyrics: built from the current song's own files. */
   function songTemplatesSection() {
     const ctx0 = ui.songTemplateContext ? ui.songTemplateContext() : null;
-    const ctxAll = ctx0 ? { ...ctx0, gameTheme: songTplUI.gameTheme } : null;
+    const ctxAll = ctx0 ? { ...ctx0, gameTheme: songTplUI.gameTheme, lyrics: store.get().lyrics } : null;
     const cards = SONG_TEMPLATES.map((tpl) => {
-      const ctx = ctxAll ? { ...ctxAll, part: ui.templatePart ? ui.templatePart(tpl.id) : null } : null;
+      const ctx = ctxAll ? { ...ctxAll, part: ui.templatePart ? ui.templatePart(tpl.id) : null, ...lyricTplOpts(tpl) } : null;
       const r = songTemplateReady(tpl.id, ctx);
       const c = h('canvas', { width: 108, height: 192, class: 'tpl-thumb', 'aria-hidden': 'true' });
       if (r.ok) {
@@ -921,10 +923,11 @@ export function createPanels({ store, engine, ui }) {
                 return sel;
               })()
             : null,
+          lyricCardExtras(tpl, r, ui),
           r.ok
             ? button(on ? 'Applied · re-apply' : 'Use this template', () => {
                 try {
-                  const facts = ui.applySongTemplate(tpl.id, { gameTheme: songTplUI.gameTheme }); // the part picked now (ui.templatePart)
+                  const facts = ui.applySongTemplate(tpl.id, { gameTheme: songTplUI.gameTheme, ...lyricTplOpts(tpl) }); // the part picked now (ui.templatePart)
                   toast(`“${tpl.name}” for “${ctx.song.title}”: ${facts.join('. ')}. Undo (Ctrl+Z) to go back.`, 'info', 9000);
                 } catch (e) {
                   toast(e.message, 'error', 6000);

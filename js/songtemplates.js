@@ -2,14 +2,20 @@
 // (Guitar Hero / Rock Band style highways from its charts and stems), a promo cut from its music video with the
 // lyrics on top, and a promo of its raw footage cut on the beat with the lyrics on top. Each ends on the
 // song's end card. Pure apart from the project draft it changes; unit tested.
-import { uid, findHook, linesFromText, beatCutPlan } from './core.js';
+import { uid, findHook, linesFromText, beatCutPlan, savedWordTimes, wordTimings } from './core.js';
 import { lyricsFromTiming, markTimed, timingStale } from './manager/lyrictiming.js';
-import { applyTemplate } from './templates.js';
+import { applyTemplate, applyLayout, areaOf, lyricsIntoLayout } from './templates.js';
 import { applyTake } from './suggest.js';
 import { defaultGameLayer } from './rhythmgame.js';
 import { isBassTrack } from './tab.js';
 import { autoCover, sectionSpans, fmtTime } from './manager/releases.js';
-import { templatePart, applySongPart } from './songpart.js';
+import { templatePart, applySongPart, partSections, partLayout, pictureFor, clipOf, sectionAt, sectionKind, linesInParts } from './songpart.js';
+import { defaultLyricStyle } from './state.js';
+import { applySharedTheme, changeLook } from './lookapply.js';
+import { themeById } from './lookthemes.js';
+import { DISPLAY_DEFAULTS } from './lyricviz.js';
+import { GRADE_PRESETS } from './renderer.js';
+import { defaultVizLayer } from './viz.js';
 
 export const SONG_TEMPLATES = [
   {
@@ -36,7 +42,45 @@ export const SONG_TEMPLATES = [
     blurb: 'A 15–30 s vertical promo of the first chorus (from the song’s Sections tab): your footage, the music video or the cover cut on the beat, the chorus lyrics on top.',
     needs: 'chorus',
   },
+  // lyric-video templates (lyric: true): built in applyLyricTemplate below, for the Part of the song you pick
+  {
+    id: 'st-bloodslam',
+    name: 'Blood Slam Cards',
+    blurb: 'One phrase per card in Blood & Ash capitals. The backdrop goes black on verses, deep red on choruses and ash grey on breakdowns; a key word in each line slams, chorus lines flash on their first word and everything shakes on the beat. Starts on the chorus.',
+    needs: 'lyrics',
+    lyric: true,
+  },
+  {
+    id: 'st-glowslam',
+    name: 'Glow Slam One-Word',
+    blurb: 'One word at a time in wide bold capitals: letters close in, a ghost echo glows behind and each word flashes as it lands, over a glowing visualizer. Best on a chorus with Auto-synced word times.',
+    needs: 'lyrics',
+    lyric: true,
+    looks: [
+      ['hellfire', 'Hellfire'],
+      ['neon', 'Neon'],
+    ],
+  },
+  {
+    id: 'st-stage',
+    name: 'Stage Footage Cinematic',
+    blurb: 'Your music video (on its saved sync) or raw footage as a film: cinema bars, vignette and grain, with small serif lyrics in the lower third that open up letter by letter and trail a soft echo.',
+    needs: 'picture',
+    lyric: true,
+    looks: [
+      ['funeral', 'Funeral Doom'],
+      ['frostbite', 'Frostbite'],
+    ],
+  },
+  {
+    id: 'st-coversheet',
+    name: 'Cover Art Sheet',
+    blurb: 'The whole lyric sheet scrolling over the blurred colours of the cover art, the sung line filling in word by word. Made for YouTube and Spotify.',
+    needs: 'cover',
+    lyric: true,
+  },
 ];
+const LYRIC_IDS = new Set(SONG_TEMPLATES.filter((t) => t.lyric).map((t) => t.id));
 
 /** The song's first section named Chorus (typed or accepted from detection), with its end filled: or null. */
 export function firstChorus(song, duration = 0) {
@@ -134,6 +178,7 @@ export function gameParts({ tabs = [], midis = [], stems = [] } = {}) {
 export function songTemplateReady(id, ctx) {
   if (!ctx || !ctx.song) return { ok: false, uses: [], missing: 'Pick one of your songs in the Audio tab first.' };
   if (!ctx.audio) return { ok: false, uses: [], missing: `“${ctx.song.title}” has no song file yet (its Overview in Songs & releases).` };
+  if (LYRIC_IDS.has(id)) return lyricReady(id, ctx);
   if (id === 'st-game') {
     const parts = ctx.parts || [];
     return parts.length
@@ -303,6 +348,7 @@ export function applySongTemplate(d, id, ctx) {
   d.texts = [];
   if (d.song) delete d.song.parts; // a template plays one stretch of the song (see songpart.js)
   if (d.song) delete d.song.join;
+  if (LYRIC_IDS.has(id)) return applyLyricTemplate(d, id, ctx, part, facts);
   if (id === 'st-chorus') {
     hideParts(d);
     const sec = part ? null : firstChorus(ctx.song, ctx.audio.duration || 0);
@@ -443,3 +489,297 @@ function fitToPart(d, id, ctx, part) {
 }
 
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+// ---------------------------------------------------------------- lyric-video templates
+// Blood Slam Cards, Glow Slam One-Word, Stage Footage Cinematic and Cover Art Sheet. Each stores values only (look
+// fields, effect settings and animation ids on the lyric style and lines; no template id beyond project.template,
+// which every template sets), keeps the Part of the song you picked (or starts on its own pick, shown as the Song
+// part), and ends on the song's end card. Lines that already have a look of their own keep drawing as they did.
+// shortcut: smoke and stage-light scenes only draw behind a cut-out or the rhythm game arena (renderer.js), so the
+// "smoke" sections are ash-grey graded picture and the "lights" are the glow visualizer plus the beat flash; switch
+// to real scenes once the renderer can draw one full frame.
+
+const GR = (id) => {
+  const { label, ...rest } = GRADE_PRESETS[id] || {};
+  return { preset: id, ...rest };
+};
+const r3 = (x) => +(+x).toFixed(3);
+
+/** Does the song have lyrics a lyric template can show (in the edit, timed on the song, or plain)? */
+const anyLyrics = (ctx) => !!(ctx.hasLyrics || (ctx.song.lyricTiming && lyricsFromTiming(ctx.song.lyricTiming, () => '').length) || (ctx.song.lyrics && ctx.song.lyrics.trim()));
+
+/** A template's own pick when no part is chosen: { start, len, label, text, chorus }. */
+function ownWindow(id, ctx) {
+  const dur = ctx.audio.duration || 0;
+  if (id === 'st-coversheet') return { start: 0, len: r3(Math.max(5, dur || 30)), label: 'Entire song', text: `Entire song (${fmtTime(dur || 30)})`, chorus: false };
+  if (id === 'st-bloodslam' || id === 'st-glowslam') {
+    const sec = firstChorus(ctx.song, dur);
+    if (sec) {
+      const w = chorusWindow(sec, dur);
+      return { ...w, label: sec.label, text: `${sec.label} ${fmtTime(w.start)}–${fmtTime(w.start + w.len)} (${Math.round(w.len)} s)`, chorus: true };
+    }
+  }
+  const want = id === 'st-stage' ? 15 : 20;
+  const L = Math.min(want, Math.max(5, Math.floor(dur || want)));
+  const start = ctx.audio.envelope ? findHook(ctx.audio.envelope, ctx.audio.envRate || 100, L, dur) : 0;
+  const hook = `the loudest ${L} s from ${fmtTime(start)}`;
+  return { start: r3(start), len: L, label: 'Hook', text: id === 'st-stage' ? `The hook: ${hook}` : `No Chorus section yet, so ${hook} (detect the sections on the song’s Sections tab for the chorus)`, chorus: false };
+}
+
+/** Lines (song time) with saved word times among `lines` in the ranges: { timed, total }. */
+export function wordTimesIn(lines, ranges) {
+  const inPart = linesInParts(lines, ranges);
+  return { timed: inPart.filter((l) => savedWordTimes(l)).length, total: inPart.length };
+}
+
+function lyricReady(id, ctx) {
+  let part = null;
+  try {
+    part = templatePart(ctx.part, ctx);
+  } catch (e) {
+    return { ok: false, uses: [], missing: e.message };
+  }
+  const own = part ? null : ownWindow(id, ctx);
+  const ranges = part ? part.parts : [{ from: own.start, to: own.start + own.len }];
+  const uses = [part ? `${part.parts.map((q) => q.label).join(', ')} (${Math.round(part.length)} s)` : own.text];
+  const title = ctx.song.title;
+  if (id !== 'st-coversheet' && id !== 'st-stage') {
+    if (ctx.song.instrumental) return { ok: false, uses: [], missing: `“${title}” is instrumental: this template is made of its lyrics.` };
+    if (!anyLyrics(ctx)) return { ok: false, uses: [], missing: `Add the lyrics of “${title}” on its Lyrics tab (or the Lyrics tab here) first.` };
+  }
+  if (id === 'st-stage') {
+    if (!ctx.video && !(ctx.footage || []).length) return { ok: false, uses: [], missing: `Add the music video or raw footage to “${title}” (its Files tab).` };
+    uses.push(ctx.video ? `Music video: ${ctx.video.rec.name}, on its saved sync${ctx.video.offset ? ` (${ctx.video.offset} s)` : ''}` : `${ctx.footage.length} footage clip${ctx.footage.length === 1 ? '' : 's'}, cut on the beat`);
+  } else if (id === 'st-coversheet') {
+    if (!ctx.coverRec) return { ok: false, uses: [], missing: `Add cover art to “${title}” (its Overview or a release).` };
+    uses.push('The cover art, blurred into its colours');
+  } else {
+    const pic = (ctx.footage || []).length ? 'your footage' : ctx.video ? 'the music video' : ctx.coverRec ? 'the cover' : '';
+    uses.push(id === 'st-bloodslam' ? `Black, deep red and ash backdrops by section${pic ? `, with ${pic} dimmed under them` : ''}` : `Glow visualizer${pic ? ` over ${pic}, dimmed` : ' on black'}`);
+  }
+  uses.push(lyricsUse(ctx));
+  const out = { ok: true, uses, missing: '' };
+  if (id === 'st-glowslam') {
+    const lines = ctx.hasLyrics && ctx.lyrics ? ctx.lyrics : ctx.song.lyricTiming ? lyricsFromTiming(ctx.song.lyricTiming, () => '') : [];
+    const w = wordTimesIn(lines, ranges);
+    if (!w.timed) {
+      uses.push('No saved word times: each word gets an even share of its line. Auto-sync the lyrics for words on the beat');
+      out.autosync = true;
+    } else uses.push(`Saved word times on ${w.timed} of ${w.total} lines`);
+  }
+  return out;
+}
+
+/** The key word of a line: its longest word that is not a small one (4+ letters), or -1. */
+const SMALL = new Set(['that', 'this', 'with', 'from', 'your', 'have', 'they', 'them', 'then', 'there', 'their', 'what', 'when', 'were', 'will', 'into', 'just', 'like', 'been', 'over']);
+export function keyWord(text) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  if (words.length < 2) return -1;
+  let best = -1;
+  let len = 3;
+  words.forEach((w, i) => {
+    const p = w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+    if (p.length > len && !SMALL.has(p)) (best = i), (len = p.length);
+  });
+  return best;
+}
+const autoEmph = (line) => {
+  const i = keyWord(line.text);
+  return i < 0 ? null : { words: [{ i, w: String(line.text).split(/\s+/).filter(Boolean)[i] }], slam: true };
+};
+const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Undo what a lyric template did to lines before (an auto key word, the chorus flash look): lines you set stay. */
+function clearTemplateMarks(d) {
+  for (const l of d.lyrics) {
+    const a = l.emph && autoEmph(l);
+    if (a && sameJson(l.emph, a)) delete l.emph;
+  }
+  const flashed = d.lyrics.filter((l) => l.style && sameJson(l.style, { hit: 'line' })).map((l) => l.id);
+  if (flashed.length) changeLook(d, flashed[0], () => undefined, { ids: flashed });
+}
+
+/**
+ * The shared lyric style for a template: the look theme's fields and effect settings with the template's own on
+ * top, applied with applySharedTheme so lines with a look of their own keep drawing as before.
+ */
+function lyricLook(d, theme, over = {}, fx = {}) {
+  const fields = { display: 'line', align: 'center', side: 'center', hit: '', echo: '', ...(theme ? theme.fields : {}), ...over };
+  const allFx = { ...((theme && theme.fx) || {}), ...fx };
+  applySharedTheme(d, { fields, fx: Object.keys(allFx).length ? allFx : null });
+}
+
+/** The lyric y in the clear area: f 0 (top) .. 1 (bottom). */
+const yIn = (d, f) => {
+  const A = areaOf(d.layout);
+  return +((A.y0 + A.h * f) * 100).toFixed(1);
+};
+
+/** Blood Slam backdrops: the picture dimmed under black, a deep red wash, or ash-grey haze. */
+export const BLOOD_BACKDROPS = {
+  black: { filter: { preset: 'none', adjust: { brightness: 0.22, saturate: 0 } }, grade: null },
+  red: { filter: { preset: 'none', adjust: { brightness: 0.28, saturate: 0 } }, grade: { preset: 'custom', shadows: '#a0000f', shadowsAmt: 1, highlights: '#ff2a2a', highlightsAmt: 0.5 } },
+  ash: { filter: { preset: 'none', adjust: { brightness: 0.42, saturate: 0, contrast: 0.8 } }, grade: { preset: 'custom', fade: 0.45 } },
+};
+/** Which backdrop a section gets: chorus red, breakdown / bridge / solo ash, the rest black. */
+export function bloodBackdrop(label, dflt = 'black') {
+  if (label == null) return dflt;
+  const k = sectionKind(label);
+  return k === 'chorus' ? 'red' : k === 'breakdown' || k === 'bridge' || k === 'solo' ? 'ash' : 'black';
+}
+
+/** Blood Slam's video track: one clip per section stretch of each part, each with its section's backdrop: { clips, backs }. */
+function bloodClips(lay, ctx, sections, dflt) {
+  const src = (ctx.footage || []).length ? 'footage' : ctx.video ? 'video' : ctx.coverRec ? 'cover' : null;
+  if (!src) return { clips: [], backs: [] };
+  const segs = [];
+  lay.parts.forEach((q, i) => {
+    const end = i < lay.parts.length - 1 ? q.from + (lay.parts[i + 1].at - q.at) : q.to;
+    const cuts = [q.from, ...sections.map((s) => s.start).filter((t) => t > q.from + 0.5 && t < end - 0.5), end];
+    for (let k = 0; k < cuts.length - 1; k++) {
+      const sec = sectionAt(sections, cuts[k] + 0.05);
+      segs.push({ from: cuts[k], len: cuts[k + 1] - cuts[k], back: bloodBackdrop(sec ? sec.label : null, dflt), first: k === 0, part: i });
+    }
+  });
+  let n = 0;
+  const clips = segs.map((s) => {
+    const rec = src === 'footage' ? ctx.footage[n % ctx.footage.length] : src === 'video' ? ctx.video.rec : ctx.coverRec;
+    const room = Math.max(0, (rec.duration || 0) - s.len);
+    const at = src === 'video' ? s.from + (ctx.video.offset || 0) : src === 'footage' && room ? (n * 2.7) % room : 0;
+    n++;
+    const transition = !s.first ? { type: 'none', duration: 0.3 } : s.part === 0 ? { type: 'fade', duration: 0.4 } : lay.fade > 0 ? { type: 'crossfade', duration: Math.max(0.1, lay.fade) } : { type: 'none', duration: 0.3 };
+    const b = BLOOD_BACKDROPS[s.back];
+    return { ...clipOf(rec, at, s.len, { transition, effects: { beatPulse: 0.3 } }), filter: structuredClone(b.filter), grade: b.grade && structuredClone(b.grade) };
+  });
+  return { clips, backs: segs.map((s) => s.back) };
+}
+
+/** Glow Slam: each line in the ranges becomes one line per word, on its saved word times or an even share. */
+export function oneWordLines(lyrics, ranges) {
+  const inPart = new Set(linesInParts(lyrics, ranges).map((l) => l.id));
+  let split = 0;
+  let timed = 0;
+  const out = [];
+  for (const l of lyrics) {
+    const words = String(l.text || '').split(/\s+/).filter(Boolean);
+    if (!inPart.has(l.id) || words.length < 2) {
+      out.push(l);
+      continue;
+    }
+    const saved = savedWordTimes(l);
+    const span = l.end - l.start;
+    const times = saved || wordTimings(l.text).map((w) => ({ word: w.word, start: l.start + w.start * span, end: l.start + w.end * span }));
+    split++;
+    if (saved) timed++;
+    times.forEach((w, i) => {
+      const start = r3(w.start);
+      const end = r3(Math.max(start + 0.05, i < times.length - 1 ? times[i + 1].start : l.end));
+      const x = { id: uid('lyr'), text: w.word, start, end };
+      if (saved) x.words = [{ w: w.word, t: start, end }];
+      if (l.style) x.style = structuredClone(l.style);
+      if (l.fx) x.fx = structuredClone(l.fx);
+      out.push(x);
+    });
+  }
+  return { lyrics: out, split, timed };
+}
+
+function glowViz(d, color) {
+  d.layers = (d.layers || []).filter((l) => !(l.type === 'viz' && l.fromTemplate));
+  d.layers.push({ ...defaultVizLayer(), id: uid('lyr'), type: 'viz', name: 'Glow visualizer', visible: true, fromTemplate: true, style: 'glow', blend: 'screen', color, color2: '#ffffff', intensity: 0.75 });
+}
+
+/** Build one of the lyric-video templates (see SONG_TEMPLATES). Returns the facts for the toast. */
+function applyLyricTemplate(d, id, ctx, part, facts) {
+  const own = part ? null : ownWindow(id, ctx);
+  const dur = ctx.audio.duration || 0;
+  const look = ctx.look || (SONG_TEMPLATES.find((t) => t.id === id).looks || [[null]])[0][0];
+  hideParts(d);
+  d.layers = (d.layers || []).filter((l) => !(l.type === 'viz' && l.fromTemplate));
+  if (!d.song || d.song.mediaId !== ctx.audio.id) d.song = { mediaId: ctx.audio.id, offset: 0, volume: 1, fadeIn: 0.3, fadeOut: 1.2 };
+  Object.assign(d.song, { offset: part ? part.parts[0].from : own.start, fadeIn: 0.3 });
+  if (ctx.beats) d.beats = ctx.beats;
+  endCardFor(d, ctx, ctx.today || '');
+  facts.push(part ? `${part.parts.map((q) => q.label).join(', ')} (${fmtTime(part.length)})` : own.text);
+  if (own && own.chorus && id !== 'st-coversheet') chorusLyricsOn(d, ctx, { start: own.start, len: own.len }, facts);
+  else lyricsOn(d, ctx, facts);
+  // the part (or the template's own pick, shown as the Song part so it can be changed there)
+  const choice = part ? ctx.part : { kind: 'range', from: own.start, to: r3(Math.min(dur || Infinity, own.start + own.len)) };
+  applySongPart(d, choice, { ...ctx, picture: 'keep' });
+  if (part) d.songPart.template = id;
+  else d.songPart.byTemplate = id;
+  const lay = part || partLayout([{ from: choice.from, to: choice.to, label: own.label }]);
+  const ranges = lay.parts.map(({ from, to }) => ({ from, to }));
+  const sections = partSections(ctx.song, dur);
+  clearTemplateMarks(d);
+  d.texts = [];
+  Object.assign(d.look, { vignette: 0.45, grain: 0.2, lightLeak: 0, scanlines: 0, beatFlash: 0, letterbox: 0 });
+
+  if (id === 'st-bloodslam') {
+    // no sections, or the template's own chorus: the whole stretch is a chorus
+    const dflt = !sections.length || (own && own.chorus) ? 'red' : 'black';
+    const blood = bloodClips(lay, ctx, sections, dflt);
+    d.clips = blood.clips;
+    lyricLook(d, themeById('bloodash'), { font: 'Bebas Neue', size: 12, uppercase: true, box: false, y: 50 });
+    Object.assign(d.look, { vignette: 0.5, grain: 0.3, beatFlash: 0.12 });
+    // a key word in each line slams; chorus lines flash on their first word (lines you styled keep their look)
+    let keys = 0;
+    const chorusIds = [];
+    for (const l of linesInParts(d.lyrics, ranges)) {
+      if (!l.emph) {
+        const e = autoEmph(l);
+        if (e) (l.emph = e), keys++;
+      }
+      const sec = sectionAt(sections, (l.start + l.end) / 2);
+      const chorus = sec ? sectionKind(sec.label) === 'chorus' : dflt === 'red';
+      if (chorus && !(l.style && Object.keys(l.style).length)) chorusIds.push(l.id);
+    }
+    if (chorusIds.length) changeLook(d, chorusIds[0], (st) => ({ ...(st || {}), hit: 'line' }), { ids: chorusIds });
+    Object.assign(d.endCard, { animation: 'drop', background: 'color', bgColor: '#0d0d0d', cta: d.endCard.cta, accent: '#e0182d', textColor: '#f2ede4', font: 'Bebas Neue' });
+    const backs = [...new Set(blood.backs)];
+    facts.push(d.clips.length ? `${d.clips.length} backdrop${d.clips.length === 1 ? '' : 's'} by section (${backs.join(', ')})` : 'Black backdrop (add footage, the music video or cover art to the song for the red and ash sections)');
+    facts.push(`${keys} key word${keys === 1 ? '' : 's'} slam, ${chorusIds.length} chorus line${chorusIds.length === 1 ? '' : 's'} flash, shake on the beat`);
+  } else if (id === 'st-glowslam') {
+    const neon = look === 'neon';
+    const pic = (ctx.footage || []).length ? 'footage' : ctx.video ? 'video' : ctx.coverRec ? 'cover' : null;
+    d.clips = (pic && pictureFor(pic, lay, ctx)) || [];
+    for (const c of d.clips) Object.assign(c, { filter: { preset: 'none', adjust: { brightness: 0.35, saturate: 0.7 } }, grade: neon ? GR('cyberpunk') : { preset: 'custom', temperature: 0.5, shadows: '#3a0800', shadowsAmt: 0.6 }, effects: { beatPulse: 0.5 } });
+    const accent = neon ? '#ff2bd6' : '#ff4d00';
+    lyricLook(d, themeById(neon ? 'neonpink' : 'hellfire'), { font: 'Montserrat', size: 13, uppercase: true, animation: 'tracking', hit: 'line', echo: 'behind', outAnimation: neon ? 'flicker' : 'zoomout', y: 50 }, { trackAmt: 1.2, echoAmt: 1.4, flashAmt: 0.9 });
+    const w = oneWordLines(d.lyrics, ranges);
+    d.lyrics = w.lyrics;
+    glowViz(d, accent);
+    Object.assign(d.look, { vignette: 0.5, grain: 0.15, beatFlash: 0.3, scanlines: neon ? 0.15 : 0 });
+    Object.assign(d.endCard, { animation: 'zoom', background: 'blur', accent, font: 'Montserrat' });
+    facts.push(neon ? 'Neon look' : 'Hellfire look', w.split ? `${w.split} line${w.split === 1 ? '' : 's'} shown one word at a time (Undo to get the lines back)` : 'One word at a time');
+    if (w.split && w.timed < w.split) facts.push(`${w.timed ? `${w.split - w.timed} of them have` : 'The song has'} no saved word times, so the words share their line evenly: undo, Auto-sync the lyrics on the Lyrics tab, then apply again for words on the beat`);
+  } else if (id === 'st-stage') {
+    const frost = look === 'frostbite';
+    d.clips = pictureFor(ctx.video ? 'video' : 'footage', lay, ctx) || [];
+    d.clips.forEach((c, i) => {
+      c.grade = GR(frost ? 'cold' : 'moody');
+      c.filter = { preset: 'none', adjust: { brightness: 0.85 } };
+      c.effects = {};
+      if (c.kind === 'video' && ctx.video && c.mediaId === ctx.video.rec.id) c.kenBurns = { fromZoom: 1, toZoom: 1.06, fromX: 0, toX: 0, fromY: 0, toY: 0 };
+      if (i && c.transition.type === 'none' && !ctx.video) c.transition = { type: 'crossfade', duration: 0.5 };
+    });
+    lyricLook(d, themeById(frost ? 'frostbite' : 'funeral'), { ...(frost ? { font: 'Georgia', outAnimation: 'blur' } : {}), size: 4.6, uppercase: false, animation: 'tracking', echo: 'trail', maxWidth: 80, y: 76 }, { trackAmt: 0.7, echoAmt: 0.8 });
+    Object.assign(d.look, { vignette: 0.45, grain: 0.3, letterbox: 0.55 });
+    Object.assign(d.endCard, { animation: 'vinyl', background: 'blur', accent: frost ? '#9fb4c7' : '#c08a3e', font: frost ? 'Georgia' : 'Playfair Display' });
+    facts.push(ctx.video ? `The music video on its saved sync${ctx.video.offset ? ` (${ctx.video.offset} s)` : ''}` : `${d.clips.length} footage cuts on the beat`, `${frost ? 'Frostbite' : 'Funeral Doom'} lyrics in the lower third`);
+  } else {
+    d.clips = pictureFor('cover', lay, ctx) || [];
+    for (const c of d.clips) Object.assign(c, { filter: { preset: 'none', adjust: { blur: 18, brightness: 0.55, saturate: 1.5 } }, grade: null, effects: {}, kenBurns: { fromZoom: 1.2, toZoom: 1.35, fromX: -0.2, toX: 0.2, fromY: 0, toY: 0 } });
+    lyricLook(d, null, { ...DISPLAY_DEFAULTS.sheet, display: 'sheet', font: 'Montserrat', size: 7.5, color: '#ffffff', highlight: '#ffd400', outline: '#000000', outlineWidth: 0, shadow: true, animation: 'karaoke', box: false });
+    Object.assign(d.look, { vignette: 0.4, grain: 0.1 });
+    Object.assign(d.endCard, { animation: 'vinyl', background: 'blur', accent: '#ffd400', font: 'Montserrat' });
+    facts.push('The lyric sheet over the blurred cover');
+  }
+  // keep the lyrics in the platform's clear area
+  if (d.layout) applyLayout(d, d.layout);
+  if (id === 'st-coversheet') (lyricsIntoLayout(d), (d.lyricStyle.y = yIn(d, 0.5)));
+  else d.lyricStyle.y = d.layout ? yIn(d, id === 'st-stage' ? 0.88 : 0.5) : d.lyricStyle.y;
+  d.template = id;
+  facts.push(`Ends on the end card for “${ctx.song.title}”${ctx.cover ? ' with its cover' : ''}`);
+  return facts;
+}

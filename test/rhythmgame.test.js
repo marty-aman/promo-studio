@@ -90,7 +90,7 @@ const baseCtx = (extra = {}) => ({
 });
 
 test('templates say what they need', () => {
-  assert.equal(SONG_TEMPLATES.length, 4);
+  assert.equal(SONG_TEMPLATES.length, 8); // 4 from the song's files + 4 lyric-video templates (lyric-templates.test.js)
   assert.match(songTemplateReady('st-game', null).missing, /Pick one of your songs/);
   assert.match(songTemplateReady('st-game', baseCtx()).missing, /Guitar Pro tab/);
   assert.match(songTemplateReady('st-mv', baseCtx()).missing, /music video/);
