@@ -1064,7 +1064,8 @@ Everything that follows the beat reads one **project tempo**, with an optional t
   (Guitar Pro / MIDI / drums / game layers). A polyrhythm / polymeter layer uses the same controls on its own
   *bpm*, *first beat* and *follow the song* fields. For a Guitar Pro or MIDI chart the box is the BPM the chart plays
   at (the file's BPM × the layer's tempo scale, so ×2 plays it twice as fast).
-- Follow the project tempo (no own box): beat text animations, lyric styles that pulse, backdrops, the beat markers
+- The lyrics' pulse has its own box too, under Lyrics → Lyric style → **Effect settings** (see below).
+- Follow the project tempo (no own box): beat text animations, backdrops, the beat markers
   on the ruler and snapping, Auto-edit to the beat, Suggested edits and the song templates (a tempo you set is used
   for their cuts instead of the detected one).
 - The preview and the export draw from the same value, a change shows at once, and each change is one Ctrl+Z (typing
@@ -1074,6 +1075,24 @@ Everything that follows the beat reads one **project tempo**, with an optional t
   none means detected); an own tempo is `tempo: { bpm, first }` on a clip, the Look or a layer. The maths is in
   `js/tempo.js`, the control in `js/panel-tempo.js`.
 - Choosing a different song drops a detected tempo (it belonged to the old song) but keeps one you set.
+
+### Lyric effect settings (Video Studio)
+
+Lyrics tab → Lyric style → **Effect settings** sets how strong and how fast the lyric moves. It shows only the
+effects the chosen style uses:
+
+- **Beat timing** (Pulse on the beat, the kinetic poster, the 3D tunnel, or Shake on the beat): **Pulse tempo** (the
+  shared tempo control: it follows the project tempo unless you set its own, with Tap, ×2, ÷2, the source label,
+  First beat at, nudges and Set first beat at the playhead), **Pulse every** (every beat, every 2 beats, every half
+  beat, every bar of 4 counted from the first beat) and **Pulse length**.
+- **Pulse size**; **Shake** amount, speed, direction and on the beat (any style, off by default); **Glitch** amount,
+  speed and how often; **Neon flicker** flicker-on length, glow hum amount and speed; **Wave** height, speed and
+  spread; **Drop & bounce** drop height and bounce length; **Poster slam** shake and speed; **Tunnel** speed.
+- **Reset to default** puts back the style's own look. A selected lyric line has **This line's effect settings**
+  (one-line display) over the shared ones, with **Use the shared effect settings**; the tempo stays shared.
+- Every setting is a multiplier of the old constant (×1 by default), so projects saved before render exactly as they
+  did. Stored as `lyricStyle.fx`, `lyricStyle.tempo` and a line's `fx`; cleaned on load (`cleanLyricFx`). The maths is
+  in `js/lyricfx.js`, the controls in `js/panel-lyricfx.js`.
 
 ### Timeline zoom (Video Studio)
 
@@ -1444,6 +1463,8 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/timeline.js` | Multi-track timeline UI |
 | `js/tempo.js` | Tempo maths: BPM limits, tap tempo, ×2 / ÷2, beat times from BPM and first beat, which grid an effect follows (unit tested) |
 | `js/panel-tempo.js` | The tempo control (BPM box, Tap tempo, ×2, ÷2, song BPM, first beat) for the project and for effects with their own |
+| `js/lyricfx.js` | Lyric effect settings: defaults, pulse division and length (divEnvelope), shake, load-time cleaning |
+| `js/panel-lyricfx.js` | The Lyrics tab's Effect settings group and a line's own effect settings |
 | `js/timecode.js` | Time readout maths: clock time, seconds.frame, and the seek box parser (unit tested) |
 | `js/timereadout.js` | The player's two-line time readout and seek box |
 | `js/tlzoom.js` | Timeline zoom maths: zoom limits from the edit's length, fit, the log slider, ruler spacing (unit tested) |

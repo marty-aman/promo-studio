@@ -37,6 +37,7 @@ import { tipSettings, saveTipSettings } from './panel-tips.js';
 import { createKeyframeUI } from './panel-kf.js';
 import { gridFromBpm, gridLength } from './tempo.js';
 import { tempoControl, projectTarget, clipTempoTarget, lookTempoTarget, tempoSummary } from './panel-tempo.js';
+import { lyricFxGroup } from './panel-lyricfx.js';
 import { EXITS } from './exits.js';
 import { templateFromProject, applyMyTemplate, templateFile, parseTemplateFile, describeTemplate } from './mytemplates.js';
 import { bgRemoveSection } from './panel-bgremove.js';
@@ -1911,7 +1912,13 @@ export function createPanels({ store, engine, ui }) {
     const presetRow = h(
       'div',
       { class: 'chips' },
-      Object.entries(LYRIC_PRESETS).map(([name, preset]) => button(name, () => store.update((d) => (d.lyricStyle = { ...defaultLyricStyle(), y: d.lyricStyle.y, display: d.lyricStyle.display || 'line', ...preset })), { variant: 'chip' })),
+      Object.entries(LYRIC_PRESETS).map(([name, preset]) => button(name, () => store.update((d) => {
+        // the effect settings and pulse tempo stay (Reset to default under Effect settings clears them)
+        const { fx, tempo } = d.lyricStyle;
+        d.lyricStyle = { ...defaultLyricStyle(), y: d.lyricStyle.y, display: d.lyricStyle.display || 'line', ...preset };
+        if (fx) d.lyricStyle.fx = fx;
+        if (tempo) d.lyricStyle.tempo = tempo;
+      }), { variant: 'chip' })),
     );
     const display = p.lyricStyle.display || 'line';
     const displayGrid = h(
@@ -1965,6 +1972,7 @@ export function createPanels({ store, engine, ui }) {
               b.range('Exit length', (p) => p.lyricStyle.outDuration ?? 0.35, s((o, v) => (o.outDuration = v)), { min: 0.1, max: 1.5, step: 0.05, fmt: (v) => `${v.toFixed(2)}s` }),
             )
           : null,
+        lyricFxGroup(b, { store, engine, ui }, { style: p.lyricStyle, holder: (d) => d.lyricStyle }),
         b.range('Size', (p) => p.lyricStyle.size, s((o, v) => (o.size = v)), { min: 2.5, max: 14, step: 0.1, fmt: (v) => v.toFixed(1) }),
         b.range('Vertical position', (p) => p.lyricStyle.y, s((o, v) => (o.y = v)), { min: 5, max: 95, step: 1, fmt: (v) => `${v}%` }),
         b.range('Horizontal position', (p) => p.lyricStyle.x ?? 50, s((o, v) => (o.x = v)), { min: 10, max: 90, step: 0.5, fmt: (v) => `${v}%` }),
@@ -3435,6 +3443,9 @@ export function createPanels({ store, engine, ui }) {
         kf.range(b, sel, 'y', { label: 'This line’s height', def: store.get().lyricStyle.y }),
         button('Use the shared height', () => store.update(L((x) => delete x.y)), { variant: 'ghost sm' }),
         lineLookSection(b, L, get, l),
+        (p.lyricStyle.display || 'line') === 'line'
+          ? section('', lyricFxGroup(b, { store, engine, ui }, { style: lineStyle(p.lyricStyle, l, p.theme), holder: (d) => d.lyrics.find((y) => y.id === sel.id), line: true }))
+          : null,
         kf.animateSection(b, sel, { skip: ['y'], write: { size: (x, v) => (x.style = { ...(x.style || {}), size: v }) }, defs: { x: store.get().lyricStyle.x ?? 50, size: (l.style && l.style.size) || store.get().lyricStyle.size } }),
       );
     }

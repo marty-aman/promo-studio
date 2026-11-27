@@ -55,9 +55,13 @@ export function presetFields(id, base, pal) {
 /** The style a line is drawn with: shared style, then its preset, then its own changes. */
 export function lineStyle(base, line, theme) {
   const st = line && line.style;
-  if (!st) return base;
-  const { preset, ...own } = st;
-  return { ...base, ...(preset ? presetFields(preset, base, paletteFor(base, theme)) : {}), ...own };
+  // line.fx: this line's own effect settings (lyricfx.js) over the shared ones
+  const fx = line && line.fx && typeof line.fx === 'object' && Object.keys(line.fx).length ? line.fx : null;
+  if (!st && !fx) return base;
+  const { preset, ...own } = st || {};
+  const out = { ...base, ...(preset ? presetFields(preset, base, paletteFor(base, theme)) : {}), ...own };
+  if (fx) out.fx = { ...(base.fx || {}), ...fx };
+  return out;
 }
 
 /** Does this line look different from the shared style? */
