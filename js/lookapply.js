@@ -3,13 +3,13 @@
 // They only ever write to lines that share the chosen line's look (or, for the shared style, keep every other
 // look drawing exactly as before), and they keep the look's timeline colour (project.lookColors).
 import { uid } from './core.js';
-import { LINE_FIELDS, lineStyle, hasLineStyle } from './linestyle.js';
+import { LINE_FIELDS, OPTIONAL_LINE_FIELDS, lineStyle, hasLineStyle } from './linestyle.js';
 import { lookId, assignLooks, CUSTOM_COLORS } from './lookcolors.js';
 import { FX_FIELDS } from './lyricfx.js';
 import { themeOf, themeState } from './lookthemes.js';
 
 // what a missing field means when drawing (the renderer reads these with || / ??)
-const FIELD_DEFAULTS = { outAnimation: '', outDuration: 0.35 };
+const FIELD_DEFAULTS = { outAnimation: '', outDuration: 0.35, side: 'center', hit: '', echo: '' };
 
 /** Ids of the lines that share `lineId`'s look (the line itself included). Shared-style lines share the '' look. */
 export function lookMembers(lines, lineId) {
@@ -24,7 +24,8 @@ export function lookMembers(lines, lineId) {
  * theme's effect settings as the look's own (style.fx; none when the theme has none).
  */
 export function withTheme(style, theme) {
-  const keep = Object.fromEntries(Object.entries(style || {}).filter(([k]) => k !== 'preset' && k !== 'fx' && !LINE_FIELDS.includes(k)));
+  // the line's duet side, flash hit and ghost echo stay unless the theme sets them itself
+  const keep = Object.fromEntries(Object.entries(style || {}).filter(([k]) => k !== 'preset' && k !== 'fx' && (!LINE_FIELDS.includes(k) || (OPTIONAL_LINE_FIELDS.includes(k) && !(k in theme.fields)))));
   return { ...keep, ...structuredClone(theme.fields), ...(theme.fx ? { fx: structuredClone(theme.fx) } : {}) };
 }
 

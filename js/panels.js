@@ -52,6 +52,8 @@ import { fetchSpotifyInfo } from './spotify.js';
 import { LINE_PRESETS, lineStyle, hasLineStyle } from './linestyle.js';
 import { lookMembers, changeLook } from './lookapply.js';
 import { lookThemeBlock } from './panel-lookthemes.js';
+import { lineAnimBlock } from './panel-lineanim.js';
+import { HITS, ECHOES } from './lyricanim.js';
 import { THEMES, themeById, applyTheme } from './themes.js';
 import { stemRoleLabel } from './manager/files.js';
 import { markTimed, timingSummary, SOURCE_LABELS } from './manager/lyrictiming.js';
@@ -1974,6 +1976,13 @@ export function createPanels({ store, engine, ui }) {
               b.range('Exit length', (p) => p.lyricStyle.outDuration ?? 0.35, s((o, v) => (o.outDuration = v)), { min: 0.1, max: 1.5, step: 0.05, fmt: (v) => `${v.toFixed(2)}s` }),
             )
           : null,
+        // flash hit and ghost echo (lyricanim.js): '' is off and leaves no field behind
+        display === 'line'
+          ? h('div', { class: 'grid2', 'data-k': 'lyric-hit-echo' },
+              b.select('Flash hit', (p) => p.lyricStyle.hit || '', s((o, v) => (v ? (o.hit = v) : delete o.hit)), HITS),
+              b.select('Ghost echo', (p) => p.lyricStyle.echo || '', s((o, v) => (v ? (o.echo = v) : delete o.echo)), ECHOES),
+            )
+          : null,
         lyricFxGroup(b, { store, engine, ui }, { style: p.lyricStyle, holder: (d) => d.lyricStyle }),
         b.range('Size', (p) => p.lyricStyle.size, s((o, v) => (o.size = v)), { min: 2.5, max: 14, step: 0.1, fmt: (v) => v.toFixed(1) }),
         b.range('Vertical position', (p) => p.lyricStyle.y, s((o, v) => (o.y = v)), { min: 5, max: 95, step: 1, fmt: (v) => `${v}%` }),
@@ -2049,7 +2058,7 @@ export function createPanels({ store, engine, ui }) {
     const hand = handTimedCount(lines);
     const stale = lines.filter(wordsStale);
     const anim = p.lyricStyle.animation;
-    const shows = (p.lyricStyle.display || 'line') !== 'line' || anim === 'karaoke' || anim === 'words';
+    const shows = (p.lyricStyle.display || 'line') !== 'line' || anim === 'karaoke' || anim === 'words' || p.lyrics.some((l) => l.emph && l.emph.slam);
     return section(
       '4 · Word timing',
       h('p', { class: 'muted tiny' }, 'When each word of a line lights up in the Word by word and Karaoke looks. Drag a word’s edge or the word itself; it saves on the song with the line times.'),
@@ -3160,6 +3169,14 @@ export function createPanels({ store, engine, ui }) {
       return drag.ids;
     };
     const edit = (key) => (d, v) => changeLook(d, line.id, (s) => ({ ...(s || {}), [key]: v }), { ids: groupIds() });
+    // a choice whose "off" value leaves no field behind (flash hit, ghost echo)
+    const editOff = (key) => (d, v) => changeLook(d, line.id, (s) => {
+      const n = { ...(s || {}) };
+      // off over a shared style that has it on is kept as '' so this look stays off
+      if (v || store.get().lyricStyle[key]) n[key] = v;
+      else delete n[key];
+      return n;
+    }, { ids: groupIds() });
     // a preset on a shared-style line gives just that line the preset, as before; on a look, the whole look
     const setPreset = (id) => store.update((d) => changeLook(d, line.id, (s) => ({ ...(s && s.lookKey ? { lookKey: s.lookKey } : {}), preset: id }), { only: !hasLineStyle(line) }));
     const chips = h(
@@ -3193,6 +3210,7 @@ export function createPanels({ store, engine, ui }) {
             h('div', { class: 'grid2' }, b.color('Outline', () => cur().outline, edit('outline')), b.range('Outline width', () => cur().outlineWidth || 0, edit('outlineWidth'), { min: 0, max: 2, step: 0.05, fmt: (v) => Number(v).toFixed(2) })),
             b.select('Entrance', () => cur().animation, edit('animation'), ANIMATIONS),
             b.select('Exit', () => cur().outAnimation || '', edit('outAnimation'), TEXT_EXITS),
+            h('div', { class: 'grid2' }, b.select('Flash hit', () => cur().hit || '', editOff('hit'), HITS), b.select('Ghost echo', () => cur().echo || '', editOff('echo'), ECHOES)),
             h('div', { class: 'grid2' }, b.toggle('ALL CAPS', () => !!cur().uppercase, edit('uppercase')), b.toggle('Background box', () => !!cur().box, edit('box'))),
             cur().box ? b.color('Box color', () => cur().boxColor, edit('boxColor')) : null,
             h('p', { class: 'muted tiny' }, store.get().lyricStyle.display && store.get().lyricStyle.display !== 'line' ? 'In the lyric sheet, poster and tunnel displays this line keeps its font, colours and case; size and animation follow the display.' : 'Changes here reach every line with this look (see above).'),
@@ -3460,6 +3478,7 @@ export function createPanels({ store, engine, ui }) {
         kf.range(b, sel, 'y', { label: 'This line’s height', def: store.get().lyricStyle.y }),
         button('Use the shared height', () => store.update(L((x) => delete x.y)), { variant: 'ghost sm' }),
         lineLookSection(b, L, get, l),
+        (p.lyricStyle.display || 'line') === 'line' ? section('Key words & side', lineAnimBlock(b, store, sel.id)) : null,
         (p.lyricStyle.display || 'line') === 'line'
           ? section('', lyricFxGroup(b, { store, engine, ui }, { style: lineStyle(p.lyricStyle, l, p.theme), holder: (d) => d.lyrics.find((y) => y.id === sel.id), line: true }))
           : null,

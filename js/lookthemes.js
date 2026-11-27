@@ -4,7 +4,7 @@
 // pulse timing and size, shake, and the amount/speed of the theme's entrance effect), written to the look's
 // style.fx (or lyricStyle.fx for the shared style) by lookapply.js. A theme never sets the pulse tempo: the
 // lyrics keep following the project tempo (or the tempo Marty set for them).
-import { LINE_FIELDS, lineStyle } from './linestyle.js';
+import { LINE_FIELDS, OPTIONAL_LINE_FIELDS, lineStyle } from './linestyle.js';
 import { FX_FIELDS, GROUP_FIELDS, fxGroups, cleanFx } from './lyricfx.js';
 
 /**
@@ -44,7 +44,8 @@ export const themeById = (id) => LOOK_THEMES.find((t) => t.id === id) || null;
 /** The theme whose fields `style` matches exactly (a line style with no preset, or the shared style), else null. */
 export function themeOf(style) {
   if (!style || style.preset) return null;
-  return LOOK_THEMES.find((t) => LINE_FIELDS.every((k) => t.fields[k] === style[k])) || null;
+  // side, flash hit and ghost echo count only when the theme sets them (a themed line keeps its own, withTheme)
+  return LOOK_THEMES.find((t) => LINE_FIELDS.every((k) => t.fields[k] === style[k] || (OPTIONAL_LINE_FIELDS.includes(k) && !(k in t.fields)))) || null;
 }
 
 const sameFx = (a, b) => {
@@ -79,5 +80,9 @@ export function motionLabel(t) {
   if (a === 'glitch') bits.push('Glitch');
   if (a === 'wave') bits.push('Wave');
   if (a === 'bounce') bits.push('Drop');
+  if (a === 'wipe') bits.push('Wipe');
+  if (a === 'tracking') bits.push('Tracking');
+  if (t.fields.hit) bits.push('Flash hit');
+  if (t.fields.echo) bits.push('Ghost echo');
   return bits.length ? bits.join(' · ') : 'Still';
 }

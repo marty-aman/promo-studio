@@ -1104,6 +1104,31 @@ effects the chosen style uses:
   settings back. Each card names its motion (e.g. "Shake on the beat · Beat pulse") and the picked or hovered card
   moves like it (still under reduced motion). Lines and looks without a theme render as before.
 
+### More ways to animate the lyrics (Video Studio)
+
+All of these work in the **One line at a time** display (the sheet, poster and tunnel draw their own way). Each is
+off until you pick it, so projects saved before render exactly as they did (checked pixel by pixel). The maths is in
+`js/lyricanim.js`, the per-line controls in `js/panel-lineanim.js`.
+
+- **Key words** (select a line → **Key words & side**): tap the words to stress. They get bigger (**Key word size**),
+  take an accent colour (the highlight colour unless you pick one) and can **Slam when sung** (at their saved or
+  spread word time). Saved on the line as `line.emph` (word indexes plus the words); editing the text marks the pick
+  out of date, like word timing.
+- **Flash hit** (Lyric style, or a line's look): 3 frames of a white word, or an inverted one (black on white), on
+  each line start, on every beat, or on the pulse (Pulse every and Pulse length). Settings: strength and look.
+- **Wipe reveal** entrance: the line uncovers left to right, right to left, top to bottom or from the centre out;
+  direction and length in Effect settings.
+- **Tracking (letter spacing)** entrance: letters start wide and close up while fading in, or start tight and open up
+  over the line. Uses the browser's letter spacing (letter by letter where it has none).
+- **Ghost echo** (Lyric style, or a line's look): a faint bigger copy behind the line, or an offset copy trailing it,
+  on top of any entrance. Settings: strength, size, distance.
+- **Duet side** (select a line → **Key words & side**): Left, Centre or Right, so screamed and clean vocals sit on
+  opposite sides; **Second voice colours** swaps the shared text and highlight colours for that look. A look field
+  (`style.side`), so it reaches every line with the look. Picking a look theme keeps a line's side, flash hit and
+  ghost echo (unless the theme sets them), and the card still shows that theme.
+- A project saved by a newer app with an entrance or exit this one does not know opens with **Fade** (entrance) or the
+  quick fade (exit) instead (`cleanLyricAnimations` in `normalizeProject`).
+
 ### Timeline zoom (Video Studio)
 
 - Edits can be up to an hour long (the **Length** box and the end handle on the ruler; it was 10 minutes).
@@ -1475,6 +1500,7 @@ npm test   # unit tests for timing, LRC, tap-sync, hook/beat detection, beat-cut
 | `js/panel-tempo.js` | The tempo control (BPM box, Tap tempo, ×2, ÷2, song BPM, first beat) for the project and for effects with their own |
 | `js/lyricfx.js` | Lyric effect settings: defaults, pulse division and length (divEnvelope), shake, load-time cleaning |
 | `js/panel-lyricfx.js` | The Lyrics tab's Effect settings group and a line's own effect settings |
+| `js/lyricanim.js`, `js/panel-lineanim.js` | Key words, flash hit, wipe, tracking, ghost echo, duet side and the unknown-id cleaner (unit tested); a line's Key words & side controls |
 | `js/timecode.js` | Time readout maths: clock time, seconds.frame, and the seek box parser (unit tested) |
 | `js/timereadout.js` | The player's two-line time readout and seek box |
 | `js/tlzoom.js` | Timeline zoom maths: zoom limits from the edit's length, fit, the log slider, ruler spacing (unit tested) |

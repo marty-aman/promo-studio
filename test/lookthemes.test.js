@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { LOOK_THEMES, themeById, themeOf } from '../js/lookthemes.js';
 import { lookMembers, changeLook, splitLine, applyTheme, applySharedTheme, withTheme } from '../js/lookapply.js';
 import { lookId, assignLooks, looksById } from '../js/lookcolors.js';
-import { LINE_FIELDS, lineStyle } from '../js/linestyle.js';
+import { LINE_FIELDS, OPTIONAL_LINE_FIELDS, lineStyle } from '../js/linestyle.js';
 import { newProject, normalizeProject } from '../js/state.js';
 import { makeProjectFile, parseProjectFile } from '../js/projectfile.js';
 
@@ -18,7 +18,7 @@ const blood = themeById('bloodash');
 
 test('every theme sets every per-line style field, ids are unique, and there are dark, clean and neon ones', () => {
   assert.equal(new Set(LOOK_THEMES.map((t) => t.id)).size, LOOK_THEMES.length);
-  for (const t of LOOK_THEMES) for (const k of LINE_FIELDS) assert.notEqual(t.fields[k], undefined, `${t.id}.${k}`);
+  for (const t of LOOK_THEMES) for (const k of LINE_FIELDS) if (!OPTIONAL_LINE_FIELDS.includes(k)) assert.notEqual(t.fields[k], undefined, `${t.id}.${k}`);
   for (const id of ['bloodash', 'blackmass', 'cleanwhite', 'neonpink']) assert.ok(themeById(id), id);
   assert.equal(themeOf(withTheme({ preset: 'scream', lookKey: 'k' }, blood)).id, 'bloodash');
   assert.equal(themeOf({ ...blood.fields, size: 3 }), null);

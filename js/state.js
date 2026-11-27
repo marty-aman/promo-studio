@@ -2,6 +2,7 @@
 import { uid } from './core.js';
 import { cleanRange } from './exportrange.js';
 import { cleanLyricFx } from './lyricfx.js';
+import { cleanLyricAnimations } from './lyricanim.js';
 
 export const FONTS = [
   { id: 'Bebas Neue', label: 'Bebas Neue (tall caps)' },
@@ -282,6 +283,9 @@ export function normalizeProject(p) {
   const layers = Array.isArray(p.layers) ? p.layers : [];
   if (p.tab && p.tab.mediaId && !layers.some((l) => l.type === 'tab')) layers.push({ id: uid('lyr'), type: 'tab', name: 'Guitar tab', visible: true, ...p.tab });
   delete p.tab;
+  // animation ids this app does not know (a project saved by a newer one) open as a fade (lyricanim.js)
+  const fxClean = cleanLyricFx({ ...base.lyricStyle, ...p.lyricStyle }, p.lyrics || base.lyrics);
+  const anims = cleanLyricAnimations({ ...fxClean, texts: p.texts || base.texts });
   return {
     ...base,
     ...p,
@@ -289,7 +293,9 @@ export function normalizeProject(p) {
     exportRange: cleanRange(p),
     layerVis: p.layerVis || {},
     lookColors: p.lookColors && typeof p.lookColors === 'object' ? p.lookColors : {},
-    ...cleanLyricFx({ ...base.lyricStyle, ...p.lyricStyle }, p.lyrics || base.lyrics),
+    lyricStyle: anims.lyricStyle,
+    lyrics: anims.lyrics,
+    ...(p.texts ? { texts: anims.texts } : {}),
     endCard: { ...base.endCard, ...p.endCard },
     look: {
       ...base.look,
