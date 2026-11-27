@@ -471,6 +471,8 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
 - Upload videos and images, or drag files anywhere onto the window.
 - Free stock footage search: Pexels and Pixabay (free API key, stored only in your browser) and
   Wikimedia Commons (no key). Hover to preview; credits are collected for your post caption.
+  **Add** puts the clip on a new video layer on top, full frame, from the playhead for the clip's length (cut at
+  the end of the edit); **Add to main track** puts it at the end of the main video track instead.
 - **Split a layer at the playhead:** select a guitar tab, drum chart, visualizer, MIDI notes or rhythm game layer
   and press **S** (or **Split** in the timeline toolbar, **Split at playhead** in the layer's settings or its
   long-press menu). The layer becomes two pieces, "Name" and "Name (part 2)", that meet at the playhead, keep the

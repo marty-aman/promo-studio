@@ -69,3 +69,17 @@ export function pointToDirection(point) {
   return point > 0 ? { dir: 'before', sec: r3(point) } : { dir: 'after', sec: r3(-point) };
 }
 export const directionToPoint = (dir, sec) => (dir === 'after' ? -Math.abs(+sec || 0) : dir === 'before' ? Math.abs(+sec || 0) : 0);
+
+/**
+ * Where a whole clip goes when it gets a layer of its own (Stock video "Add"): it starts at the playhead and runs
+ * for the file's length, cut off at the end of the edit. A playhead at (or past) the end steps back so the clip
+ * still has MIN_LEN to show. fileLen: the file's seconds (0/unknown = 5 s); editLen: the edit's seconds.
+ * Returns { start, duration, trimmed }.
+ */
+export function layerSpan(t, fileLen, editLen) {
+  const edit = Math.max(MIN_LEN, +editLen || 0);
+  const len = +fileLen > 0 && Number.isFinite(+fileLen) ? +fileLen : 5;
+  const start = Math.min(Math.max(0, +t || 0), edit - MIN_LEN);
+  const duration = Math.max(MIN_LEN, Math.min(len, edit - start));
+  return { start: r3(start), duration: r3(duration), trimmed: duration < len - 1e-3 };
+}

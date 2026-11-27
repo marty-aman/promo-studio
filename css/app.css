@@ -181,6 +181,8 @@ body.dropping::after { content: 'Drop to add to your library'; position: fixed; 
 .stock-item .badge { top: 4px; bottom: auto; }
 .stock-meta { display: flex; justify-content: space-between; align-items: center; gap: 4px; padding: 5px; }
 .stock-meta a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.stock-main { padding: 0 5px 5px; }
+.stock-main .btn { width: 100%; justify-content: center; }
 
 /* ---------------------------------------------------------------- lyrics */
 .sync-box { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; }
