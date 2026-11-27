@@ -1,6 +1,7 @@
 // Project state, undo/redo history and browser persistence (localStorage + IndexedDB).
 import { uid } from './core.js';
 import { cleanRange } from './exportrange.js';
+import { cleanLyricFx } from './lyricfx.js';
 
 export const FONTS = [
   { id: 'Bebas Neue', label: 'Bebas Neue (tall caps)' },
@@ -288,7 +289,7 @@ export function normalizeProject(p) {
     exportRange: cleanRange(p),
     layerVis: p.layerVis || {},
     lookColors: p.lookColors && typeof p.lookColors === 'object' ? p.lookColors : {},
-    lyricStyle: { ...base.lyricStyle, ...p.lyricStyle },
+    ...cleanLyricFx({ ...base.lyricStyle, ...p.lyricStyle }, p.lyrics || base.lyrics),
     endCard: { ...base.endCard, ...p.endCard },
     look: {
       ...base.look,

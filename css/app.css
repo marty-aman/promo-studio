@@ -1827,6 +1827,10 @@ body.touch .off-bar .btn { min-height: 44px; }
 .tempo-ctl input.num { width: 84px; }
 .tempo-ctl [hidden] { display: none !important; }
 .tempo-ctl .btn.on { border-color: var(--accent); }
+/* lyric Effect settings (panel-lyricfx.js) */
+.lyric-fx { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 2px; }
+.lyric-fx > .row:last-child { margin-top: 16px; }
+.lyric-fx .fx-h { margin: 10px 0 2px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .tempo-src[data-source='set'], .tempo-src[data-source='song'], .tempo-src[data-source='effect'] { color: var(--accent); }
 
 /* export range: In / Out flags on the ruler, and a dim over the part the export leaves out */

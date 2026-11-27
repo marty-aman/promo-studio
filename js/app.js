@@ -596,7 +596,7 @@ const wordsSig = (l) => (l.words || l.wordsBy ? `${l.wordsBy || ''}${l.text}${(l
 function leftSignature() {
   const p = store.get();
   const parts = [ui.tab, media.all().length, p.aspect];
-  if (ui.tab === 'lyrics') parts.push(p.lyrics.map((l) => `${l.id}:${l.start}:${l.end}:${wordsSig(l)}`).join('|'), panels.sync.active, panels.sync.cursor, ui.selection && ui.selection.id, p.lyricStyle.display);
+  if (ui.tab === 'lyrics') parts.push(p.lyrics.map((l) => `${l.id}:${l.start}:${l.end}:${wordsSig(l)}`).join('|'), panels.sync.active, panels.sync.cursor, ui.selection && ui.selection.id, p.lyricStyle.display, p.lyricStyle.animation, !!(p.lyricStyle.fx && p.lyricStyle.fx.shakeBeat));
   const has = (...ids) => ids.includes(ui.tab);
   if (has('audio')) parts.push(p.song && p.song.mediaId, !!p.beats, p.audioTracks.map((a) => `${a.id}:${a.start}:${a.duration}`).join('|'));
   if (ui.tab === 'text') parts.push(p.texts.map((t) => `${t.id}:${t.text}:${t.start}:${t.end}`).join('|'));
@@ -633,7 +633,9 @@ function inspSignature() {
       })()) ||
     (s.type === 'lyric' && p.lyrics.some((c) => c.id === s.id) && (() => {
       const l = p.lyrics.find((c) => c.id === s.id);
-      return `${[...p.lyrics].sort((a, b) => a.start - b.start).findIndex((c) => c.id === s.id)}|${l.style ? `${l.style.preset || 'own'}:${!!l.style.box}` : '-'}|${p.lyrics.filter((c) => c.text.trim().toLowerCase() === l.text.trim().toLowerCase()).length}`;
+      // the line's effect settings show the effects its look uses
+      const fxSig = `${p.lyricStyle.display}:${(l.style && l.style.animation) || p.lyricStyle.animation}:${!!((l.fx && l.fx.shakeBeat) ?? (p.lyricStyle.fx && p.lyricStyle.fx.shakeBeat))}`;
+      return `${[...p.lyrics].sort((a, b) => a.start - b.start).findIndex((c) => c.id === s.id)}|${l.style ? `${l.style.preset || 'own'}:${!!l.style.box}` : '-'}|${p.lyrics.filter((c) => c.text.trim().toLowerCase() === l.text.trim().toLowerCase()).length}|${fxSig}`;
     })()) ||
     (s.type === 'text' && p.texts.some((c) => c.id === s.id)) ||
     (s.type === 'audio' && p.audioTracks.some((c) => c.id === s.id)) ||

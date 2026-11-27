@@ -3,6 +3,7 @@
 import { wordTimings, savedWordTimes } from './core.js';
 import { glowPass } from './canvasfx.js';
 import { lineStyle } from './linestyle.js';
+import { fxv } from './lyricfx.js';
 
 export const LYRIC_DISPLAYS = [
   ['line', 'One line at a time', 'Each line on its own with the animation you pick'],
@@ -279,7 +280,8 @@ function drawPoster(ctx, W, H, lines, s0, ts, beat, styleOf = () => s0) {
   const times = wordTimes(line);
   const cx = (W * (s.x ?? 50)) / 100;
   const cy = (H * s.y) / 100;
-  const pulse = 1 + 0.025 * (beat || 0);
+  const fx = s0.fx; // effect settings (lyricfx.js) come from the shared style
+  const pulse = 1 + 0.025 * fxv(fx, 'pulse') * (beat || 0);
   ctx.save();
   ctx.translate(cx, cy);
   ctx.scale(pulse, pulse);
@@ -298,7 +300,7 @@ function drawPoster(ctx, W, H, lines, s0, ts, beat, styleOf = () => s0) {
       if (life < 0) continue;
       const k = clamp(life / 0.14, 0, 1);
       const sc = 1.7 - 0.7 * outBack(k);
-      const shake = life < 0.18 ? (rnd(Math.floor(ts * 60) + w.index) - 0.5) * row.size * 0.06 : 0;
+      const shake = life < 0.18 ? (rnd(Math.floor(ts * 60 * fxv(fx, 'slamSpeed')) + w.index) - 0.5) * row.size * 0.06 * fxv(fx, 'slamShake') : 0;
       ctx.save();
       ctx.globalAlpha *= clamp(life / 0.06, 0, 1) * out;
       ctx.translate(x0 + w.dx + w.width / 2 + shake, base - row.size * 0.35);
@@ -355,9 +357,9 @@ function drawTunnel(ctx, W, H, lines, s, ts, beat, styleOf = () => s) {
   ctx.save();
   ctx.lineJoin = 'round';
   for (let k = 0; k < N; k++) {
-    const z = fract(k / N + ts * 0.32);
+    const z = fract(k / N + ts * 0.32 * fxv(s.fx, 'tunnelSpeed'));
     const sc = 0.06 + z * z * 1.5;
-    const a = Math.min(z / 0.25, 1) * (1 - Math.max(0, (z - 0.8) / 0.2)) * frameA * (0.55 + 0.45 * (beat || 0));
+    const a = Math.min(z / 0.25, 1) * (1 - Math.max(0, (z - 0.8) / 0.2)) * frameA * (0.55 + 0.45 * fxv(s.fx, 'pulse') * (beat || 0));
     if (a <= 0.01) continue;
     const w = W * 0.95 * sc;
     const h = W * 1.35 * sc;

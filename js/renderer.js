@@ -24,6 +24,7 @@ import { drawViz } from './viz.js';
 import { drawLyricDisplay } from './lyricviz.js';
 import { lineStyle } from './linestyle.js';
 import { beatsOf, gridOf } from './tempo.js';
+import { fxv, glitchThreshold, lyricBeat, shakeOffset } from './lyricfx.js';
 import { drawBackdrop } from './backgrounds.js';
 import { blurred } from './canvasfx.js';
 import { animate } from './keyframes.js';
@@ -200,6 +201,7 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
   const totalH = lines.length * lh;
 
   const anim = style.animation || 'none';
+  const fx = style.fx; // lyric effect settings (lyricfx.js); none for text layers, so they keep the old look
   const inT = 0.35;
   const outT = 0.2;
   const pIn = clamp(life / inT, 0, 1);
@@ -242,12 +244,12 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
       break;
     case 'neon': {
       // flickers on like a tube, then hums
-      const on = life > 0.45 || noise(frame) > 0.45;
+      const on = life > 0.45 * fxv(fx, 'neonFlicker') || noise(frame) > 0.45;
       alpha = Math.min(pOut, on ? 1 : 0.15);
       break;
     }
     case 'beat':
-      scale = 1 + 0.12 * beat;
+      scale = 1 + 0.12 * fxv(fx, 'pulse') * beat;
       alpha = Math.min(clamp(life / 0.1, 0, 1), pOut);
       break;
     default:
@@ -268,7 +270,9 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
   const timings = style.wordFracs || wordTimings(t);
   const totalChars = t.replace(/\s+/g, '').length;
   const reveal = anim === 'typewriter' ? Math.floor(clamp(life / Math.max(0.3, Math.min(dur * 0.6, totalChars * 0.06)), 0, 1) * totalChars) : Infinity;
-  const glitching = anim === 'glitch' && (life < 0.35 || noise(frame * 3.1) > 0.93);
+  const gFrame = Math.floor(life * 30 * fxv(fx, 'glitchSpeed'));
+  const gAmt = fxv(fx, 'glitchAmt');
+  const glitching = anim === 'glitch' && (life < 0.35 || noise(gFrame * 3.1) > glitchThreshold(fx));
 
   const outlinePx = px * (style.outlineWidth || 0) * 0.12;
   let wi = 0;
@@ -320,16 +324,16 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
           wy = (1 - ease.outCubic(clamp(since / 0.35, 0, 1))) * px * 0.8;
           wAlpha = clamp(since / 0.2, 0, 1);
         } else {
-          wy = -(1 - outBounce(clamp(since / 0.55, 0, 1))) * px * 1.6;
+          wy = -(1 - outBounce(clamp(since / (0.55 * fxv(fx, 'bounceTime')), 0, 1))) * px * 1.6 * fxv(fx, 'bounceHeight');
           wAlpha = clamp(since / 0.1, 0, 1);
         }
       } else if (anim === 'wave') {
-        wy = Math.sin(life * 5 - idx * 0.7) * px * 0.12;
+        wy = Math.sin(life * 5 * fxv(fx, 'waveSpeed') - idx * 0.7 * fxv(fx, 'waveSpread')) * px * 0.12 * fxv(fx, 'waveAmt');
         wAlpha = Math.min(1, clamp(life / 0.2, 0, 1));
       }
       if (glitching) {
-        wx = (noise(frame + idx * 7) - 0.5) * px * 0.25;
-        wy += (noise(frame * 1.7 + idx) - 0.5) * px * 0.12;
+        wx = (noise(gFrame + idx * 7) - 0.5) * px * 0.25 * gAmt;
+        wy += (noise(gFrame * 1.7 + idx) - 0.5) * px * 0.12 * gAmt;
       }
       ctx.save();
       ctx.globalAlpha *= wAlpha;
@@ -337,7 +341,7 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
       ctx.scale(wScale, wScale);
       ctx.textAlign = 'center';
       if (glitching) {
-        const off = px * 0.06;
+        const off = px * 0.06 * gAmt;
         ctx.globalAlpha *= 0.8;
         ctx.fillStyle = '#00f0ff';
         ctx.fillText(text, -off, 0);
@@ -347,7 +351,7 @@ function drawAnimatedText(ctx, text, cx, cy, style, life, dur, beat = 0) {
       }
       if (anim === 'neon') {
         ctx.shadowColor = style.highlight;
-        ctx.shadowBlur = px * (0.45 + 0.1 * Math.sin(life * 12));
+        ctx.shadowBlur = px * (0.45 + 0.1 * fxv(fx, 'neonHum') * Math.sin(life * 12 * fxv(fx, 'neonSpeed')));
       } else if (style.shadow) {
         ctx.shadowColor = 'rgba(0,0,0,0.55)';
         ctx.shadowBlur = px * 0.18;
@@ -1080,25 +1084,45 @@ function drawTexts(ctx, W, H, texts, t, beat = 0, releaseDate = '') {
   }
 }
 
+// Shake from the lyric effect settings: moves the whole lyric (off unless Shake amount is up).
+function withShake(ctx, fx, ts, px, beat, cx, cy, draw) {
+  const sh = fx ? shakeOffset(fx, ts, px, beat, noise) : null;
+  if (!sh) return draw();
+  ctx.save();
+  ctx.translate(cx + sh.dx, cy + sh.dy);
+  if (sh.rot) ctx.rotate(sh.rot);
+  ctx.translate(-cx, -cy);
+  draw();
+  ctx.restore();
+}
+
 function drawLyrics(ctx, W, H, project, t, beat = 0) {
   const ts = timelineToSong(t, project.song);
-  if (drawLyricDisplay(ctx, W, H, project.lyrics, project.lyricStyle, ts, beat, project.theme)) return;
+  const ls = project.lyricStyle;
+  if (ls.display && ls.display !== 'line') {
+    const b = lyricBeat(project, ls.fx, ts, beat);
+    let drawn = false;
+    withShake(ctx, ls.fx, ts, (W * ls.size) / 100, b, (W * (ls.x ?? 50)) / 100, (H * ls.y) / 100, () => (drawn = drawLyricDisplay(ctx, W, H, project.lyrics, ls, ts, b, project.theme)));
+    if (drawn) return;
+  }
   const line0 = activeLyric(project.lyrics, ts);
   if (!line0) return;
   const line = animate(line0, ts - line0.start);
   const s0 = lineStyle(project.lyricStyle, line, project.theme);
   const s = line.keys && line.keys.size ? { ...s0, size: line.size } : s0;
   const y = clamp(line.y ?? s.y, 5, 95);
-  drawAnimatedText(
+  const lb = lyricBeat(project, s.fx, ts, beat);
+  const cx = (W * (line.x ?? s.x ?? 50)) / 100;
+  withShake(ctx, s.fx, ts, (W * s.size) / 100, lb, cx, (H * y) / 100, () => drawAnimatedText(
     ctx,
     line.text,
-    (W * (line.x ?? s.x ?? 50)) / 100,
+    cx,
     (H * y) / 100,
     { ...s, sizePx: (W * s.size) / 100, maxW: (W * s.maxWidth) / 100, opacity: line.opacity, rotate: line.rotate, wordFracs: savedWordFractions(line) },
     ts - line.start,
     line.end - line.start,
-    beat,
-  );
+    lb,
+  ));
 }
 
 function drawEndCard(ctx, W, H, project, t, env) {
