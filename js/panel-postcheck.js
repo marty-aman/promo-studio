@@ -63,8 +63,11 @@ export function createPostCheck({ store, engine, ui }) {
     if (!force && sig === last) return r;
     last = sig;
     pill.className = `postcheck-pill ${r.verdict}`;
-    pill.title = 'How this edit is likely to do, from the posting playbook';
-    pill.replaceChildren(icon('gauge', 16), h('span', { class: 'pc-label' }, r.label), h('b', { class: 'pc-score' }, String(r.score)));
+    // the bar shows only the coloured score; the label stays for the tooltip, screen readers and the phone More sheet
+    const said = `Post check: ${r.label}, ${r.score} out of 100`;
+    pill.title = said;
+    pill.setAttribute('aria-label', said);
+    pill.replaceChildren(h('span', { class: 'pc-label' }, r.label), h('b', { class: 'pc-score' }, String(r.score)));
     if (!open) return r;
     const items = r.items.map((it) =>
       h(
