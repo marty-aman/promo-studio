@@ -10,7 +10,7 @@ export const MY_TEMPLATE_VERSION = 2;
 // layer fields that point at media (or depend on the song), kept from your project, never from a template
 const MEDIA_KEYS = ['mediaId', 'track', 'offset', 'tempoScale', 'source', 'clips'];
 // end-card fields that belong to one release
-const RELEASE_KEYS = ['coverMediaId', 'coverBy', 'title', 'releaseDate'];
+const RELEASE_KEYS = ['coverMediaId', 'coverBy', 'title', 'releaseDate', 'dateBy'];
 // per-clip look fields
 const CLIP_LOOK_KEYS = ['grade', 'filter', 'transition', 'effects', 'kenBurns', 'mask', 'fit'];
 

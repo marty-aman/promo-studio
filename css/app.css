@@ -60,6 +60,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------------------------------------------------------------- controls */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--raised); cursor: pointer; text-decoration: none; color: var(--text); white-space: nowrap; }
+.btn[hidden] { display: none; } /* .btn's display would otherwise show it ("Use the song's cover/date") */
 .btn:hover:not(:disabled) { background: #2f3341; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }

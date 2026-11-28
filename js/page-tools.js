@@ -1,6 +1,7 @@
 // Tools opened from the Inspiration page's playbook: batch export, music-video splitter, posting
 // calendar, the caption writer, and the hook-opener library.
 import { h, button, toast, download, field } from './dom.js';
+import { releaseDay } from './core.js';
 import { media, ensureLayerAnalyses } from './media.js';
 import { exportVideo, pickMimeType } from './engine.js';
 import { realtimeNote } from './exportplan.js';
@@ -104,8 +105,8 @@ export function batchTool({ store, engine, render, mode = 'song' }) {
 /** Posting calendar: 3-5 posts a week for 4-6 weeks, as a list and an .ics file. */
 export function calendarTool({ store }) {
   const p = store.get();
-  const rel = p.endCard.releaseDate ? new Date(`${p.endCard.releaseDate}T00:00:00`) : null;
-  const startDefault = rel && !isNaN(rel) ? new Date(rel.getFullYear(), rel.getMonth(), rel.getDate() - 7) : new Date(Date.now() + 86400000);
+  const rel = releaseDay(p.endCard.releaseDate);
+  const startDefault = rel ? new Date(rel.getFullYear(), rel.getMonth(), rel.getDate() - 7) : new Date(Date.now() + 86400000);
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const start = h('input', { type: 'date', value: iso(startDefault), 'aria-label': 'First post' });
   const per = h('select', { 'aria-label': 'Posts a week' }, [3, 4, 5].map((n) => h('option', { value: n, selected: n === 4 }, `${n} a week`)));

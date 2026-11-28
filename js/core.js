@@ -533,13 +533,43 @@ export function beatEnvelope(beats, ts, decay = 9) {
   return Math.exp(-(ts - last) * decay);
 }
 
+/**
+ * A release date as local midnight of that calendar day, or null.
+ * Takes the saved YYYY-MM-DD, and what people type: 2026-12-5, 12/5/2026 (US month first),
+ * "Dec 5, 2026", or an ISO string with a time (the date as written, never shifted by the time zone).
+ */
+export function releaseDay(s) {
+  const t = String(s || '').trim();
+  if (!t) return null;
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:$|[T\s])/.exec(t);
+  let y, mo, d;
+  if (m) [y, mo, d] = [+m[1], +m[2], +m[3]];
+  else if ((m = /^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/.exec(t))) [y, mo, d] = [+m[3], +m[1], +m[2]];
+  else {
+    if (!/\d{4}/.test(t)) return null; // "Dec 5" alone would land in 2001
+    const p = new Date(t);
+    if (isNaN(p)) return null;
+    [y, mo, d] = [p.getFullYear(), p.getMonth() + 1, p.getDate()];
+  }
+  const out = new Date(y, mo - 1, d);
+  return out.getMonth() === mo - 1 && out.getDate() === d ? out : null;
+}
+
+/** releaseDay as the saved YYYY-MM-DD ('' when it isn't a date). */
+export function releaseISO(s) {
+  const d = releaseDay(s);
+  return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
+}
+
 /** End-card call to action, with {date} and {countdown} tokens. */
 export function ctaText(template, releaseDate, now = new Date()) {
   let s = String(template || '');
   if (releaseDate) {
-    const d = new Date(`${releaseDate}T00:00:00`);
-    if (!isNaN(d)) {
-      const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+    const d = releaseDay(releaseDate);
+    if (d) {
+      // the year only when it isn't this year's ("JAN 9, 2027"), so an old release doesn't read as upcoming
+      const opts = { month: 'short', day: 'numeric', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) };
+      const date = d.toLocaleDateString('en-US', opts).toUpperCase();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const days = Math.round((d - today) / 86400000);
       const countdown =

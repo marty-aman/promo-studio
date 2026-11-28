@@ -2,13 +2,13 @@
 // (Guitar Hero / Rock Band style highways from its charts and stems), a promo cut from its music video with the
 // lyrics on top, and a promo of its raw footage cut on the beat with the lyrics on top. Each ends on the
 // song's end card. Pure apart from the project draft it changes; unit tested.
-import { uid, findHook, linesFromText, beatCutPlan, savedWordTimes, wordTimings } from './core.js';
+import { uid, findHook, linesFromText, beatCutPlan, savedWordTimes, wordTimings, releaseISO } from './core.js';
 import { lyricsFromTiming, markTimed, timingStale } from './manager/lyrictiming.js';
 import { applyTemplate, applyLayout, areaOf, lyricsIntoLayout } from './templates.js';
 import { applyTake } from './suggest.js';
 import { defaultGameLayer } from './rhythmgame.js';
 import { isBassTrack } from './tab.js';
-import { autoCover, sectionSpans, fmtTime } from './manager/releases.js';
+import { autoCover, autoDate, sectionSpans, fmtTime } from './manager/releases.js';
 import { templatePart, applySongPart, partSections, partLayout, pictureFor, clipOf, sectionAt, sectionKind, linesInParts } from './songpart.js';
 import { defaultLyricStyle } from './state.js';
 import { applySharedTheme, changeLook } from './lookapply.js';
@@ -259,8 +259,9 @@ function endCardFor(d, ctx, today) {
   const s = ctx.song;
   Object.assign(d.endCard, { enabled: true, duration: Math.max(3, Math.min(d.endCard.duration || 4, 4)), title: s.title, artist: ctx.band || d.endCard.artist });
   autoCover(d.endCard, ctx.cover);
-  const upcoming = s.releaseDate && today && s.releaseDate > today;
-  d.endCard.releaseDate = s.releaseDate || '';
+  autoDate(d.endCard, s.releaseDate || ''); // a date typed by hand stays
+  const date = releaseISO(d.endCard.releaseDate);
+  const upcoming = date && today && date > today;
   d.endCard.cta = upcoming ? '{countdown}' : 'OUT NOW';
   d.managerSongId = s.id;
 }

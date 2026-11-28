@@ -76,6 +76,27 @@ export function autoCover(endCard, coverId, { force = false } = {}) {
   return true;
 }
 
+/** A song's release date: its own, else its EP's or album's ('' when neither has one). */
+export function songDateOf(song, releases = []) {
+  if (song && song.releaseDate) return song.releaseDate;
+  const r = song && song.releaseId && releases.find((x) => x.id === song.releaseId);
+  return (r && r.releaseDate) || '';
+}
+
+/**
+ * Put a song's release date on an edit's end card, the way autoCover does the cover: a date typed by hand
+ * (endCard.dateBy 'manual', or an old save's date with no flag) is never replaced; `force` hands it back to the song.
+ * A date that came from the previous song is cleared when the new song has none. Returns true when it changed.
+ */
+export function autoDate(endCard, date, { force = false } = {}) {
+  if (!endCard) return false;
+  if (!force && endCard.releaseDate && endCard.dateBy !== 'auto') return false;
+  if (!date && !endCard.releaseDate) return false;
+  endCard.releaseDate = date || '';
+  endCard.dateBy = date ? 'auto' : '';
+  return true;
+}
+
 /**
  * The cover art of the songs, EPs and albums on Songs & releases, for a cover picker:
  * [{ mediaId, label, songIds }], one per picture. The song in `firstSongId` (the edit's) comes first.
