@@ -1382,8 +1382,9 @@ ui.sendToEdit = (id, how) => {
 };
 // Export tab: the song's marked sections (see panel-sections.js)
 let previewStop = null;
-ui.sectionsPanel = () =>
+ui.sectionsPanel = (b) =>
   sectionsExport({
+    b,
     store,
     engine,
     manager,
