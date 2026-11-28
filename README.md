@@ -738,7 +738,7 @@ clips are cut from films, TV and songs, so only use ones you have the rights to.
     **Neon city**, **Performance montage** (up to four shots, about two seconds each, soft crossfades).
   - Rebound loops (zoom out and back, so a still loops perfectly): **Cover art, alive**, **Black and white**.
   - Hard cut: **Slow push**.
-  - Each switches the Format to Spotify Canvas (608×1080: Spotify takes 720–1080 px tall), turns the end
+  - Each switches the Format to Spotify Canvas (594×1056: exactly 9:16, and Spotify takes 720–1080 px tall), turns the end
     card and text off, hides lyrics (kept), loops playback and previews Spotify's Now Playing view, with the
     area its title and controls cover.
   - A checklist flags what breaks Spotify's rules (length, size, end card, text, lyrics, fast cuts,
