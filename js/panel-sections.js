@@ -12,6 +12,7 @@ import { realtimeNote } from './exportplan.js';
 import { writeBlob } from './streamsink.js';
 import { desktop } from './desktop.js';
 import { loadSettings } from './state.js';
+import { sectionTextOf, setSectionText, textForSection, addSectionText, rememberedSectionText, rememberSectionText, ST_POSITIONS, ST_STYLES, ST_TOKENS } from './sectiontext.js';
 
 // notes: [{ label, text }] sections recorded in real time and why; saved: { folder, files: [{ name, path, bytes, reveal }] } (Mac app)
 const state = { running: false, done: 0, total: 0, current: '', result: null, error: '', cancel: false, picked: null, how: 'cut', songId: '', notes: [], saved: null };
@@ -25,7 +26,7 @@ export function editSong(project, manager) {
   return (project.song && manager.songsWithAudio(project.song.mediaId)[0]) || null;
 }
 
-export function sectionsExport({ store, engine, manager, render, seekPlay }) {
+export function sectionsExport({ store, engine, manager, render, seekPlay, b = null }) {
   const p = store.get();
   const found = editSong(p, manager);
   if (!found || !found.song.sections || !found.song.sections.length) {
@@ -71,6 +72,7 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
       if (!folder) return; // cancelled
     }
     const snap = JSON.stringify(store.get());
+    const textCfg = sectionTextOf(store.get(), song.id, rememberedSectionText(song.id));
     Object.assign(state, { running: true, done: 0, total: chosen.length, result: null, error: '', cancel: false, notes: [], saved: folder ? { folder: { name: folder.name, path: folder.path }, files: [] } : null });
     render();
     const files = [];
@@ -83,10 +85,22 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
         const name = `${slug(song.title)}-${sectionSlug(sec, spans.indexOf(sec))}`; // numbered by its place in the song
         const opts = { format: fmt, fps: 30, bitrate: 10e6, ...(folder ? { ...stream, saveAs: `${name}.mp4` } : {}), onFallback: (why) => (state.notes.push({ label: sec.label, text: realtimeNote(why) }), render()) };
         let res;
+        // the section's on-screen text, timed from where the section starts in the exported file (none: unchanged)
+        const words = (d, from, to) => addSectionText(d, textCfg, { sectionId: sec.id, from, to, song: song.title, section: sec.label, artist: d.endCard.artist || '' });
+        const hasWords = !!textForSection(textCfg, sec.id);
         if (state.how === 'cut') {
           const r = inEdit(sec);
+          if (hasWords) store.patch((d) => words(d, r.from, r.to));
           await ensureLayerAnalyses(store.get());
-          res = await exportVideo(engine, { ...opts, start: r.from, end: r.to });
+          try {
+            res = await exportVideo(engine, { ...opts, start: r.from, end: r.to });
+          } finally {
+            if (hasWords) store.patch((d) => {
+              const back = JSON.parse(snap);
+              for (const k of Object.keys(d)) delete d[k];
+              Object.assign(d, back);
+            });
+          }
         } else {
           const len = +(sec.end - sec.start).toFixed(2);
           const useMv = state.how === 'mv' && mv;
@@ -99,11 +113,15 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
             store.update((d) => {
               if (useMv) d.clips = [mvClip(mv.id, mvIn, Math.min(r.to, Math.max(0.5, mv.duration - mvIn)), d.song ? 0 : 1)];
               d.duration = +(r.to + (d.endCard.enabled ? d.endCard.duration : 0)).toFixed(3);
+              words(d, r.from, r.to);
             }, 'sections');
             range = { start: r.from, end: store.get().duration };
           } else {
             // a section this edit doesn't hold: a short of it from the start of the edit, as Batch export makes
-            store.update((d) => applyBatchItem(d, { songOffset: sec.start, mvIn: useMv ? Math.max(0, sec.start + (mvRef.offset || 0)) : null }, { len, mvId: useMv ? mv.id : null, mvDuration: useMv ? mv.duration : 0 }), 'sections');
+            store.update((d) => {
+              applyBatchItem(d, { songOffset: sec.start, mvIn: useMv ? Math.max(0, sec.start + (mvRef.offset || 0)) : null }, { len, mvId: useMv ? mv.id : null, mvDuration: useMv ? mv.duration : 0 });
+              words(d, 0, len);
+            }, 'sections');
           }
           await ensureLayerAnalyses(store.get());
           res = await exportVideo(engine, { ...opts, ...range });
@@ -155,6 +173,7 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
       state.how === 'cut' ? (r ? button('Play', () => seekPlay(r.from, r.to), { iconName: 'play', variant: 'sm ghost', title: `Play ${s.label} in the preview` }) : h('span', { class: 'muted tiny' }, 'not in this edit')) : null,
     );
   });
+  const textBlock = b ? onScreenText(b, song, spans) : null;
   const secs = chosen.reduce((a, s) => a + (s.end - s.start) + (state.how === 'cut' ? 0 : p.endCard.enabled ? p.endCard.duration : 0) + 1, 0);
   return h(
     'div',
@@ -163,6 +182,7 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
     h('p', { class: 'muted small' }, state.how === 'cut' ? `This edit plays the song from ${fmtTime(offset)}; each section is cut from the edit as it is.` : state.how === 'mv' ? `Each section is cut from the music video${mvRef.offset ? ` (the song starts there at ${fmtTime(mvRef.offset)})` : ''}, with your look, text and end card.` : 'Each section becomes its own short with your clips, look, text and end card.'),
     how,
     h('ul', { class: 'sec-list' }, rows),
+    textBlock,
     h('div', { class: 'row' }, button('All', () => (spans.forEach((s) => state.picked.add(s.id)), render()), { variant: 'sm ghost' }), button('None', () => (state.picked.clear(), render()), { variant: 'sm ghost' }), h('span', { class: 'muted tiny' }, chosen.length ? `About ${Math.max(1, Math.ceil(secs / 60))} min to record; keep this tab in front.` : '')),
     state.running
       ? h('div', {}, h('div', { class: 'export-progress' }, h('div', { style: { width: `${Math.round((state.done / Math.max(1, state.total)) * 100)}%` } })), h('div', { class: 'row' }, h('span', { class: 'small' }, `${state.done + 1} of ${state.total}: ${state.current}`), button('Stop', () => ((state.cancel = true), exportVideo.cancel && exportVideo.cancel()), { variant: 'ghost sm' })))
@@ -185,3 +205,55 @@ export function sectionsExport({ store, engine, manager, render, seekPlay }) {
   );
 }
 export const sectionsState = state;
+
+/**
+ * "On-screen text" for the exported sections: one text for every file (with tokens), where and how it shows, and a
+ * per-section own text or none. Saved in the edit for this song (one undo step per change) and remembered for it.
+ */
+function onScreenText(b, song, spans) {
+  const mem = () => rememberedSectionText(song.id);
+  const cfg = (p) => sectionTextOf(p, song.id, mem());
+  const set = (fn) => (d, v) => rememberSectionText(song.id, setSectionText(d, song.id, (c) => fn(c, v), mem()));
+  const shown = (el, on) => b._reg((p) => (el.hidden = !on(cfg(p))));
+  const seconds = b.number('Seconds', (p) => cfg(p).length || 3, set((c, v) => (c.length = Math.max(0.5, v))), { min: 0.5, max: 600, step: 0.5 });
+  shown(seconds, (c) => c.length > 0);
+  const boxColor = b.color('Box colour', (p) => cfg(p).boxColor, set((c, v) => (c.boxColor = v)));
+  shown(boxColor, (c) => c.style !== 'outline');
+  const per = spans.map((s) => {
+    const mode = b.select(s.label, (p) => (cfg(p).sections[s.id] || { mode: 'same' }).mode, set((c, v) => {
+      if (v === 'same') delete c.sections[s.id];
+      else c.sections[s.id] = { mode: v, text: (c.sections[s.id] && c.sections[s.id].text) || c.text };
+    }), [['same', 'Same text'], ['own', 'Its own text'], ['none', 'No text']]);
+    const own = b.text('', (p) => (cfg(p).sections[s.id] || {}).text || '', set((c, v) => (c.sections[s.id] = { mode: 'own', text: v })), { placeholder: `Text for ${s.label}`, key: `sectiontext:own:${s.id}` });
+    own.setAttribute('aria-label', `On-screen text for ${s.label}`);
+    shown(own, (c) => (c.sections[s.id] || {}).mode === 'own');
+    return h('li', { 'data-section': s.id }, mode, own);
+  });
+  const none = h('p', { class: 'muted tiny' }, 'No text yet: the sections export as they are.');
+  shown(none, (c) => !c.text.trim() && !Object.values(c.sections).some((o) => o.mode === 'own' && o.text.trim()));
+  const text = b.text('Text on every section', (p) => cfg(p).text, set((c, v) => (c.text = v)), { placeholder: 'e.g. {song} · OUT {date}', key: 'sectiontext:text' });
+  return h(
+    'div',
+    { class: 'sec-text', 'data-testid': 'section-text' },
+    h('h4', {}, 'On-screen text'),
+    text,
+    h('p', { class: 'muted tiny' }, `${ST_TOKENS} are filled in for each file. The date is the end card’s release date.`),
+    none,
+    b.segmented('Position', (p) => cfg(p).pos, set((c, v) => (c.pos = v)), ST_POSITIONS.map(([k, l]) => [k, l])),
+    h('div', { class: 'grid2' },
+      b.select('Style', (p) => cfg(p).style, set((c, v) => {
+        const look = ST_STYLES.find(([k]) => k === v);
+        c.style = v;
+        if (look) Object.assign(c, { color: look[2].color, boxColor: look[2].boxColor });
+      }), ST_STYLES.map(([k, l]) => [k, l])),
+      b.range('Size', (p) => cfg(p).size, set((c, v) => (c.size = v)), { min: 3, max: 18, step: 0.5, fmt: (v) => Number(v).toFixed(1), key: 'sectiontext:size' })),
+    h('div', { class: 'grid2' }, b.color('Text colour', (p) => cfg(p).color, set((c, v) => (c.color = v))), boxColor),
+    h('div', { class: 'grid2' },
+      b.number('Starts after (s)', (p) => cfg(p).start, set((c, v) => (c.start = v)), { min: 0, max: 600, step: 0.5 }),
+      b.select('Shows for', (p) => (cfg(p).length > 0 ? 'first' : 'whole'), set((c, v) => (c.length = v === 'first' ? c.length || 3 : 0)), [['whole', 'The whole section'], ['first', 'The first seconds']])),
+    seconds,
+    h('div', { class: 'row' }, b.toggle('Fade in', (p) => cfg(p).fadeIn, set((c, v) => (c.fadeIn = v))), b.toggle('Fade out', (p) => cfg(p).fadeOut, set((c, v) => (c.fadeOut = v)))),
+    h('p', { class: 'muted tiny' }, 'Each section can have its own text, or none:'),
+    h('ul', { class: 'sec-text-list' }, per),
+  );
+}

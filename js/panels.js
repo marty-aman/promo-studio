@@ -3037,7 +3037,7 @@ export function createPanels({ store, engine, ui }) {
             )
           : null,
       ),
-      ui.sectionsPanel ? ui.sectionsPanel() : null,
+      ui.sectionsPanel ? ui.sectionsPanel(b) : null,
       section('Project file', h('p', { class: 'muted small' }, 'Keep the edit as a file, to move it to another computer or go back to it later.'), h('div', { class: 'row' }, button('Save project file', () => ui.saveProjectFile(), { iconName: 'download', variant: 'sm' }))),
       buildShare(p, () => capPicker.currentText()),
       section(

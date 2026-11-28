@@ -6,6 +6,7 @@ import { media, ensureLayerAnalyses } from './media.js';
 import { exportVideo, pickMimeType } from './engine.js';
 import { realtimeNote } from './exportplan.js';
 import { planBatch, applyBatchItem, zipStore, postingSchedule, toICS } from './batch.js';
+import { sectionTextOf, addSectionText, rememberedSectionText } from './sectiontext.js';
 import { captionPicker } from './panel-captions.js';
 import { HOOK_OPENERS, HOOK_KINDS, HOOK_SOURCES, applyHookOpener } from './hooks.js';
 import { TRENDS, CALENDAR } from './inspiration.js';
@@ -43,6 +44,9 @@ export function batchTool({ store, engine, render, mode = 'song' }) {
     const plan = planBatch({ mode, song, mv, len: L, count: total() });
     if (!plan.length) return toast('Could not read the song. Wait for its waveform to load and try again.', 'error');
     const snap = JSON.stringify(store.get());
+    // the on-screen text set in Export → Song sections for this song, on every clip from its own start
+    const songId = store.get().managerSongId || '';
+    const textCfg = sectionTextOf(store.get(), songId, songId ? rememberedSectionText(songId) : null);
     Object.assign(batchState, { running: true, done: 0, total: plan.length, result: null, error: '', cancel: false, notes: [] });
     render();
     const files = [];
@@ -50,7 +54,11 @@ export function batchTool({ store, engine, render, mode = 'song' }) {
       for (const item of plan) {
         if (batchState.cancel) break;
         batchState.current = item.label;
-        store.update((d) => applyBatchItem(d, item, { len: L, mvId: mv ? mv.id : null, mvDuration: mv ? mv.duration : 0 }), 'batch');
+        const n = plan.indexOf(item) + 1;
+        store.update((d) => {
+          applyBatchItem(d, item, { len: L, mvId: mv ? mv.id : null, mvDuration: mv ? mv.duration : 0 });
+          addSectionText(d, textCfg, { from: 0, to: L, song: d.endCard.title || '', section: `Clip ${n}`, artist: d.endCard.artist || '' });
+        }, 'batch');
         await ensureLayerAnalyses(store.get());
         const res = await exportVideo(engine, { format: fmt, fps: 30, bitrate: 8e6, monitor: false, onFallback: (why) => (batchState.notes.push({ label: item.label, text: realtimeNote(why) }), render()) });
         const ext = res.mime.includes('mp4') ? 'mp4' : 'webm';
@@ -86,6 +94,7 @@ export function batchTool({ store, engine, render, mode = 'song' }) {
     isMv ? (videos.length ? field('Music video', mvSel) : h('p', { class: 'warn-list small' }, 'Add your music video in the Video tab first.')) : !song ? h('p', { class: 'warn-list small' }, 'Choose your song in the Audio tab first.') : null,
     h('div', { class: 'grid2' }, field('How many', count), field('Each clip', len)),
     estimate,
+    batchTextNote(p),
     batchState.running
       ? h('div', {},
           h('div', { class: 'export-progress' }, h('div', { style: { width: `${Math.round((batchState.done / Math.max(1, batchState.total)) * 100)}%` } })),
@@ -100,6 +109,13 @@ export function batchTool({ store, engine, render, mode = 'song' }) {
     batchState.error ? h('p', { class: 'error-text' }, batchState.error) : null,
     batchState.result ? h('a', { class: 'btn primary', href: batchState.result.url, download: batchState.result.name }, `Download ${batchState.result.count} clips (${(batchState.result.size / 1e6).toFixed(1)} MB .zip)`) : null,
   );
+}
+
+// the Song sections' on-screen text goes on every clip too (set in Export → Song sections)
+function batchTextNote(p) {
+  const id = p.managerSongId || '';
+  const t = sectionTextOf(p, id, id ? rememberedSectionText(id) : null).text.trim();
+  return t ? h('p', { class: 'muted tiny', 'data-testid': 'batch-text' }, `Each clip gets the on-screen text “${t}” (Export → Song sections → On-screen text).`) : null;
 }
 
 /** Posting calendar: 3-5 posts a week for 4-6 weeks, as a list and an .ics file. */
