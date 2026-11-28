@@ -1000,18 +1000,18 @@ export function createPanels({ store, engine, ui }) {
         ),
       );
     });
-    const issues = isCanvas(p) ? canvasIssues(p, { exportHeight: ASPECTS[p.aspect].h }) : [];
+    const issues = isCanvas(p) ? canvasIssues(p, { exportHeight: ASPECTS[p.aspect].h, exportWidth: ASPECTS[p.aspect].w }) : [];
     const hasSource = p.clips.length || p.endCard.coverMediaId || (p.canvas && p.canvas.backup);
     return section(
       'Spotify Canvas',
-      h('p', { class: 'muted small' }, 'A Canvas is the 3–8 second vertical loop that plays behind your track in Spotify instead of the cover art. Each template turns your first clips (or the cover art) into a loop that runs back into its start, in Spotify’s size (608×1080), with no text, lyrics or end card. Upload it in Spotify for Artists → Music → your track → Add Canvas.'),
+      h('p', { class: 'muted small' }, 'A Canvas is the 3–8 second vertical loop that plays behind your track in Spotify instead of the cover art. Each template turns your first clips (or the cover art) into a loop that runs back into its start, in Spotify’s size (594×1056, exactly 9:16), with no text, lyrics or end card. Upload it in Spotify for Artists → Music → your track → Add Canvas.'),
       hasSource ? null : h('p', { class: 'warn-list' }, 'Add a clip, or pick the song’s cover art on the End card tab, first.'),
       h('label', { class: 'canvas-len' }, h('span', { class: 'small' }, 'Loop length'), lenIn, lenOut),
       isCanvas(p)
         ? h(
             'div',
             { class: 'canvas-status' },
-            issues.length ? h('ul', { class: 'warn-list' }, issues.map((i) => h('li', { class: i.level }, i.text))) : h('p', { class: 'ok-text small' }, '✓ Fits Spotify’s Canvas rules: 9:16, 1080 px tall, 3–8 seconds, no text or flashing.'),
+            issues.length ? h('ul', { class: 'warn-list' }, issues.map((i) => h('li', { class: i.level }, i.text))) : h('p', { class: 'ok-text small' }, '✓ Fits Spotify’s Canvas rules: exactly 9:16 (594×1056), 3–8 seconds, no text or flashing.'),
             h(
               'div',
               { class: 'row' },
@@ -2837,7 +2837,7 @@ export function createPanels({ store, engine, ui }) {
 
   /** On the Export tab for a Spotify Canvas: how it measures up and where to upload it. */
   function canvasExportNote(p) {
-    const list = canvasIssues(p, { exportHeight: ASPECTS[p.aspect].h });
+    const list = canvasIssues(p, { exportHeight: ASPECTS[p.aspect].h, exportWidth: ASPECTS[p.aspect].w });
     return h(
       'div',
       { class: 'canvas-export' },

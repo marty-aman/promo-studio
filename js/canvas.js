@@ -194,11 +194,12 @@ export function undoCanvas(d) {
 }
 
 /** How the edit measures up to Spotify's Canvas rules: [{ level: 'bad' | 'warn', text }]. */
-export function canvasIssues(p, { exportHeight } = {}) {
+export function canvasIssues(p, { exportHeight, exportWidth } = {}) {
   const out = [];
   const add = (level, text) => out.push({ level, text });
-  if (p.aspect !== CANVAS_ASPECT) add('bad', 'Format isn’t Spotify Canvas (9:16, 1080 px tall). Spotify only takes vertical files 720–1080 px tall.');
+  if (p.aspect !== CANVAS_ASPECT) add('bad', 'Format isn’t Spotify Canvas (exactly 9:16, 594×1056). Spotify only takes vertical files 720–1080 px tall.');
   if (exportHeight && (exportHeight > 1080 || exportHeight < 720)) add('bad', `It exports ${exportHeight} px tall; Spotify needs 720–1080.`);
+  if (exportHeight && exportWidth && exportWidth * 16 !== exportHeight * 9) add('bad', `It exports ${exportWidth}×${exportHeight}, which isn’t exactly 9:16; Spotify refuses it.`);
   if (p.duration < CANVAS_MIN - 0.01 || p.duration > CANVAS_MAX + 0.01) add('bad', `It’s ${(+p.duration).toFixed(1)} s long; a Canvas must be 3–8 seconds.`);
   if (!(p.clips || []).length) add('bad', 'No video in it yet.');
   if (p.endCard && p.endCard.enabled) add('warn', 'The end card is on. Spotify already shows the title, artist and cover, so leave it off.');

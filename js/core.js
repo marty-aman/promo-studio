@@ -6,8 +6,9 @@ export const ASPECTS = {
   '4:5': { w: 1080, h: 1350, label: '4:5 · Instagram feed' },
   '1:1': { w: 1080, h: 1080, label: '1:1 · Square' },
   '16:9': { w: 1920, h: 1080, label: '16:9 · YouTube' },
-  // Spotify takes Canvas files 720–1080 px tall, so a full-HD vertical (1920 tall) would be refused
-  canvas: { w: 608, h: 1080, label: '9:16 · Spotify Canvas (1080 tall)' },
+  // Spotify takes Canvas files 720–1080 px tall and checks the ratio is exactly 9:16. 1080 tall would need
+  // 607.5 wide, so this is the tallest exact even size: 594 × 1056 (1056 × 9 / 16 = 594)
+  canvas: { w: 594, h: 1056, label: '9:16 · Spotify Canvas (594×1056)' },
 };
 
 export const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));

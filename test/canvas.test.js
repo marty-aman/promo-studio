@@ -12,8 +12,10 @@ const srcLen = () => 30;
 test('the Canvas format is 9:16 and within Spotify’s 720–1080 px height', () => {
   const a = ASPECTS.canvas;
   assert.ok(a.h >= 720 && a.h <= 1080);
-  assert.ok(Math.abs(a.w / a.h - 9 / 16) < 0.01);
+  assert.equal(a.w * 16, a.h * 9); // exactly 9:16: Spotify refuses 608×1080 (0.5630)
   assert.equal(a.w % 2, 0); // even sizes for H.264
+  assert.equal(a.h % 2, 0);
+  assert.deepEqual([a.w, a.h], [594, 1056]);
   assert.ok(overlaySupported('canvas') && overlaySupported('9:16') && !overlaySupported('16:9'));
   assert.ok(PLATFORM_OVERLAYS.some(([k]) => k === 'spotify'));
 });
@@ -122,4 +124,10 @@ test('Canvas checks follow Spotify’s rules', () => {
   p.look.watermark.mediaId = 'logo';
   const text = canvasIssues(p, { exportHeight: 1920 }).map((i) => `${i.level}: ${i.text}`).join('\n');
   for (const bit of ['bad: Format', 'bad: It exports 1920', 'bad: It’s 12.0 s', 'end card', 'text on it', 'Lyrics are showing', 'under a second', 'flashing', 'logo', 'fades in from black']) assert.ok(text.includes(bit), bit);
+});
+
+test('the checklist flags an export size that is not exactly 9:16', () => {
+  const p = { aspect: 'canvas', duration: 6, clips: [vid('a', { transition: { type: 'none' }, effects: {} })], endCard: {}, texts: [], lyrics: [], look: {} };
+  assert.ok(!canvasIssues(p, { exportHeight: 1056, exportWidth: 594 }).some((i) => i.level === 'bad'));
+  assert.ok(canvasIssues(p, { exportHeight: 1080, exportWidth: 608 }).some((i) => i.level === 'bad' && /9:16/.test(i.text)));
 });
