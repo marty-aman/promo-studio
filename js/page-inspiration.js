@@ -1,6 +1,6 @@
 // The Inspiration page: niche trends with one-click recipes, a posting playbook,
 // hashtag sets, caption hooks and a release-week calendar.
-import { findHook } from './core.js';
+import { findHook, releaseDay } from './core.js';
 import { media } from './media.js';
 import { renderFrame } from './renderer.js';
 import { saveSettings, loadSettings } from './state.js';
@@ -203,9 +203,9 @@ export function buildInspirationPage({ store, engine, ui, settings, panels }) {
 
   function calendar() {
     const rel = store.get().endCard.releaseDate;
-    const base = rel ? new Date(`${rel}T00:00:00`) : null;
+    const base = releaseDay(rel);
     const fmt = (off) => {
-      if (!base || isNaN(base)) return off === 0 ? 'Release day' : `Day ${off > 0 ? '+' : ''}${off}`;
+      if (!base) return off === 0 ? 'Release day' : `Day ${off > 0 ? '+' : ''}${off}`;
       const d = new Date(base);
       d.setDate(d.getDate() + off);
       return `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${off === 0 ? ' · release' : ''}`;

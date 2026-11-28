@@ -24,6 +24,7 @@ import {
   layoutClips,
   maxClipDuration,
   clamp,
+  releaseISO,
 } from './core.js';
 import { FONTS, PLATFORMS, FILTER_PRESETS, newText, defaultLyricStyle, loadSettings, saveSettings, loadTemplates, saveTemplates, findClip, findLayer, LAYER_TYPES } from './state.js';
 import { buildLayersPanel, makeLayer, clipLayer, TAB_ACCEPT, midiDrumDefaults } from './panel-layers.js';
@@ -106,7 +107,7 @@ import { loadPack, packResult } from './soundpack.js';
 import { SOURCES, SOURCE_LABEL, fromLibrary, fromPack, fromBuiltin, applyMeta, metaFor, filterAll, topTags, parseTags, loadMeta, saveMeta } from './soundindex.js';
 import { searchFreesound, FS_LICENSES, FS_DURATIONS, FS_SORTS, FREESOUND_KEY_URL } from './freesound.js';
 
-import { h, icon, button, iconButton, toast, download, pickFiles, field, section, fold, setFold, keyBox, Binder } from './dom.js';
+import { h, icon, button, iconButton, toast, download, pickFiles, field, section, fold, setFold, keyBox, Binder, onDateCommit } from './dom.js';
 
 const fontOptions = () => [
   ...FONTS.map((f) => [f.id, f.label]),
@@ -2667,6 +2668,17 @@ export function createPanels({ store, engine, ui }) {
       autoLbl.hidden = !(p.endCard.coverBy === 'auto' && p.endCard.coverMediaId);
       useBtn.hidden = !sc || (p.endCard.coverBy === 'auto' && p.endCard.coverMediaId === sc);
     });
+    // the release date: a real date field (a typed 12/5/2026 used to blank {date}), filled from the edit's song unless typed by hand
+    const dateIn = onDateCommit(h('input', { type: 'date', 'aria-label': 'Release date', 'data-k': 'ec-date' }), (v) => store.update((d) => ((d.endCard.releaseDate = v), (d.endCard.dateBy = 'manual'))));
+    const dateLbl = h('span', { class: 'muted tiny', 'data-k': 'ec-date-auto' }, 'from the song');
+    const dateBtn = button('Use the song’s date', () => ui.useSongDate && ui.useSongDate(), { variant: 'sm ghost' });
+    dateBtn.dataset.k = 'ec-date-use';
+    b._reg((p) => {
+      if (document.activeElement !== dateIn) dateIn.value = releaseISO(p.endCard.releaseDate);
+      const sd = ui.songDate ? ui.songDate() : '';
+      dateLbl.hidden = !(p.endCard.dateBy === 'auto' && p.endCard.releaseDate);
+      dateBtn.hidden = !sd || (p.endCard.dateBy === 'auto' && p.endCard.releaseDate === sd);
+    });
     const coverHint = covers.length
       ? 'The covers of your songs, EPs and albums in Songs & releases. Add or change one on a song’s Overview or an EP or album page.'
       : 'Cover art comes from your songs in Songs & releases: add one on a song’s Overview, or on an EP or album page. “Get info” from Spotify below also sets one.';
@@ -2738,8 +2750,8 @@ export function createPanels({ store, engine, ui }) {
         b.text('Artist', (p) => p.endCard.artist, e((o, v) => (o.artist = v))),
         b.text('Call to action', (p) => p.endCard.cta, e((o, v) => (o.cta = v))),
         h('div', { class: 'chips' }, ctaPresets.map((c) => button(c, () => store.update((d) => (d.endCard.cta = c)), { variant: 'chip' }))),
-        b.text('Release date', (p) => p.endCard.releaseDate, e((o, v) => (o.releaseDate = v)), { placeholder: 'YYYY-MM-DD' }),
-        h('p', { class: 'muted tiny' }, '{date} becomes e.g. “NOV 21”. {countdown} becomes “OUT IN 3 DAYS”, “OUT TOMORROW” or “OUT NOW”, worked out on the day you export.'),
+        field('Release date', h('div', { class: 'row wrap' }, dateIn, dateLbl, dateBtn)),
+        h('p', { class: 'muted tiny' }, '{date} becomes e.g. “NOV 21” (“JAN 9, 2027” in another year). The date comes from the edit’s song or its EP or album until you set one here. {countdown} becomes “OUT IN 3 DAYS”, “OUT TOMORROW” or “OUT NOW”, worked out on the day you export.'),
         b.text('Small text', (p) => p.endCard.subtext, e((o, v) => (o.subtext = v)), { placeholder: 'Link in bio · @yourband' }),
         field('Streaming platforms', plats),
       ),

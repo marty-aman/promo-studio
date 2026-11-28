@@ -38,7 +38,7 @@ import { initMobile } from './mobile.js';
 import { photoStyle } from './manager/artists.js';
 import { createPhotoStudio } from './photo/page.js';
 import { sectionsExport } from './panel-sections.js';
-import { coverOf, songCovers, autoCover } from './manager/releases.js';
+import { coverOf, songCovers, autoCover, autoDate, songDateOf } from './manager/releases.js';
 import { requestDetect } from './manager/page-sections.js';
 import { addPhotos as addArtistPhotos } from './manager/photos.js';
 import { makeLayer, makeOverlayClip, setSongTabs } from './panel-layers.js';
@@ -1359,6 +1359,7 @@ manager = createManager({
         }
         d.managerSongId = song.id;
         autoCover(d.endCard, songCoverOf(song));
+        autoDate(d.endCard, songDateOfSong(song));
       });
       const b = manager.artistBand(manager.currentArtist());
       if (b && (b.theme || b.logoId)) applyArtist(manager.currentArtist(), { quiet: true });
@@ -1727,6 +1728,17 @@ ui.useSongCover = () => {
   if (id) store.update((d) => autoCover(d.endCard, id, { force: true }));
   return !!id;
 };
+const songDateOfSong = (song) => (song && manager ? songDateOf(song, manager.store.get().releases || []) : '');
+/** The edit's song's release date for the End card tab, and "Use the song's date": hand the date back to the song. */
+ui.songDate = () => {
+  const l = linkedSong();
+  return l && l.open ? songDateOfSong(l.song) : '';
+};
+ui.useSongDate = () => {
+  const date = ui.songDate();
+  if (date) store.update((d) => autoDate(d.endCard, date, { force: true }));
+  return !!date;
+};
 /** Put one of your songs in the edit: its song file, and the edit linked to it (stems, tabs, lyrics follow). */
 ui.chooseSong = (songId) => {
   const m = manager.store.get();
@@ -1738,6 +1750,7 @@ ui.chooseSong = (songId) => {
     if (!d.endCard.title || d.endCard.title === 'Song Title') d.endCard.title = s.title;
     if ((!d.endCard.artist || d.endCard.artist === 'Artist Name') && m.band.name) d.endCard.artist = m.band.name;
     autoCover(d.endCard, songCoverOf(s));
+    autoDate(d.endCard, songDateOfSong(s));
   });
   panels.actions.useSong(rec);
 };

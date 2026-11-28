@@ -1,5 +1,5 @@
 // Project state, undo/redo history and browser persistence (localStorage + IndexedDB).
-import { uid } from './core.js';
+import { uid, releaseISO } from './core.js';
 import { cleanRange } from './exportrange.js';
 import { cleanLyricFx } from './lyricfx.js';
 import { cleanLyricAnimations } from './lyricanim.js';
@@ -70,7 +70,8 @@ export function defaultEndCard() {
     title: 'Song Title',
     artist: 'Artist Name',
     cta: 'OUT NOW',
-    releaseDate: '',
+    releaseDate: '', // YYYY-MM-DD
+    dateBy: '', // like coverBy: 'auto' (the song's), 'manual' (typed) or '' (old saves)
     subtext: 'Link in bio',
     platforms: ['spotify', 'apple', 'youtube'],
     background: 'blur', // blur | color | video
@@ -296,7 +297,7 @@ export function normalizeProject(p) {
     lyricStyle: anims.lyricStyle,
     lyrics: anims.lyrics,
     ...(p.texts ? { texts: anims.texts } : {}),
-    endCard: { ...base.endCard, ...p.endCard },
+    endCard: cleanEndCard({ ...base.endCard, ...p.endCard }),
     look: {
       ...base.look,
       ...look,
@@ -304,6 +305,13 @@ export function normalizeProject(p) {
       progress: { ...base.look.progress, ...look.progress },
     },
   };
+}
+
+// a date typed as 12/5/2026 or 2026-12-5 before the date field: saved as 2026-12-05 (anything else is kept as it was)
+function cleanEndCard(ec) {
+  const iso = releaseISO(ec.releaseDate);
+  if (iso) ec.releaseDate = iso;
+  return ec;
 }
 
 export function saveProject(p) {

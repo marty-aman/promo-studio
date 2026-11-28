@@ -5,6 +5,7 @@
 //  - one specific ask, best of all a share to a friend's DMs (Instagram weighs sends most)
 //  - at most 5 hashtags (Instagram's cap), 3-5 niche ones beat many generic ones
 //  - TikTok: short, under ~150 characters; Instagram: short or a real story, not in between
+import { releaseDay } from './core.js';
 export const CAPTION_RESEARCHED_ON = 'November 18, 2026';
 export const CAPTION_SOURCES = [
   { label: 'Vaizle: viral Instagram captions 2026 (keywords over hashtags, 5-tag cap)', url: 'https://insights.vaizle.com/best-captions-for-instagram-posts-and-reels/' },
@@ -51,9 +52,8 @@ export function bestLyric(lyrics, from = -Infinity, to = Infinity) {
 }
 
 function countdown(releaseDate, now = new Date()) {
-  if (!releaseDate) return null;
-  const d = new Date(`${releaseDate}T00:00:00`);
-  if (isNaN(d)) return null;
+  const d = releaseDay(releaseDate);
+  if (!d) return null;
   const days = Math.round((d - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
   if (days > 1) return `out in ${days} days`;
   if (days === 1) return 'out tomorrow';
